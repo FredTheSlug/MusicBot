@@ -1,0 +1,19 @@
+JMusicBot (FredTheSlug fork)
+Copyright 2026 Fred (https://github.com/FredTheSlug)
+
+This product is a derivative work of JMusicBot
+(https://github.com/jagrosh/MusicBot).
+
+Copyright 2016-2022 John Grosh (jagrosh) and contributors.
+
+Notable changes in this fork include a browser control panel (Javalin),
+optional Discord OAuth for the web UI, play history, LRCLIB lyrics,
+Spotify URL resolution (playback via YouTube search), and a patched
+SoundCloud client-id tracker for Lavaplayer.
+
+Third-party libraries used by this project include JDA, Lavaplayer,
+Javalin, and others named in pom.xml. See each dependency for its
+license terms.
+
+Licensed under the Apache License, Version 2.0.
+See LICENSE for the full license text.

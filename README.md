@@ -56,6 +56,8 @@ Please see the [Setup Page](https://jmusicbot.com/setup) to run this bot yoursel
 
 This fork adds a browser control panel, optional Discord login for the web UI, play history, and Spotify URLs (still played through YouTube). Copy [`config.txt.example`](config.txt.example) to `config.txt`, fill in your token and owner ID.
 
+Fork of [jagrosh/MusicBot](https://github.com/jagrosh/MusicBot). See [NOTICE](NOTICE) for attribution and [LICENSE](LICENSE) (Apache 2.0).
+
 ## Questions/Suggestions/Bug Reports
 **Please read the [Issues List](https://github.com/jagrosh/MusicBot/issues) before suggesting a feature**. If you have a question, need troubleshooting help, or want to brainstorm a new feature, please start a [Discussion](https://github.com/jagrosh/MusicBot/discussions). If you'd like to suggest a feature or report a reproducible bug, please open an [Issue](https://github.com/jagrosh/MusicBot/issues) on this repository. If you like this bot, be sure to add a star to the libraries that make this possible: [**JDA**](https://github.com/DV8FromTheWorld/JDA) and [**lavaplayer**](https://github.com/sedmelluq/lavaplayer)!
 

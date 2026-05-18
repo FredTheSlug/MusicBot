@@ -1,6 +1,8 @@
 /*
  * Copyright 2022 John Grosh (jagrosh).
  *
+ * Modified 2026 by Fred (https://github.com/FredTheSlug/MusicBot).
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at

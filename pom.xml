@@ -166,6 +166,19 @@
 
     <build>
       <finalName>JMusicBot</finalName>
+      <resources>
+        <resource>
+          <directory>src/main/resources</directory>
+        </resource>
+        <resource>
+          <directory>${project.basedir}</directory>
+          <includes>
+            <include>LICENSE</include>
+            <include>NOTICE</include>
+          </includes>
+          <targetPath>META-INF</targetPath>
+        </resource>
+      </resources>
       <plugins>
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
