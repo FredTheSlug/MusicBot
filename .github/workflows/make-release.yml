@@ -1,15 +1,19 @@
 name: Make Release
+
 on:
   workflow_dispatch:
     inputs:
       version_number:
-        description: 'Version Number'     
+        description: 'Release tag (e.g. 0.4.4 — without leading v)'
         required: true
         type: string
       info:
-        description: 'Description of this Release'
+        description: 'Release notes (markdown)'
         required: true
         type: string
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build_jar:
@@ -17,54 +21,87 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Set up JDK 11
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4
         with:
           java-version: '11'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: maven
-      - name: Set Version
-        uses: datamonsters/replace-action@v2
-        with:
-          files: 'pom.xml'
-          replacements: 'Snapshot=${{ github.event.inputs.version_number }}'
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version_number }}" ]; then
+            RAW="${{ github.event.inputs.version_number }}"
+          else
+            RAW="${GITHUB_REF_NAME}"
+          fi
+          TAG="${RAW#v}"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "tag=${RAW}" >> "$GITHUB_OUTPUT"
+      - name: Set version in pom.xml
+        run: sed -i "s/<version>Snapshot<\/version>/<version>${{ steps.ver.outputs.version }}<\/version>/" pom.xml
       - name: Build with Maven
-        run: mvn --batch-mode --update-snapshots verify
-      - name: Rename jar
-        run: mv target/*-All.jar JMusicBot-${{ github.event.inputs.version_number }}.jar
+        run: mvn --batch-mode --update-snapshots -DskipTests package
+      - name: Prepare release jar
+        run: cp target/JMusicBot.jar "JMusicBot-${{ steps.ver.outputs.version }}.jar"
       - name: Upload jar
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: jar
-          path: JMusicBot-${{ github.event.inputs.version_number }}.jar
+          path: JMusicBot-${{ steps.ver.outputs.version }}.jar
           if-no-files-found: error
+
   create_release:
     name: Create Release
     runs-on: ubuntu-latest
     needs: build_jar
+    permissions:
+      contents: write
     steps:
-      - name: Download a Build Artifact
-        uses: actions/download-artifact@v3.0.0
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version_number }}" ]; then
+            RAW="${{ github.event.inputs.version_number }}"
+          else
+            RAW="${GITHUB_REF_NAME}"
+          fi
+          TAG="${RAW#v}"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "tag=${RAW}" >> "$GITHUB_OUTPUT"
+      - name: Download jar
+        uses: actions/download-artifact@v4
         with:
           name: jar
-          path: .
-      - name: Show Artifacts
-        run: ls -R
+      - name: Write release notes
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          {
+            echo "Release **${VER}** of [FredTheSlug/MusicBot](https://github.com/FredTheSlug/MusicBot)."
+            echo ""
+            if [ -n "${{ github.event.inputs.info }}" ]; then
+              echo "${{ github.event.inputs.info }}"
+              echo ""
+            fi
+            echo "### Download"
+            echo "- **JMusicBot-${VER}.jar** (Java 11+)"
+            echo ""
+            echo "### Quick start"
+            echo "1. Download the jar from **Assets** below."
+            echo "2. Copy [\`config.txt.example\`](https://github.com/FredTheSlug/MusicBot/blob/main/config.txt.example) to \`config.txt\` next to the jar."
+            echo "3. Set your Discord bot token and owner ID in \`config.txt\`."
+            echo "4. Run: \`java -jar JMusicBot-${VER}.jar\`"
+            echo ""
+            echo "See the [README](https://github.com/FredTheSlug/MusicBot) for the web panel, Spotify links, and optional settings."
+          } > RELEASE_NOTES.md
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.event.inputs.version_number }}
-          name: Version ${{ github.event.inputs.version_number }}
-          draft: true
+          tag: ${{ steps.ver.outputs.tag }}
+          name: Version ${{ steps.ver.outputs.version }}
+          draft: false
           prerelease: false
           artifacts: "*.jar"
-          body: |
-            ${{ github.event.inputs.info }}
-            
-            ---
-            ### Setup
-            https://jmusicbot.com/setup  
-            https://jmusicbot.com/config  
-            # Download: [JMusicBot-${{ github.event.inputs.version_number }}.jar](https://github.com/jagrosh/MusicBot/releases/download/${{ github.event.inputs.version_number }}/JMusicBot-${{ github.event.inputs.version_number }}.jar)
+          bodyFile: RELEASE_NOTES.md
