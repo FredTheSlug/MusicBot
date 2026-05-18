@@ -11,7 +11,7 @@ token = BOT_TOKEN_HERE
 
 owner = 0 // OWNER ID
 
-prefix = "@mention"
+prefix = "?"
 altprefix = "NONE"
 game = "DEFAULT"
 status = ONLINE
