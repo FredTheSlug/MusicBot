@@ -37,6 +37,7 @@ JMusicBot supports all sources and formats supported by [lavaplayer](https://git
   * Twitch streams
   * Local files
   * HTTP URLs
+  * Spotify
 ### Formats
   * MP3
   * FLAC
