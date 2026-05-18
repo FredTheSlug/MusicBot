@@ -1,0 +1,14 @@
+/nbproject/
+/target/
+/Playlists/
+/test/
+/.superpowers/
+/io/
+*.json
+*.txt
+!config.txt.example
+!reference.conf
+.env
+.env.*
+!.env.example
+nb*.xml
