@@ -54,6 +54,13 @@ public class BotConfig
     private boolean spotifyEnabled;
     private String spotifyClientId, spotifyClientSecret, spotifyMarket;
     private int spotifyMaxPlaylistTracks;
+    private String youtubeRemoteCipherUrl, youtubeRemoteCipherPassword, youtubeRemoteCipherUserAgent;
+    private boolean youtubeOauthEnabled, youtubeOauthSkipInitialization, youtubeOauthSkipInitializationConfigured;
+    private String youtubeOauthRefreshToken;
+    private String youtubePoToken, youtubePoTokenVisitorData;
+    private boolean youtubeProxyEnabled;
+    private String youtubeProxyHost, youtubeProxyUsername, youtubeProxyPassword, youtubeProxyType, youtubeProxyMode;
+    private int youtubeProxyPort;
     private boolean valid = false;
     
     public BotConfig(Prompt prompt)
@@ -115,6 +122,36 @@ public class BotConfig
             spotifyMarket = config.hasPath("spotify.market") ? config.getString("spotify.market") : "US";
             spotifyMaxPlaylistTracks = config.hasPath("spotify.maxplaylisttracks")
                     ? config.getInt("spotify.maxplaylisttracks") : 100;
+            youtubeRemoteCipherUrl = config.hasPath("youtube.remotecipher.url")
+                    ? config.getString("youtube.remotecipher.url") : "https://cipher.kikkia.dev/";
+            youtubeRemoteCipherPassword = config.hasPath("youtube.remotecipher.password")
+                    ? config.getString("youtube.remotecipher.password") : "";
+            youtubeRemoteCipherUserAgent = config.hasPath("youtube.remotecipher.useragent")
+                    ? config.getString("youtube.remotecipher.useragent") : "JMusicBot";
+            youtubeOauthEnabled = config.hasPath("youtube.oauth.enabled") && config.getBoolean("youtube.oauth.enabled");
+            youtubeOauthRefreshToken = config.hasPath("youtube.oauth.refreshtoken")
+                    ? config.getString("youtube.oauth.refreshtoken") : "";
+            youtubeOauthSkipInitializationConfigured = config.hasPath("youtube.oauth.skipinitialization");
+            youtubeOauthSkipInitialization = youtubeOauthSkipInitializationConfigured
+                    && config.getBoolean("youtube.oauth.skipinitialization");
+            youtubePoToken = config.hasPath("youtube.pot.token")
+                    ? config.getString("youtube.pot.token") : "";
+            youtubePoTokenVisitorData = config.hasPath("youtube.pot.visitordata")
+                    ? config.getString("youtube.pot.visitordata") : "";
+            youtubeProxyEnabled = config.hasPath("youtube.proxy.enabled")
+                    && config.getBoolean("youtube.proxy.enabled");
+            youtubeProxyHost = config.hasPath("youtube.proxy.host")
+                    ? config.getString("youtube.proxy.host") : "";
+            youtubeProxyPort = config.hasPath("youtube.proxy.port")
+                    ? config.getInt("youtube.proxy.port") : 0;
+            youtubeProxyUsername = config.hasPath("youtube.proxy.username")
+                    ? config.getString("youtube.proxy.username") : "";
+            youtubeProxyPassword = config.hasPath("youtube.proxy.password")
+                    ? config.getString("youtube.proxy.password") : "";
+            youtubeProxyType = config.hasPath("youtube.proxy.type")
+                    ? config.getString("youtube.proxy.type") : "http";
+            youtubeProxyMode = config.hasPath("youtube.proxy.mode")
+                    ? config.getString("youtube.proxy.mode") : "full";
             if (webAuthEnabled)
             {
                 if (webDiscordClientId == null || webDiscordClientId.isBlank()
@@ -462,6 +499,86 @@ public class BotConfig
     public int getSpotifyMaxPlaylistTracks()
     {
         return spotifyMaxPlaylistTracks;
+    }
+
+    public String getYoutubeRemoteCipherUrl()
+    {
+        return youtubeRemoteCipherUrl;
+    }
+
+    public String getYoutubeRemoteCipherPassword()
+    {
+        return youtubeRemoteCipherPassword;
+    }
+
+    public String getYoutubeRemoteCipherUserAgent()
+    {
+        return youtubeRemoteCipherUserAgent;
+    }
+
+    public boolean isYoutubeOauthEnabled()
+    {
+        return youtubeOauthEnabled;
+    }
+
+    public String getYoutubeOauthRefreshToken()
+    {
+        return youtubeOauthRefreshToken;
+    }
+
+    public boolean isYoutubeOauthSkipInitialization()
+    {
+        return youtubeOauthSkipInitialization;
+    }
+
+    public boolean hasYoutubeOauthSkipInitializationConfigured()
+    {
+        return youtubeOauthSkipInitializationConfigured;
+    }
+
+    public String getYoutubePoToken()
+    {
+        return youtubePoToken;
+    }
+
+    public String getYoutubePoTokenVisitorData()
+    {
+        return youtubePoTokenVisitorData;
+    }
+
+    public boolean isYoutubeProxyEnabled()
+    {
+        return youtubeProxyEnabled;
+    }
+
+    public String getYoutubeProxyHost()
+    {
+        return youtubeProxyHost;
+    }
+
+    public int getYoutubeProxyPort()
+    {
+        return youtubeProxyPort;
+    }
+
+    public String getYoutubeProxyUsername()
+    {
+        return youtubeProxyUsername;
+    }
+
+    public String getYoutubeProxyPassword()
+    {
+        return youtubeProxyPassword;
+    }
+
+    public String getYoutubeProxyType()
+    {
+        return youtubeProxyType;
+    }
+
+    public String getYoutubeProxyMode()
+    {
+        return youtubeProxyMode;
     }
 
 }

@@ -29,8 +29,11 @@ import com.sedmelluq.discord.lavaplayer.source.nico.NicoAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager;
-import dev.lavalink.youtube.YoutubeAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.tools.PlayerLibrary;
+import dev.lavalink.youtube.YoutubeSource;
 import net.dv8tion.jda.api.entities.Guild;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -38,6 +41,7 @@ import net.dv8tion.jda.api.entities.Guild;
  */
 public class PlayerManager extends DefaultAudioPlayerManager
 {
+    private static final Logger log = LoggerFactory.getLogger(PlayerManager.class);
     private final Bot bot;
     
     public PlayerManager(Bot bot)
@@ -49,9 +53,7 @@ public class PlayerManager extends DefaultAudioPlayerManager
     {
         TransformativeAudioSourceManager.createTransforms(bot.getConfig().getTransforms()).forEach(t -> registerSourceManager(t));
 
-        YoutubeAudioSourceManager yt = new YoutubeAudioSourceManager(true);
-        yt.setPlaylistPageCount(bot.getConfig().getMaxYTPlaylistPages());
-        registerSourceManager(yt);
+        registerSourceManager(YoutubeSources.create(bot.getConfig()));
 
         registerSourceManager(SoundCloudAudioSourceManager.createDefault());
         registerSourceManager(new BandcampAudioSourceManager());
@@ -65,6 +67,8 @@ public class PlayerManager extends DefaultAudioPlayerManager
         AudioSourceManagers.registerLocalSource(this);
 
         DuncteBotSources.registerAll(this, "en-US");
+
+        log.info("Audio sources ready (lavaplayer {}, youtube-source {})", PlayerLibrary.VERSION, YoutubeSource.VERSION);
     }
     
     public Bot getBot()

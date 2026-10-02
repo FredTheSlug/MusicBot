@@ -35,7 +35,6 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import com.jagrosh.jmusicbot.settings.Settings;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
-import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioTrack;
 import java.nio.ByteBuffer;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
@@ -68,6 +67,7 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     
     private AudioFrame lastFrame;
     private AbstractQueue<QueuedTrack> queue;
+    private String lastPlaybackError;
 
     protected AudioHandler(PlayerManager manager, Guild guild, AudioPlayer player)
     {
@@ -189,6 +189,14 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     @Override
     public void onTrackEnd(AudioPlayer player, AudioTrack track, AudioTrackEndReason endReason) 
     {
+        if(endReason != AudioTrackEndReason.FINISHED)
+        {
+            LoggerFactory.getLogger("AudioHandler").warn("Track ended early ({}): {} — {}{}",
+                    endReason, track.getInfo().title, track.getIdentifier(),
+                    lastPlaybackError == null ? "" : " (" + lastPlaybackError + ")");
+            lastPlaybackError = null;
+        }
+
         RepeatMode repeatMode = manager.getBot().getSettingsManager().getSettings(guildId).getRepeatMode();
         // if the track ended normally, and we're in repeat mode, re-add it to the queue
         if(endReason==AudioTrackEndReason.FINISHED && repeatMode != RepeatMode.OFF)
@@ -224,17 +232,26 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
 
     @Override
     public void onTrackException(AudioPlayer player, AudioTrack track, FriendlyException exception) {
-        LoggerFactory.getLogger("AudioHandler").error("Track " + track.getIdentifier() + " has failed to play", exception);
+        lastPlaybackError = exception.getMessage();
+        LoggerFactory.getLogger("AudioHandler").error("Playback failed for {} ({}): {}",
+                track.getInfo().title, track.getIdentifier(), exception.getMessage(), exception);
     }
 
     @Override
     public void onTrackStart(AudioPlayer player, AudioTrack track) 
     {
+        lastPlaybackError = null;
         votes.clear();
         addToHistory(track);
+        try
+        {
+            manager.getBot().getPlayCountStore().recordPlay(guildId, track);
+        }
+        catch (Exception ignored) {}
         manager.getBot().getNowplayingHandler().onTrackUpdate(track);
         broadcastWeb("player");
         broadcastWeb("history");
+        broadcastWeb("frequent");
     }
 
     @Override
@@ -338,7 +355,7 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
                 eb.setTitle(track.getInfo().title);
             }
 
-            if(track instanceof YoutubeAudioTrack && manager.getBot().getConfig().useNPImages())
+            if("youtube".equals(track.getSourceManager().getSourceName()) && manager.getBot().getConfig().useNPImages())
             {
                 eb.setThumbnail("https://img.youtube.com/vi/"+track.getIdentifier()+"/mqdefault.jpg");
             }
@@ -399,14 +416,19 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     @Override
     public boolean canProvide() 
     {
-        lastFrame = audioPlayer.provide();
+        if(lastFrame == null)
+            lastFrame = audioPlayer.provide();
         return lastFrame != null;
     }
 
     @Override
     public ByteBuffer provide20MsAudio() 
     {
-        return ByteBuffer.wrap(lastFrame.getData());
+        if(lastFrame == null)
+            return null;
+        ByteBuffer buffer = ByteBuffer.wrap(lastFrame.getData());
+        lastFrame = null;
+        return buffer;
     }
 
     @Override

@@ -14,4 +14,8 @@
         <appender-ref ref="Simple"/>
     </root>
 
+    <logger name="dev.lavalink.youtube" level="INFO"/>
+    <logger name="dev.lavalink.youtube.http.YoutubeOauth2Handler" level="INFO"/>
+    <logger name="AudioHandler" level="INFO"/>
+
 </configuration>

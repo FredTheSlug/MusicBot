@@ -23,6 +23,7 @@ import com.jagrosh.jmusicbot.Bot;
 import com.jagrosh.jmusicbot.commands.OwnerCommand;
 import com.jagrosh.jmusicbot.utils.OtherUtil;
 import com.sedmelluq.discord.lavaplayer.tools.PlayerLibrary;
+import dev.lavalink.youtube.YoutubeSource;
 import net.dv8tion.jda.api.JDAInfo;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
@@ -69,7 +70,8 @@ public class DebugCmd extends OwnerCommand
         sb.append("\n\nDependency Information:")
                 .append("\n  JDA Version = ").append(JDAInfo.VERSION)
                 .append("\n  JDA-Utilities Version = ").append(JDAUtilitiesInfo.VERSION)
-                .append("\n  Lavaplayer Version = ").append(PlayerLibrary.VERSION);
+                .append("\n  Lavaplayer Version = ").append(PlayerLibrary.VERSION)
+                .append("\n  Youtube-Source Version = ").append(YoutubeSource.VERSION);
         long total = Runtime.getRuntime().totalMemory() / 1024 / 1024;
         long used = total - (Runtime.getRuntime().freeMemory() / 1024 / 1024);
         sb.append("\n\nRuntime Information:")

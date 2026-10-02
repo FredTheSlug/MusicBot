@@ -11,7 +11,7 @@ token = BOT_TOKEN_HERE
 
 owner = 0 // OWNER ID
 
-prefix = "@mention"
+prefix = "?"
 altprefix = "NONE"
 game = "DEFAULT"
 status = ONLINE
@@ -81,4 +81,30 @@ spotify {
   clientsecret = ""
   market = "US"
   maxplaylisttracks = 100
+}
+
+youtube {
+  remotecipher {
+    url = "https://cipher.kikkia.dev/"
+    password = ""
+    useragent = "JMusicBot"
+  }
+  oauth {
+    enabled = false
+    refreshtoken = ""
+    skipinitialization = true
+  }
+  pot {
+    token = ""
+    visitordata = ""
+  }
+  proxy {
+    enabled = false
+    host = ""
+    port = 0
+    username = ""
+    password = ""
+    type = "http"
+    mode = "full"
+  }
 }

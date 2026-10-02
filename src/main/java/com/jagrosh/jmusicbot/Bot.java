@@ -27,6 +27,7 @@ import com.jagrosh.jmusicbot.audio.PlayerManager;
 import com.jagrosh.jmusicbot.audio.SpotifyResolver;
 import com.jagrosh.jmusicbot.gui.GUI;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
+import com.jagrosh.jmusicbot.settings.PlayCountStore;
 import com.jagrosh.jmusicbot.settings.SettingsManager;
 import com.jagrosh.jmusicbot.web.WebServer;
 import java.util.Objects;
@@ -45,6 +46,7 @@ public class Bot
     private final ScheduledExecutorService threadpool;
     private final BotConfig config;
     private final SettingsManager settings;
+    private final PlayCountStore playCounts;
     private final PlayerManager players;
     private final PlaylistLoader playlists;
     private final NowplayingHandler nowplaying;
@@ -61,6 +63,7 @@ public class Bot
         this.waiter = waiter;
         this.config = config;
         this.settings = settings;
+        this.playCounts = new PlayCountStore();
         this.playlists = new PlaylistLoader(config);
         this.threadpool = Executors.newSingleThreadScheduledExecutor();
         this.players = new PlayerManager(this);
@@ -81,6 +84,11 @@ public class Bot
     public SettingsManager getSettingsManager()
     {
         return settings;
+    }
+
+    public PlayCountStore getPlayCountStore()
+    {
+        return playCounts;
     }
     
     public EventWaiter getWaiter()

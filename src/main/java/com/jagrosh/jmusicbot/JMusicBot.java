@@ -234,6 +234,7 @@ public class JMusicBot
 
                         new AutoplaylistCmd(bot),
                         new DebugCmd(bot),
+                        new YoutubeTestCmd(bot),
                         new PlaylistCmd(bot),
                         new SetavatarCmd(bot),
                         new SetgameCmd(bot),

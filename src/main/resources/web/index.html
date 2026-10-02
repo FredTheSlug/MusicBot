@@ -4,14 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>JMusicBot</title>
+    <title>Clout Kings Music Bot</title>
+    <link rel="icon" href="/web/favicon.png" type="image/png" sizes="any">
+    <link rel="apple-touch-icon" href="/web/favicon.png">
     <script>
         (function () {
             try {
                 var k = 'jmusicbot_theme_v1';
                 var t = localStorage.getItem(k);
                 if (t === 'nihon') { try { localStorage.setItem(k, 'sumi'); } catch (e2) {} t = 'sumi'; }
-                if (t && t !== 'nebula' && ['aurora', 'ember', 'crimson', 'dawn', 'dawn-dark', 'steel', 'verdant', 'grove', 'grapevine', 'sumi', 'rasta'].indexOf(t) >= 0) {
+                if (t && t !== 'nebula' && ['aurora', 'ember', 'crimson', 'dawn', 'dawn-dark', 'steel', 'verdant', 'grove', 'grapevine', 'sumi', 'rasta', 'cipher', 'signal', 'victory', 'neon'].indexOf(t) >= 0) {
                     document.documentElement.setAttribute('data-theme', t);
                 }
             } catch (e) {}
@@ -22,6 +24,7 @@
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&family=Shippori+Mincho:wght@400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;600;700;800&display=swap');
 
         :root {
             --bg-primary: #0b0d17;
@@ -51,7 +54,7 @@
 
             /* Layout / density (Nebula baseline — other themes override) */
             --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            --main-max-width: 1680px;
+            --main-max-width: 1920px;
             --header-min-height: 64px;
             --header-padding-x: 24px;
             --header-blur: 20px;
@@ -258,9 +261,6 @@
                 min-width: 0;
                 max-width: 100%;
             }
-            .layout-col[data-col-index="1"] { order: 0; }
-            .layout-col[data-col-index="2"] { order: 1; }
-            .layout-col[data-col-index="0"] { order: 2; }
         }
 
         /* Wide but stacked (tall display): hide column splitters */
@@ -298,12 +298,54 @@
             }
         }
 
+        /* Wide landscape: use full viewport so columns can grow past old ~1560–1680 caps */
+        @media (min-width: 1400px) and (min-aspect-ratio: 13/10) {
+            .main-layout {
+                max-width: none;
+                width: 100%;
+                padding-left: clamp(20px, 2.5vw, 48px);
+                padding-right: clamp(20px, 2.5vw, 48px);
+            }
+        }
+
+        /* Stack density for Mobile column mode (portrait / narrow) */
+        .main-layout[data-stack-density="mobile"] {
+            --main-gap: 10px;
+            --col-gap: 10px;
+            --main-padding-top: 12px;
+            --main-padding-x: 12px;
+            --main-padding-bottom: 24px;
+            --card-padding: 16px;
+            --card-padding-compact: 14px;
+            --pane-header-margin-bottom: 12px;
+            --pane-drag-margin-bottom: 10px;
+        }
+
+        /* Forced by Columns → Vertical / Mobile (fixes portrait panels still reported as 1920×1080 landscape) */
+        .main-layout[data-layout-stack="1"] {
+            flex-wrap: wrap !important;
+            align-items: flex-start !important;
+            max-width: none !important;
+            width: 100% !important;
+        }
+
+        .main-layout[data-layout-stack="1"] > .layout-col {
+            flex: 1 1 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            align-self: stretch !important;
+        }
+
+        .main-layout[data-layout-stack="1"] > .col-resize-handle {
+            display: none !important;
+        }
+
         .layout-col {
             flex: 1 1 300px;
             display: flex;
             flex-direction: column;
             gap: var(--col-gap);
-            min-width: 260px;
+            min-width: 160px;
             max-width: 100%;
             min-height: 40px;
             transition: background 0.15s, box-shadow 0.15s;
@@ -493,6 +535,17 @@
             overflow-y: auto;
         }
 
+        .layout-pane[data-pane-id="frequent"].pane-user-sized {
+            overflow: hidden;
+        }
+
+        .layout-pane[data-pane-id="frequent"].pane-user-sized .history-list {
+            flex: 1 1 auto;
+            min-height: 80px;
+            max-height: none;
+            overflow-y: auto;
+        }
+
         .layout-pane[data-pane-id="now-playing"].pane-user-sized #nowPlayingContent {
             flex: 1 1 auto;
             min-height: 0;
@@ -506,11 +559,136 @@
         }
 
         .layout-pane.pane-dragging {
-            opacity: 0.55;
+            opacity: calc(var(--pane-opacity, 1) * 0.55);
         }
 
         .layout-pane.pane-drop-target {
             box-shadow: 0 0 0 2px var(--accent);
+        }
+
+        .layout-pane.pane-hidden {
+            display: none !important;
+        }
+
+        .layout-pane.card {
+            opacity: var(--pane-opacity, 1);
+        }
+
+        .pane-chrome-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .pane-opacity-wrap {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin: 0;
+            cursor: default;
+        }
+
+        .pane-opacity-slider {
+            width: 64px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+            accent-color: var(--accent);
+        }
+
+        .pane-opacity-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-light);
+            border: none;
+            cursor: pointer;
+        }
+
+        .pane-hide-btn {
+            border: 1px solid var(--border);
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            width: 28px;
+            height: 26px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.85rem;
+            line-height: 1;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+
+        .pane-hide-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border-color: var(--accent);
+        }
+
+        .panels-menu-wrap {
+            position: relative;
+        }
+
+        .panels-menu {
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            min-width: 200px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+            padding: 8px;
+            z-index: 40;
+        }
+
+        .panels-menu-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--text-primary);
+            font-size: 0.82rem;
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .panels-menu-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .panels-menu-item .panels-menu-state {
+            color: var(--text-tertiary);
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .panels-menu-item.is-hidden .panels-menu-state {
+            color: var(--accent-light);
+        }
+
+        .panels-menu-empty {
+            padding: 10px;
+            color: var(--text-tertiary);
+            font-size: 0.8rem;
+            text-align: center;
         }
 
         .pane-header-row,
@@ -525,6 +703,7 @@
         .pane-header-with-actions .card-title {
             margin-bottom: 0;
             flex: 1;
+            min-width: 0;
         }
 
         .layout-pane.card > .pane-drag-bar {
@@ -604,6 +783,17 @@
         }
 
         .np-glow.active { opacity: 0.3; }
+
+        .np-artwork {
+            display: block;
+            width: min(180px, 55%);
+            aspect-ratio: 1;
+            margin: 0 auto 16px;
+            border-radius: 12px;
+            object-fit: cover;
+            background: var(--bg-elevated);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+        }
 
         .track-title {
             font-size: var(--track-title-size);
@@ -1028,7 +1218,7 @@
 
         .playlist-header {
             display: flex;
-            align-items: flex-start;
+            align-items: center;
             justify-content: space-between;
             gap: 10px;
             margin-bottom: 12px;
@@ -1037,7 +1227,8 @@
 
         .playlist-header .card-title {
             flex: 1;
-            min-width: 100px;
+            min-width: 80px;
+            margin-bottom: 0;
         }
 
         .playlist-actions {
@@ -1668,18 +1859,6 @@
             margin-right: 6px;
         }
 
-        .footer {
-            text-align: center;
-            padding: 20px;
-            padding-bottom: max(20px, env(safe-area-inset-bottom, 0));
-            color: var(--text-tertiary);
-            font-size: 0.75rem;
-            position: relative;
-            z-index: 1;
-        }
-
-        .footer a { color: var(--accent-light); text-decoration: none; }
-
         .history-item {
             display: flex;
             align-items: center;
@@ -1719,6 +1898,19 @@
         .history-duration {
             color: var(--text-tertiary);
             font-size: 0.78rem;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .frequent-count {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--accent-light);
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12);
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.22);
+            border-radius: 999px;
+            padding: 2px 8px;
+            flex-shrink: 0;
             white-space: nowrap;
             font-variant-numeric: tabular-nums;
         }
@@ -1845,9 +2037,6 @@
                 min-width: 0;
                 max-width: 100%;
             }
-            .layout-col[data-col-index="1"] { order: 0; }
-            .layout-col[data-col-index="2"] { order: 1; }
-            .layout-col[data-col-index="0"] { order: 2; }
         }
 
         @media (max-width: 640px) {
@@ -2509,6 +2698,35 @@
             background: rgba(23, 27, 31, 0.74);
         }
 
+        html[data-theme="grove"] body {
+            background-color: #171b1f;
+        }
+
+        html[data-theme="grove"] body::before {
+            animation: none;
+            opacity: 0;
+        }
+
+        html[data-theme="grove"] .layout-pane.card {
+            background: transparent;
+            isolation: isolate;
+        }
+
+        html[data-theme="grove"] .layout-pane.card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            border-radius: inherit;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(37, 43, 51, 0.84), rgba(37, 43, 51, 0.84)),
+                url("/web/grove-bg-atliens.jpg");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
         /* Grapevine — violet + spring green, deep purple night */
         html[data-theme="grapevine"] {
             --bg-primary: #0c0a12;
@@ -3135,12 +3353,879 @@
         html[data-theme="steel"] .layout-pane.pane-drop-target {
             box-shadow: 0 0 0 2px var(--border-light);
         }
+
+        /* Cipher — unlocked stream; indigo → violet (remote cipher win) */
+        html[data-theme="cipher"] {
+            --bg-primary: #09070f;
+            --bg-secondary: #100c1a;
+            --bg-card: #171225;
+            --bg-elevated: #211a33;
+            --bg-hover: #2c2344;
+            --accent: #8b5cf6;
+            --accent-light: #c4b5fd;
+            --accent-glow: rgba(139, 92, 246, 0.36);
+            --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #d946ef 55%, #22d3ee 100%);
+            --text-primary: #f3eeff;
+            --text-secondary: #a396c4;
+            --text-tertiary: #6b5f8a;
+            --border: rgba(139, 92, 246, 0.12);
+            --border-light: rgba(217, 70, 239, 0.18);
+            --success: #34d399;
+            --glass: rgba(16, 12, 26, 0.9);
+            --accent-r: 139;
+            --accent-g: 92;
+            --accent-b: 246;
+            --accent2-r: 217;
+            --accent2-g: 70;
+            --accent2-b: 239;
+            --font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+            --main-max-width: 1480px;
+            --main-gap: 14px;
+            --col-gap: 14px;
+            --card-padding: 18px;
+            --card-padding-compact: 14px;
+            --card-radius: 6px;
+            --pane-drag-radius: 4px;
+            --lyrics-scroll-radius: 4px;
+            --lyrics-line-radius: 2px;
+            --header-min-height: 56px;
+            --header-padding-x: 20px;
+            --logo-icon-radius: 4px;
+            --logo-font-size: 0.95rem;
+            --card-title-spacing: 0.28em;
+            --card-title-size: 0.62rem;
+            --track-title-size: 1.18rem;
+            --ctrl-btn-size: 40px;
+            --radius-btn: 4px;
+            --radius-input: 4px;
+            --radius-select: 4px;
+            --radius-dropdown: 6px;
+            --radius-logout: 4px;
+            --radius-login-box: 8px;
+            --col-radius: 4px;
+            --col-resize-radius: 2px;
+            --card-shadow: 0 0 0 1px rgba(139, 92, 246, 0.14), 0 12px 40px rgba(0, 0, 0, 0.35);
+            --bg-shift-duration: 16s;
+        }
+
+        html[data-theme="cipher"] body::before {
+            opacity: 0.55;
+            background-image:
+                linear-gradient(rgba(139, 92, 246, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(139, 92, 246, 0.04) 1px, transparent 1px),
+                radial-gradient(ellipse 70% 50% at 20% 10%, rgba(139, 92, 246, 0.18), transparent 55%),
+                radial-gradient(ellipse 50% 40% at 85% 80%, rgba(217, 70, 239, 0.12), transparent 50%);
+            background-size: 28px 28px, 28px 28px, 100% 100%, 100% 100%;
+            animation: none;
+        }
+
+        html[data-theme="cipher"] .header {
+            border-bottom: 1px solid rgba(217, 70, 239, 0.18);
+            backdrop-filter: blur(10px);
+        }
+
+        html[data-theme="cipher"] .header::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.7), rgba(34, 211, 238, 0.5), transparent);
+            pointer-events: none;
+        }
+
+        html[data-theme="cipher"] .logo {
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+
+        html[data-theme="cipher"] .logo-icon {
+            border-radius: 4px;
+            box-shadow: 0 0 16px rgba(139, 92, 246, 0.35);
+        }
+
+        html[data-theme="cipher"] .card {
+            border: 1px solid rgba(139, 92, 246, 0.16);
+            box-shadow: var(--card-shadow);
+            background-image: linear-gradient(180deg, rgba(139, 92, 246, 0.05) 0%, transparent 42%);
+        }
+
+        html[data-theme="cipher"] .card-title,
+        html[data-theme="cipher"] .pane-header-row .card-title,
+        html[data-theme="cipher"] .pane-header-with-actions .card-title,
+        html[data-theme="cipher"] .playlist-header .card-title {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.28em;
+            font-size: 0.62rem;
+            font-weight: 500;
+            color: var(--accent-light);
+        }
+
+        html[data-theme="cipher"] .layout-pane.card > .pane-drag-bar {
+            border-radius: 0;
+            min-height: 12px;
+            background: repeating-linear-gradient(
+                90deg,
+                rgba(139, 92, 246, 0.18) 0 2px,
+                transparent 2px 6px
+            );
+            border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+        }
+
+        html[data-theme="cipher"] .lyrics-scroll,
+        html[data-theme="cipher"] .lyrics-line,
+        html[data-theme="cipher"] .lyrics-meta {
+            text-align: left;
+        }
+
+        html[data-theme="cipher"] .lyrics-scroll {
+            border: 1px solid rgba(139, 92, 246, 0.14);
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        html[data-theme="cipher"] .lyrics-line {
+            border-left: 2px solid transparent;
+            border-radius: 0;
+            font-size: 0.84rem;
+        }
+
+        html[data-theme="cipher"] .lyrics-line.active {
+            border-left-color: #d946ef;
+            background: linear-gradient(90deg, rgba(217, 70, 239, 0.18), rgba(139, 92, 246, 0.06) 55%, transparent);
+            box-shadow: none;
+            color: #f5e1ff;
+        }
+
+        html[data-theme="cipher"] .progress-times,
+        html[data-theme="cipher"] .volume-value,
+        html[data-theme="cipher"] .queue-duration,
+        html[data-theme="cipher"] .history-duration,
+        html[data-theme="cipher"] .search-result-duration {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.04em;
+            font-size: 0.72rem;
+            color: var(--accent-light);
+        }
+
+        html[data-theme="cipher"] .ctrl-btn,
+        html[data-theme="cipher"] .ctrl-btn-primary {
+            border-radius: 4px;
+            border: 1px solid rgba(139, 92, 246, 0.22);
+        }
+
+        html[data-theme="cipher"] .guild-selector label {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            font-size: 0.62rem;
+        }
+
+        html[data-theme="cipher"] .col-resize-handle {
+            border-radius: 0;
+            border-color: rgba(139, 92, 246, 0.25);
+        }
+
+        html[data-theme="cipher"] .layout-col.layout-col-over {
+            box-shadow: inset 0 0 0 1px rgba(217, 70, 239, 0.35);
+            background: rgba(139, 92, 246, 0.06);
+        }
+
+        html[data-theme="cipher"] .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 1px #d946ef, 0 0 24px rgba(217, 70, 239, 0.25);
+        }
+
+        html[data-theme="cipher"] .login-overlay {
+            background: rgba(9, 7, 15, 0.82);
+        }
+
+        html[data-theme="cipher"] .login-box {
+            border: 1px solid rgba(139, 92, 246, 0.28);
+            border-radius: 8px;
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+
+        /* Signal — link established; teal / cyan HUD */
+        html[data-theme="signal"] {
+            --bg-primary: #050a0c;
+            --bg-secondary: #0a1215;
+            --bg-card: #0f1a1e;
+            --bg-elevated: #152429;
+            --bg-hover: #1c333a;
+            --accent: #22d3ee;
+            --accent-light: #67e8f9;
+            --accent-glow: rgba(34, 211, 238, 0.34);
+            --accent-gradient: linear-gradient(135deg, #06b6d4 0%, #22d3ee 50%, #4ade80 100%);
+            --text-primary: #e8fbff;
+            --text-secondary: #7aadb8;
+            --text-tertiary: #4a7580;
+            --border: rgba(34, 211, 238, 0.12);
+            --border-light: rgba(103, 232, 249, 0.2);
+            --success: #4ade80;
+            --glass: rgba(10, 18, 21, 0.92);
+            --accent-r: 34;
+            --accent-g: 211;
+            --accent-b: 238;
+            --accent2-r: 74;
+            --accent2-g: 222;
+            --accent2-b: 128;
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --main-max-width: 1400px;
+            --main-gap: 10px;
+            --col-gap: 10px;
+            --main-padding-top: 12px;
+            --main-padding-x: 16px;
+            --card-padding: 14px;
+            --card-padding-compact: 12px;
+            --card-radius: 2px;
+            --pane-drag-radius: 0;
+            --lyrics-scroll-radius: 2px;
+            --lyrics-line-radius: 0;
+            --header-min-height: 48px;
+            --header-padding-x: 16px;
+            --logo-icon-size: 28px;
+            --logo-icon-radius: 2px;
+            --logo-font-size: 0.92rem;
+            --card-title-spacing: 0.32em;
+            --card-title-size: 0.58rem;
+            --track-title-size: 1.12rem;
+            --ctrl-btn-size: 36px;
+            --radius-btn: 2px;
+            --radius-input: 2px;
+            --radius-select: 2px;
+            --radius-dropdown: 2px;
+            --radius-logout: 2px;
+            --radius-login-box: 4px;
+            --col-radius: 2px;
+            --col-resize-radius: 0;
+            --card-shadow: none;
+            --bg-shift-duration: 10s;
+        }
+
+        html[data-theme="signal"] body::before {
+            opacity: 0.65;
+            background-image:
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 2px,
+                    rgba(34, 211, 238, 0.015) 2px,
+                    rgba(34, 211, 238, 0.015) 3px
+                ),
+                radial-gradient(ellipse 60% 40% at 50% 0%, rgba(34, 211, 238, 0.16), transparent 55%);
+            animation: none;
+        }
+
+        html[data-theme="signal"] .header {
+            border-bottom: 1px solid rgba(34, 211, 238, 0.28);
+            min-height: 48px;
+            padding-bottom: 18px;
+            align-items: flex-start;
+            padding-top: max(10px, env(safe-area-inset-top, 0));
+        }
+
+        html[data-theme="signal"] .header::before {
+            content: 'LINK ESTABLISHED';
+            position: absolute;
+            left: 50%;
+            bottom: 4px;
+            transform: translateX(-50%);
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            font-size: 0.55rem;
+            letter-spacing: 0.35em;
+            color: rgba(74, 222, 128, 0.75);
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        html[data-theme="signal"] .header::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, #22d3ee 35%, #4ade80 50%, #22d3ee 65%, transparent 100%);
+            opacity: 0.85;
+            pointer-events: none;
+        }
+
+        html[data-theme="signal"] .logo {
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+
+        html[data-theme="signal"] .card {
+            border: 1px solid rgba(34, 211, 238, 0.2);
+            box-shadow: inset 0 1px 0 rgba(103, 232, 249, 0.06);
+            border-radius: 2px;
+        }
+
+        html[data-theme="signal"] .card-title,
+        html[data-theme="signal"] .pane-header-row .card-title,
+        html[data-theme="signal"] .pane-header-with-actions .card-title,
+        html[data-theme="signal"] .playlist-header .card-title {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.32em;
+            font-size: 0.56rem;
+            font-weight: 500;
+            color: var(--accent);
+        }
+
+        html[data-theme="signal"] .pane-header-row,
+        html[data-theme="signal"] .pane-header-with-actions {
+            border-bottom: 1px solid rgba(34, 211, 238, 0.12);
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+        }
+
+        html[data-theme="signal"] .layout-pane.card > .pane-drag-bar {
+            border-radius: 0;
+            min-height: 10px;
+            background: rgba(34, 211, 238, 0.08);
+            border-bottom: 1px solid rgba(34, 211, 238, 0.22);
+        }
+
+        html[data-theme="signal"] .lyrics-scroll,
+        html[data-theme="signal"] .lyrics-line,
+        html[data-theme="signal"] .lyrics-meta {
+            text-align: left;
+        }
+
+        html[data-theme="signal"] .lyrics-scroll {
+            border: 1px solid rgba(34, 211, 238, 0.16);
+            background: rgba(0, 0, 0, 0.28);
+        }
+
+        html[data-theme="signal"] .lyrics-line {
+            border-left: 3px solid transparent;
+            border-radius: 0;
+            margin: 0;
+            padding-left: 12px;
+        }
+
+        html[data-theme="signal"] .lyrics-line.active {
+            border-left-color: #4ade80;
+            background: rgba(34, 211, 238, 0.1);
+            box-shadow: none;
+            color: #ecfeff;
+        }
+
+        html[data-theme="signal"] .progress-times,
+        html[data-theme="signal"] .volume-value,
+        html[data-theme="signal"] .queue-duration,
+        html[data-theme="signal"] .history-duration,
+        html[data-theme="signal"] .search-result-duration {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            font-size: 0.68rem;
+            letter-spacing: 0.06em;
+        }
+
+        html[data-theme="signal"] .ctrl-btn,
+        html[data-theme="signal"] .ctrl-btn-primary {
+            border-radius: 2px;
+            border: 1px solid rgba(34, 211, 238, 0.25);
+        }
+
+        html[data-theme="signal"] .ctrl-btn-primary {
+            box-shadow: 0 0 16px rgba(34, 211, 238, 0.25);
+        }
+
+        html[data-theme="signal"] .guild-selector label {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.24em;
+            font-size: 0.58rem;
+            color: var(--accent);
+        }
+
+        html[data-theme="signal"] .col-resize-handle {
+            border-radius: 0;
+            width: 4px;
+            background: rgba(34, 211, 238, 0.12);
+            border-color: rgba(34, 211, 238, 0.3);
+        }
+
+        html[data-theme="signal"] .col-resize-handle:hover,
+        html[data-theme="signal"] .col-resize-handle:focus-visible {
+            background: rgba(34, 211, 238, 0.28);
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.35);
+        }
+
+        html[data-theme="signal"] .layout-col.layout-col-over {
+            background: rgba(34, 211, 238, 0.05);
+            box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.45);
+        }
+
+        html[data-theme="signal"] .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 1px #4ade80, 0 0 20px rgba(74, 222, 128, 0.2);
+        }
+
+        html[data-theme="signal"] .upload-zone {
+            border-style: dashed;
+            border-width: 1px;
+            border-radius: 2px;
+        }
+
+        html[data-theme="signal"] .login-overlay {
+            background: rgba(5, 10, 12, 0.84);
+        }
+
+        html[data-theme="signal"] .login-box {
+            border: 1px solid rgba(34, 211, 238, 0.35);
+            border-radius: 4px;
+            box-shadow: 0 0 40px rgba(34, 211, 238, 0.12);
+        }
+
+        html[data-theme="signal"] .login-box h2 {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            font-size: 1rem;
+        }
+
+        /* Victory — champagne gold celebration lounge */
+        html[data-theme="victory"] {
+            --bg-primary: #0e0c08;
+            --bg-secondary: #16130c;
+            --bg-card: #1f1a12;
+            --bg-elevated: #2a2318;
+            --bg-hover: #3a3020;
+            --accent: #eab308;
+            --accent-light: #fde047;
+            --accent-glow: rgba(234, 179, 8, 0.32);
+            --accent-gradient: linear-gradient(135deg, #ca8a04 0%, #eab308 45%, #f59e0b 100%);
+            --text-primary: #fffbeb;
+            --text-secondary: #c4b48a;
+            --text-tertiary: #8a7a52;
+            --border: rgba(234, 179, 8, 0.12);
+            --border-light: rgba(253, 224, 71, 0.2);
+            --success: #84cc16;
+            --glass: rgba(22, 19, 12, 0.9);
+            --accent-r: 234;
+            --accent-g: 179;
+            --accent-b: 8;
+            --accent2-r: 245;
+            --accent2-g: 158;
+            --accent2-b: 11;
+            --font-family: 'Syne', 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --main-max-width: 1580px;
+            --main-gap: 22px;
+            --col-gap: 22px;
+            --card-padding: 24px;
+            --card-padding-compact: 18px;
+            --card-radius: 22px;
+            --pane-drag-radius: 18px;
+            --lyrics-scroll-radius: 18px;
+            --lyrics-line-radius: 999px;
+            --header-min-height: 72px;
+            --header-padding-x: 28px;
+            --logo-icon-size: 40px;
+            --logo-icon-radius: 14px;
+            --logo-font-size: 1.2rem;
+            --logo-letter-spacing: -0.03em;
+            --card-title-spacing: 0.08em;
+            --card-title-size: 0.85rem;
+            --track-title-size: 1.55rem;
+            --ctrl-btn-size: 48px;
+            --radius-btn: 14px;
+            --radius-input: 14px;
+            --radius-select: 12px;
+            --radius-dropdown: 16px;
+            --radius-logout: 12px;
+            --radius-login-box: 20px;
+            --col-radius: 18px;
+            --col-resize-radius: 12px;
+            --card-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(234, 179, 8, 0.08);
+            --bg-shift-duration: 20s;
+        }
+
+        html[data-theme="victory"] body::before {
+            opacity: 0.7;
+            background-image:
+                radial-gradient(ellipse 55% 40% at 15% 20%, rgba(234, 179, 8, 0.16), transparent 55%),
+                radial-gradient(ellipse 45% 35% at 90% 70%, rgba(245, 158, 11, 0.1), transparent 50%);
+        }
+
+        html[data-theme="victory"] .header {
+            flex-wrap: wrap;
+            row-gap: 12px;
+            align-content: center;
+            padding-top: max(16px, env(safe-area-inset-top, 0));
+            padding-bottom: 16px;
+            border-bottom: none;
+            overflow: visible;
+        }
+
+        html[data-theme="victory"] .header::after {
+            content: '';
+            position: absolute;
+            left: 8%;
+            right: 8%;
+            bottom: 0;
+            height: 2px;
+            border-radius: 2px;
+            background: linear-gradient(90deg, transparent, rgba(234, 179, 8, 0.15), rgba(253, 224, 71, 0.75), rgba(234, 179, 8, 0.15), transparent);
+            pointer-events: none;
+        }
+
+        html[data-theme="victory"] .header-actions {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            row-gap: 10px;
+        }
+
+        html[data-theme="victory"] .logo {
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+
+        html[data-theme="victory"] .logo-icon {
+            box-shadow: 0 0 24px rgba(234, 179, 8, 0.35);
+        }
+
+        html[data-theme="victory"] .card {
+            border: none;
+            box-shadow: var(--card-shadow);
+            background-image: linear-gradient(165deg, rgba(234, 179, 8, 0.06) 0%, transparent 38%);
+        }
+
+        html[data-theme="victory"] .card-title,
+        html[data-theme="victory"] .pane-header-row .card-title,
+        html[data-theme="victory"] .pane-header-with-actions .card-title,
+        html[data-theme="victory"] .playlist-header .card-title {
+            font-family: 'Syne', 'Outfit', sans-serif;
+            text-transform: none;
+            letter-spacing: 0.04em;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--accent-light);
+        }
+
+        html[data-theme="victory"] .layout-pane.card > .pane-drag-bar {
+            margin: calc(-1 * var(--card-padding) + 12px) calc(-1 * var(--card-padding) + 24px) var(--pane-drag-margin-bottom, 12px) calc(-1 * var(--card-padding) + 24px);
+            border-radius: 999px;
+            border: 1px solid rgba(234, 179, 8, 0.22);
+            background: linear-gradient(90deg, rgba(234, 179, 8, 0.08), rgba(245, 158, 11, 0.14), rgba(234, 179, 8, 0.08));
+            min-height: 14px;
+        }
+
+        html[data-theme="victory"] .lyrics-scroll {
+            background: rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(234, 179, 8, 0.1);
+        }
+
+        html[data-theme="victory"] .lyrics-line {
+            border-radius: 999px;
+            margin: 6px 10px;
+            text-align: center;
+        }
+
+        html[data-theme="victory"] .lyrics-line.active {
+            padding-left: 24px;
+            padding-right: 24px;
+            background: linear-gradient(90deg, rgba(234, 179, 8, 0.12), rgba(245, 158, 11, 0.22), rgba(234, 179, 8, 0.12));
+            box-shadow: 0 0 28px rgba(234, 179, 8, 0.2);
+            color: #fffbeb;
+            font-weight: 600;
+        }
+
+        html[data-theme="victory"] .track-title {
+            font-family: 'Syne', 'Outfit', sans-serif;
+            font-weight: 700;
+        }
+
+        html[data-theme="victory"] .ctrl-btn,
+        html[data-theme="victory"] .ctrl-btn-primary {
+            border-radius: 999px;
+        }
+
+        html[data-theme="victory"] .ctrl-btn-primary {
+            box-shadow: 0 0 28px rgba(234, 179, 8, 0.35);
+        }
+
+        html[data-theme="victory"] .guild-selector label {
+            text-transform: none;
+            letter-spacing: 0.06em;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--accent-light);
+        }
+
+        html[data-theme="victory"] .upload-zone {
+            border-width: 2px;
+            border-radius: 18px;
+            border-color: rgba(234, 179, 8, 0.28);
+        }
+
+        html[data-theme="victory"] .layout-col.layout-col-over {
+            background: rgba(234, 179, 8, 0.06);
+            box-shadow: inset 0 0 0 2px rgba(253, 224, 71, 0.35);
+            border-radius: 18px;
+        }
+
+        html[data-theme="victory"] .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 2px rgba(253, 224, 71, 0.55), 0 0 32px rgba(234, 179, 8, 0.2);
+        }
+
+        html[data-theme="victory"] .login-overlay {
+            background: rgba(14, 12, 8, 0.78);
+        }
+
+        html[data-theme="victory"] .login-box {
+            border-radius: 20px;
+            border: 1px solid rgba(234, 179, 8, 0.28);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 40px rgba(234, 179, 8, 0.1);
+        }
+
+        html[data-theme="victory"] .login-box h2 {
+            font-family: 'Syne', 'Outfit', sans-serif;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        /* Neon — lime on deep purple void; white text */
+        html[data-theme="neon"] {
+            --bg-primary: #12081c;
+            --bg-secondary: #1a0f28;
+            --bg-card: #221436;
+            --bg-elevated: #2c1a45;
+            --bg-hover: #3a2458;
+            --accent: #a3e635;
+            --accent-light: #d9f99d;
+            --accent-glow: rgba(163, 230, 53, 0.38);
+            --accent-gradient: linear-gradient(135deg, #84cc16 0%, #a3e635 45%, #c084fc 100%);
+            --text-primary: #ffffff;
+            --text-secondary: #e8e0f2;
+            --text-tertiary: #b9a8d0;
+            --border: rgba(163, 230, 53, 0.14);
+            --border-light: rgba(192, 132, 252, 0.22);
+            --success: #a3e635;
+            --glass: rgba(26, 15, 40, 0.9);
+            --accent-r: 163;
+            --accent-g: 230;
+            --accent-b: 53;
+            --accent2-r: 192;
+            --accent2-g: 132;
+            --accent2-b: 252;
+            --font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --main-max-width: 1920px;
+            --main-gap: 18px;
+            --col-gap: 18px;
+            --card-padding: 20px;
+            --card-padding-compact: 16px;
+            --card-radius: 16px;
+            --pane-drag-radius: 14px;
+            --lyrics-scroll-radius: 14px;
+            --lyrics-line-radius: 10px;
+            --header-min-height: 64px;
+            --header-padding-x: 24px;
+            --logo-icon-radius: 10px;
+            --logo-font-size: 1.1rem;
+            --card-title-spacing: 0.14em;
+            --card-title-size: 0.72rem;
+            --track-title-size: 1.4rem;
+            --ctrl-btn-size: 44px;
+            --radius-btn: 12px;
+            --radius-input: 12px;
+            --radius-select: 10px;
+            --radius-dropdown: 14px;
+            --radius-logout: 10px;
+            --radius-login-box: 18px;
+            --col-radius: 14px;
+            --col-resize-radius: 10px;
+            --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(163, 230, 53, 0.1);
+            --bg-shift-duration: 16s;
+        }
+
+        html[data-theme="neon"] body::before {
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 1;
+            animation: none;
+            filter: none;
+            background-image: url("/web/neon-bg.jpg");
+            background-size: cover;
+            background-position: center right;
+            background-repeat: no-repeat;
+            contain: paint;
+        }
+
+        /* Soft veil on the left so panels stay readable over the art */
+        html[data-theme="neon"] body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background: linear-gradient(
+                90deg,
+                rgba(18, 8, 28, 0.72) 0%,
+                rgba(18, 8, 28, 0.35) 42%,
+                rgba(18, 8, 28, 0.12) 68%,
+                transparent 100%
+            );
+            contain: paint;
+        }
+
+        html[data-theme="neon"] .card {
+            border: 1px solid rgba(192, 132, 252, 0.16);
+            border-top: 2px solid #a3e635;
+            box-shadow: var(--card-shadow), 0 0 48px rgba(163, 230, 53, 0.05);
+            background-image: linear-gradient(160deg, rgba(163, 230, 53, 0.05) 0%, transparent 36%, rgba(168, 85, 247, 0.06) 100%);
+        }
+
+        html[data-theme="neon"] .card-title,
+        html[data-theme="neon"] .pane-header-row .card-title,
+        html[data-theme="neon"] .pane-header-with-actions .card-title,
+        html[data-theme="neon"] .playlist-header .card-title {
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        html[data-theme="neon"] .layout-pane.card > .pane-drag-bar {
+            background: #a3e635;
+            border-bottom: none;
+            min-height: 4px;
+            padding-top: 0;
+            padding-bottom: 0;
+            box-shadow: 0 0 12px rgba(163, 230, 53, 0.45);
+        }
+
+        html[data-theme="neon"] .layout-pane.card > .pane-drag-bar:hover {
+            background: #bef264;
+            box-shadow: 0 0 16px rgba(163, 230, 53, 0.6);
+        }
+
+        html[data-theme="neon"] .header {
+            border-top: 2px solid #a3e635;
+            border-bottom: 1px solid rgba(163, 230, 53, 0.18);
+        }
+
+        html[data-theme="neon"] .logo {
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        html[data-theme="neon"] .logo-icon {
+            box-shadow: 0 0 22px rgba(163, 230, 53, 0.4);
+        }
+
+        html[data-theme="neon"] .lyrics-scroll {
+            background: rgba(8, 4, 14, 0.45);
+            border: 1px solid rgba(192, 132, 252, 0.14);
+            scrollbar-width: thin;
+            scrollbar-color: #a3e635 transparent;
+        }
+
+        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar-track {
+            background: rgba(163, 230, 53, 0.06);
+            border-radius: 4px;
+        }
+
+        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar-thumb {
+            background: #a3e635;
+            border-radius: 4px;
+            box-shadow: 0 0 8px rgba(163, 230, 53, 0.45);
+        }
+
+        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar-thumb:hover {
+            background: #bef264;
+        }
+
+        html[data-theme="neon"] .lyrics-line {
+            color: #ffffff;
+        }
+
+        html[data-theme="neon"] .lyrics-line.active {
+            border-radius: 10px;
+            background: linear-gradient(90deg, rgba(163, 230, 53, 0.2), rgba(192, 132, 252, 0.14));
+            box-shadow: 0 0 24px rgba(163, 230, 53, 0.18);
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        html[data-theme="neon"] .track-title,
+        html[data-theme="neon"] .now-playing,
+        html[data-theme="neon"] .queue-item,
+        html[data-theme="neon"] .history-item,
+        html[data-theme="neon"] .search-result-item {
+            color: #ffffff;
+        }
+
+        html[data-theme="neon"] .ctrl-btn {
+            border: 1px solid rgba(192, 132, 252, 0.22);
+            color: #ffffff;
+        }
+
+        html[data-theme="neon"] .ctrl-btn-primary {
+            box-shadow: 0 0 24px rgba(163, 230, 53, 0.35);
+            border-color: rgba(163, 230, 53, 0.4);
+        }
+
+        html[data-theme="neon"] .guild-selector label {
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        html[data-theme="neon"] .upload-zone {
+            border-color: rgba(163, 230, 53, 0.28);
+            border-radius: 16px;
+        }
+
+        html[data-theme="neon"] .layout-col.layout-col-over {
+            background: rgba(163, 230, 53, 0.06);
+            box-shadow: inset 0 0 0 2px rgba(163, 230, 53, 0.4);
+        }
+
+        html[data-theme="neon"] .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 2px rgba(163, 230, 53, 0.55), 0 0 28px rgba(192, 132, 252, 0.25);
+        }
+
+        html[data-theme="neon"] .col-resize-handle:hover,
+        html[data-theme="neon"] .col-resize-handle:focus-visible {
+            background: rgba(163, 230, 53, 0.25);
+            border-color: rgba(163, 230, 53, 0.45);
+            box-shadow: 0 0 12px rgba(163, 230, 53, 0.3);
+        }
+
+        html[data-theme="neon"] .login-overlay {
+            background: rgba(18, 8, 28, 0.82);
+        }
+
+        html[data-theme="neon"] .login-box {
+            border: 1px solid rgba(163, 230, 53, 0.28);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 40px rgba(192, 132, 252, 0.15);
+        }
+
+        html[data-theme="neon"] .login-box h2 {
+            color: #ffffff;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body>
     <div id="loginOverlay" class="login-overlay" style="display:none">
         <div class="login-box">
-            <h2>JMusicBot</h2>
+            <h2>Clout Kings Music Bot</h2>
             <p class="login-sub">Sign in with your Discord account to use the web interface</p>
             <div class="login-error" id="loginError"></div>
             <button type="button" class="login-btn" id="discordLoginBtn" onclick="goDiscordLogin()">Continue with Discord</button>
@@ -3150,7 +4235,7 @@
     <div class="header">
         <div class="logo">
             <div class="logo-icon">&#9835;</div>
-            JMusicBot
+            Clout Kings Music Bot
         </div>
         <div class="header-actions">
             <div class="guild-selector">
@@ -3172,7 +4257,25 @@
                     <option value="grapevine">Grapevine</option>
                     <option value="sumi">Sumi</option>
                     <option value="rasta">Rasta</option>
+                    <option value="cipher">Cipher</option>
+                    <option value="signal">Signal</option>
+                    <option value="victory">Victory</option>
+                    <option value="neon">Neon</option>
                 </select>
+            </div>
+            <div class="panels-menu-wrap" id="panelsMenuWrap">
+                <button type="button" class="logout-btn" id="panelsMenuBtn" title="Show or hide panels">Panels</button>
+                <div class="panels-menu" id="panelsMenu" hidden></div>
+            </div>
+            <div class="panels-menu-wrap" id="colPresetWrap">
+                <button type="button" class="logout-btn" id="colPresetBtn" title="Column width presets">Columns</button>
+                <div class="panels-menu" id="colPresetMenu" hidden>
+                    <button type="button" class="panels-menu-item" data-col-preset="middleFocus"><span>Middle focus</span><span class="panels-menu-state">Wide center</span></button>
+                    <button type="button" class="panels-menu-item" data-col-preset="leftFocus"><span>Left focus</span><span class="panels-menu-state">Strong left</span></button>
+                    <button type="button" class="panels-menu-item" data-col-preset="rightFocus"><span>Right focus</span><span class="panels-menu-state">Strong right</span></button>
+                    <button type="button" class="panels-menu-item" data-stack-preset="vertical"><span>Vertical</span><span class="panels-menu-state">Force stack</span></button>
+                    <button type="button" class="panels-menu-item" data-stack-preset="mobile"><span>Mobile</span><span class="panels-menu-state">Compact stack</span></button>
+                </div>
             </div>
             <button type="button" class="logout-btn" id="resetLayoutBtn" onclick="resetPaneLayout()" title="Reset panel layout">Reset layout</button>
             <button class="logout-btn" id="logoutBtn" onclick="doLogout()" style="display:none">Logout</button>
@@ -3265,6 +4368,19 @@
                 </div>
             </div>
 
+            <div class="layout-pane card" data-pane-id="frequent">
+                <div class="pane-drag-bar" draggable="true" title="Drag to move this panel" aria-label="Drag to move this panel"></div>
+                <div class="pane-header-row">
+                    <div class="card-title">Most played</div>
+                </div>
+                <ul class="history-list" id="frequentList"></ul>
+                <div class="empty-state" id="frequentEmpty">
+                    <div class="icon">&#128293;</div>
+                    <p>No play counts yet</p>
+                    <p class="sub">Top 20 tracks for this server</p>
+                </div>
+            </div>
+
             <div class="layout-pane card" data-pane-id="playlists">
                 <div class="pane-drag-bar" draggable="true" title="Drag to move this panel" aria-label="Drag to move this panel"></div>
                 <div class="playlist-header">
@@ -3327,8 +4443,6 @@
         </div>
     </div>
 
-    <div class="footer">JMusicBot Web Interface</div>
-
     <script>
         let currentGuild = localStorage.getItem('defaultGuild') || '';
         let ws = null;
@@ -3345,6 +4459,7 @@
         let lastWsGuildId = '';
         let lastQueueSnapshot = '';
         let lastHistorySnapshot = '';
+        let lastFrequentSnapshot = '';
         let npRenderKey = '';
 
         let lyricsLines = [];
@@ -3376,18 +4491,30 @@
 
         const PANE_DND_TYPE = 'application/x-jmusicbot-pane';
         const QUEUE_DND_TYPE = 'application/x-jmusicbot-queue';
-        const LAYOUT_STORAGE_KEY = 'jmusicbot_pane_layout_v1';
+        const LAYOUT_STORAGE_KEY = 'jmusicbot_pane_layout_v2';
         const PANE_SIZES_STORAGE_KEY = 'jmusicbot_pane_sizes_v1';
         const COL_FR_STORAGE_KEY = 'jmusicbot_col_fr_v1';
-        const COL_RESIZE_MIN_PX = 220;
+        const STACK_MODE_STORAGE_KEY = 'jmusicbot_stack_mode_v1';
+        const PANE_CHROME_STORAGE_KEY = 'jmusicbot_pane_chrome_v1';
+        const COL_RESIZE_MIN_PX = 160;
         const COL_RESIZE_BREAKPOINT = 1100;
-        const PANE_IDS_ORDER = ['lyrics', 'now-playing', 'add-music', 'history', 'playlists', 'queue'];
+        const PANE_IDS_ORDER = ['lyrics', 'now-playing', 'add-music', 'history', 'frequent', 'playlists', 'queue'];
+        const PANE_LABELS = {
+            lyrics: 'Lyrics',
+            'now-playing': 'Now Playing',
+            'add-music': 'Add Music',
+            history: 'History',
+            frequent: 'Most played',
+            playlists: 'Playlists',
+            queue: 'Queue'
+        };
+        const PANE_OPACITY_MIN = 0.3;
         const PANE_RESIZE_MIN = 160;
         const PANE_RESIZE_MIN_W = 200;
         const THEME_STORAGE_KEY = 'jmusicbot_theme_v1';
 
         function applyTheme(themeId) {
-            var ok = { nebula: 1, aurora: 1, ember: 1, crimson: 1, dawn: 1, 'dawn-dark': 1, steel: 1, verdant: 1, grove: 1, grapevine: 1, sumi: 1, rasta: 1 };
+            var ok = { nebula: 1, aurora: 1, ember: 1, crimson: 1, dawn: 1, 'dawn-dark': 1, steel: 1, verdant: 1, grove: 1, grapevine: 1, sumi: 1, rasta: 1, cipher: 1, signal: 1, victory: 1, neon: 1 };
             if (themeId === 'nihon') themeId = 'sumi';
             if (!ok[themeId]) themeId = 'nebula';
             if (themeId === 'nebula') {
@@ -3429,7 +4556,7 @@
         function defaultPaneLayout() {
             return [
                 ['lyrics'],
-                ['now-playing', 'add-music', 'history', 'playlists'],
+                ['now-playing', 'add-music', 'history', 'frequent', 'playlists'],
                 ['queue']
             ];
         }
@@ -3524,11 +4651,13 @@
             }
         }
 
-        function isStackedLayoutViewport() {
+        function isNaturalStackedViewport() {
             var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-            if (vw <= COL_RESIZE_BREAKPOINT) return true;
             var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+            if (vw <= COL_RESIZE_BREAKPOINT) return true;
             if (vh < 1) return false;
+            /* True portrait by pixels (vertical monitor even if orientation API is wrong) */
+            if (vh > vw) return true;
             try {
                 if (window.matchMedia('(orientation: portrait)').matches) return true;
             } catch (e) {}
@@ -3539,14 +4668,18 @@
             return false;
         }
 
+        function isForcedStackLayout() {
+            var main = document.getElementById('mainLayout');
+            return !!(main && main.getAttribute('data-layout-stack') === '1');
+        }
+
+        function isStackedLayoutViewport() {
+            return isForcedStackLayout() || isNaturalStackedViewport();
+        }
+
         function applyColumnWidths() {
             var cols = mainLayoutColumnElements();
             if (cols.length !== 3) return;
-            var vw = window.innerWidth || document.documentElement.clientWidth || 0;
-            if (vw <= COL_RESIZE_BREAKPOINT) {
-                clearColumnWidthStyles();
-                return;
-            }
             if (isStackedLayoutViewport()) {
                 clearColumnWidthStyles();
                 return;
@@ -3949,17 +5082,334 @@
                 localStorage.removeItem(LAYOUT_STORAGE_KEY);
                 localStorage.removeItem(PANE_SIZES_STORAGE_KEY);
                 localStorage.removeItem(COL_FR_STORAGE_KEY);
+                localStorage.removeItem(PANE_CHROME_STORAGE_KEY);
+                localStorage.removeItem(STACK_MODE_STORAGE_KEY);
             } catch (err) {}
             document.querySelectorAll('.main-layout .layout-pane').forEach(function(p) {
                 p.style.height = '';
                 p.style.width = '';
                 p.style.maxWidth = '';
+                p.style.removeProperty('--pane-opacity');
                 p.classList.remove('pane-user-sized');
                 p.classList.remove('pane-user-width');
+                p.classList.remove('pane-hidden');
+                var slider = p.querySelector('.pane-opacity-slider');
+                if (slider) slider.value = '100';
             });
             clearColumnWidthStyles();
+            clearColumnOrderStyles();
             applyPaneLayout(defaultPaneLayout());
             applyColumnWidths();
+            applyStackMode('', true);
+            updatePanelsMenu();
+            closePanelsMenu();
+            closeColPresetMenu();
+        }
+
+        function defaultPaneChrome() {
+            var map = {};
+            PANE_IDS_ORDER.forEach(function(id) {
+                map[id] = { opacity: 1, hidden: false };
+            });
+            return map;
+        }
+
+        function readPaneChrome() {
+            var map = defaultPaneChrome();
+            try {
+                var raw = localStorage.getItem(PANE_CHROME_STORAGE_KEY);
+                if (!raw) return map;
+                var saved = JSON.parse(raw);
+                if (!saved || typeof saved !== 'object') return map;
+                PANE_IDS_ORDER.forEach(function(id) {
+                    var row = saved[id];
+                    if (!row || typeof row !== 'object') return;
+                    var opacity = Number(row.opacity);
+                    if (!isFinite(opacity)) opacity = 1;
+                    opacity = Math.max(PANE_OPACITY_MIN, Math.min(1, opacity));
+                    map[id] = { opacity: opacity, hidden: !!row.hidden };
+                });
+            } catch (err) {}
+            return map;
+        }
+
+        function savePaneChrome(map) {
+            try {
+                localStorage.setItem(PANE_CHROME_STORAGE_KEY, JSON.stringify(map || readPaneChromeFromDom()));
+            } catch (err) {}
+        }
+
+        function readPaneChromeFromDom() {
+            var map = defaultPaneChrome();
+            PANE_IDS_ORDER.forEach(function(id) {
+                var pane = document.querySelector('.layout-pane[data-pane-id="' + id + '"]');
+                if (!pane) return;
+                var opacity = parseFloat(pane.style.getPropertyValue('--pane-opacity'));
+                if (!isFinite(opacity)) opacity = 1;
+                map[id] = {
+                    opacity: Math.max(PANE_OPACITY_MIN, Math.min(1, opacity)),
+                    hidden: pane.classList.contains('pane-hidden')
+                };
+            });
+            return map;
+        }
+
+        function applyPaneChrome(map) {
+            if (!map) map = readPaneChrome();
+            PANE_IDS_ORDER.forEach(function(id) {
+                var pane = document.querySelector('.layout-pane[data-pane-id="' + id + '"]');
+                if (!pane) return;
+                var row = map[id] || { opacity: 1, hidden: false };
+                var opacity = Math.max(PANE_OPACITY_MIN, Math.min(1, Number(row.opacity) || 1));
+                pane.style.setProperty('--pane-opacity', String(opacity));
+                pane.classList.toggle('pane-hidden', !!row.hidden);
+                var slider = pane.querySelector('.pane-opacity-slider');
+                if (slider) slider.value = String(Math.round(opacity * 100));
+            });
+            updatePanelsMenu();
+        }
+
+        function setPaneOpacity(paneId, opacity) {
+            opacity = Math.max(PANE_OPACITY_MIN, Math.min(1, opacity));
+            var pane = document.querySelector('.layout-pane[data-pane-id="' + paneId + '"]');
+            if (!pane) return;
+            pane.style.setProperty('--pane-opacity', String(opacity));
+            var slider = pane.querySelector('.pane-opacity-slider');
+            if (slider) slider.value = String(Math.round(opacity * 100));
+            var map = readPaneChrome();
+            map[paneId] = map[paneId] || { opacity: 1, hidden: false };
+            map[paneId].opacity = opacity;
+            savePaneChrome(map);
+        }
+
+        function setPaneHidden(paneId, hidden) {
+            var pane = document.querySelector('.layout-pane[data-pane-id="' + paneId + '"]');
+            if (!pane) return;
+            pane.classList.toggle('pane-hidden', !!hidden);
+            var map = readPaneChrome();
+            map[paneId] = map[paneId] || { opacity: 1, hidden: false };
+            map[paneId].hidden = !!hidden;
+            savePaneChrome(map);
+            updatePanelsMenu();
+            if (!hidden) closePanelsMenu();
+        }
+
+        function ensurePaneChromeControls() {
+            document.querySelectorAll('.main-layout .layout-pane[data-pane-id]').forEach(function(pane) {
+                if (pane.querySelector('.pane-chrome-controls')) return;
+                var header = pane.querySelector('.pane-header-row, .pane-header-with-actions, .playlist-header');
+                if (!header) return;
+                var paneId = pane.getAttribute('data-pane-id');
+                var controls = document.createElement('div');
+                controls.className = 'pane-chrome-controls';
+                controls.innerHTML =
+                    '<label class="pane-opacity-wrap" title="Panel opacity">' +
+                    '<input type="range" class="pane-opacity-slider" min="30" max="100" value="100" aria-label="Panel opacity">' +
+                    '</label>' +
+                    '<button type="button" class="pane-hide-btn" title="Hide panel" aria-label="Hide panel">&#128065;</button>';
+                var actions = header.querySelector('.playlist-actions');
+                if (actions) header.insertBefore(controls, actions);
+                else header.appendChild(controls);
+
+                var slider = controls.querySelector('.pane-opacity-slider');
+                var hideBtn = controls.querySelector('.pane-hide-btn');
+                slider.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+                slider.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+                slider.addEventListener('click', function(e) { e.stopPropagation(); });
+                slider.addEventListener('input', function() {
+                    setPaneOpacity(paneId, (parseInt(slider.value, 10) || 100) / 100);
+                });
+                hideBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setPaneHidden(paneId, true);
+                });
+            });
+        }
+
+        function updatePanelsMenu() {
+            var menu = document.getElementById('panelsMenu');
+            var btn = document.getElementById('panelsMenuBtn');
+            if (!menu) return;
+            var map = readPaneChromeFromDom();
+            var hiddenCount = 0;
+            var html = '';
+            PANE_IDS_ORDER.forEach(function(id) {
+                var row = map[id] || { hidden: false };
+                if (row.hidden) hiddenCount++;
+                var label = PANE_LABELS[id] || id;
+                html += '<button type="button" class="panels-menu-item' + (row.hidden ? ' is-hidden' : '') + '" data-pane-toggle="' + id + '">' +
+                    '<span>' + label + '</span>' +
+                    '<span class="panels-menu-state">' + (row.hidden ? 'Show' : 'Visible') + '</span></button>';
+            });
+            menu.innerHTML = html || '<div class="panels-menu-empty">No panels</div>';
+            if (btn) {
+                btn.textContent = hiddenCount > 0 ? ('Panels (' + hiddenCount + ' hidden)') : 'Panels';
+            }
+            menu.querySelectorAll('[data-pane-toggle]').forEach(function(item) {
+                item.addEventListener('click', function() {
+                    var id = item.getAttribute('data-pane-toggle');
+                    var pane = document.querySelector('.layout-pane[data-pane-id="' + id + '"]');
+                    var currentlyHidden = pane && pane.classList.contains('pane-hidden');
+                    setPaneHidden(id, !currentlyHidden);
+                });
+            });
+        }
+
+        function closePanelsMenu() {
+            var menu = document.getElementById('panelsMenu');
+            if (menu) menu.hidden = true;
+        }
+
+        function initPanelsMenu() {
+            var btn = document.getElementById('panelsMenuBtn');
+            var menu = document.getElementById('panelsMenu');
+            var wrap = document.getElementById('panelsMenuWrap');
+            if (!btn || !menu || !wrap || btn.getAttribute('data-bound') === '1') return;
+            btn.setAttribute('data-bound', '1');
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closeColPresetMenu();
+                updatePanelsMenu();
+                menu.hidden = !menu.hidden;
+            });
+            document.addEventListener('click', function(e) {
+                if (!wrap.contains(e.target)) closePanelsMenu();
+            });
+        }
+
+        var COL_PRESETS = {
+            middleFocus: [0.75, 1.9, 0.75],
+            leftFocus: [2.1, 1.0, 0.7],
+            rightFocus: [0.7, 1.0, 2.1]
+        };
+
+        var STACK_PRESETS = {
+            vertical: { order: [1, 2, 0], density: '' },
+            mobile: { order: [1, 2, 0], density: 'mobile' }
+        };
+
+        function closeColPresetMenu() {
+            var menu = document.getElementById('colPresetMenu');
+            if (menu) menu.hidden = true;
+        }
+
+        function readStackMode() {
+            try {
+                var m = localStorage.getItem(STACK_MODE_STORAGE_KEY);
+                if (m && STACK_PRESETS[m]) return m;
+            } catch (e) {}
+            return '';
+        }
+
+        function saveStackMode(mode) {
+            try {
+                if (mode && STACK_PRESETS[mode]) localStorage.setItem(STACK_MODE_STORAGE_KEY, mode);
+                else localStorage.removeItem(STACK_MODE_STORAGE_KEY);
+            } catch (e) {}
+        }
+
+        function clearColumnOrderStyles() {
+            document.querySelectorAll('.main-layout .layout-col, .main-layout .col-resize-handle').forEach(function(el) {
+                el.style.order = '';
+            });
+            var main = document.getElementById('mainLayout');
+            if (main) {
+                main.removeAttribute('data-stack-density');
+                main.removeAttribute('data-layout-stack');
+            }
+        }
+
+        function applyStackMode(mode, persist) {
+            if (persist) saveStackMode(mode && STACK_PRESETS[mode] ? mode : '');
+            var active = persist ? (mode && STACK_PRESETS[mode] ? mode : '') : readStackMode();
+            var preset = STACK_PRESETS[active] || STACK_PRESETS.vertical;
+            var main = document.getElementById('mainLayout');
+            var forced = !!(active && STACK_PRESETS[active]);
+
+            if (main) {
+                if (forced) main.setAttribute('data-layout-stack', '1');
+                else main.removeAttribute('data-layout-stack');
+            }
+
+            if (!forced && !isNaturalStackedViewport()) {
+                document.querySelectorAll('.main-layout .layout-col, .main-layout .col-resize-handle').forEach(function(el) {
+                    el.style.order = '';
+                });
+                if (main) main.removeAttribute('data-stack-density');
+                return;
+            }
+
+            if (main) {
+                if (preset.density) main.setAttribute('data-stack-density', preset.density);
+                else main.removeAttribute('data-stack-density');
+            }
+
+            preset.order.forEach(function(colIdx, i) {
+                var col = document.querySelector('.main-layout .layout-col[data-col-index="' + colIdx + '"]');
+                if (col) col.style.order = String(i);
+            });
+            document.querySelectorAll('.main-layout .col-resize-handle').forEach(function(h, i) {
+                h.style.order = String(100 + i);
+            });
+            clearColumnWidthStyles();
+        }
+
+        function applyColumnPreset(key) {
+            var ratios = COL_PRESETS[key];
+            if (!ratios || ratios.length !== 3) return;
+            /* Width presets exit forced Vertical/Mobile stack */
+            applyStackMode('', true);
+            if (isNaturalStackedViewport()) {
+                closeColPresetMenu();
+                return;
+            }
+            var cols = mainLayoutColumnElements();
+            if (cols.length !== 3) return;
+            var minPx = COL_RESIZE_MIN_PX;
+            for (var j = 0; j < 3; j++) {
+                cols[j].style.flex = ratios[j] + ' 1 0';
+                cols[j].style.minWidth = minPx + 'px';
+                cols[j].style.maxWidth = 'none';
+            }
+            saveColumnFr(ratios.slice());
+            if (typeof clampPaneWidthsToColumns === 'function') clampPaneWidthsToColumns();
+            closeColPresetMenu();
+        }
+
+        function applyStackPreset(key) {
+            if (!STACK_PRESETS[key]) return;
+            applyStackMode(key, true);
+            applyColumnWidths();
+            closeColPresetMenu();
+        }
+
+        function initColPresetMenu() {
+            var btn = document.getElementById('colPresetBtn');
+            var menu = document.getElementById('colPresetMenu');
+            var wrap = document.getElementById('colPresetWrap');
+            if (!btn || !menu || !wrap || btn.getAttribute('data-bound') === '1') return;
+            btn.setAttribute('data-bound', '1');
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closePanelsMenu();
+                menu.hidden = !menu.hidden;
+            });
+            menu.querySelectorAll('[data-col-preset]').forEach(function(item) {
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    applyColumnPreset(item.getAttribute('data-col-preset'));
+                });
+            });
+            menu.querySelectorAll('[data-stack-preset]').forEach(function(item) {
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    applyStackPreset(item.getAttribute('data-stack-preset'));
+                });
+            });
+            document.addEventListener('click', function(e) {
+                if (!wrap.contains(e.target)) closeColPresetMenu();
+            });
         }
 
         function isUltrawideViewport() {
@@ -4119,7 +5569,12 @@
             var saved = readPaneLayout();
             applyPaneLayout(saved || defaultPaneLayout());
             applyColumnWidths();
+            applyStackMode(readStackMode(), false);
             applyPaneSizes();
+            ensurePaneChromeControls();
+            applyPaneChrome(readPaneChrome());
+            initPanelsMenu();
+            initColPresetMenu();
             initColResizeHandles();
             initPaneResizeHandles();
             initPaneDragAndDrop();
@@ -4133,6 +5588,7 @@
             if (colResizeDebounce) clearTimeout(colResizeDebounce);
             colResizeDebounce = setTimeout(function() {
                 applyColumnWidths();
+                applyStackMode(readStackMode(), false);
                 clampPaneWidthsToColumns();
             }, 120);
         });
@@ -4286,6 +5742,7 @@
             localStorage.setItem('defaultGuild', currentGuild);
             lastQueueSnapshot = '';
             lastHistorySnapshot = '';
+            lastFrequentSnapshot = '';
             npRenderKey = '';
             lastWsGuildId = '';
             lyricsFetchedKey = '';
@@ -4321,6 +5778,8 @@
                         renderQueue(data.data);
                     } else if (data.type === 'history' && data.data) {
                         renderHistory(data.data);
+                    } else if (data.type === 'frequent' && data.data) {
+                        renderFrequent(data.data);
                     } else if (data.type === 'error') {
                         var errText = data.message || 'Something went wrong';
                         searchResults.innerHTML = '<div class="status-message" style="color:#ef4444;">' + escHtml(errText) + '</div>';
@@ -4341,7 +5800,7 @@
 
         async function refreshAll() {
             if (!currentGuild) return;
-            await Promise.all([fetchNowPlaying(), fetchQueue(), fetchHistory()]);
+            await Promise.all([fetchNowPlaying(), fetchQueue(), fetchHistory(), fetchFrequent()]);
         }
 
         async function fetchNowPlaying() {
@@ -4355,7 +5814,7 @@
 
         function nowPlayingStableKey(data) {
             if (!data.playing) return '';
-            return (data.identifier || data.uri || '') + '|' + (data.repeatMode || 'OFF') + '|' + (data.shuffleMode ? '1' : '0') + '|' + (data.paused ? '1' : '0');
+            return (data.identifier || data.uri || '') + '|' + (data.artworkUrl || '') + '|' + (data.repeatMode || 'OFF') + '|' + (data.shuffleMode ? '1' : '0') + '|' + (data.paused ? '1' : '0');
         }
 
         function updateNowPlayingPartial(data) {
@@ -4432,7 +5891,13 @@
             const posFmt = data.positionFormatted || '0:00';
             const durFmt = data.durationFormatted || '0:00';
 
+            var artHtml = '';
+            if (data.artworkUrl) {
+                artHtml = '<img class="np-artwork" src="' + escAttr(data.artworkUrl) + '" alt="" decoding="async" onerror="this.remove()">';
+            }
+
             nowPlayingContent.innerHTML =
+                artHtml +
                 '<div class="track-title">' + escHtml(data.title || 'Unknown') + repeatBadge + '</div>' +
                 '<div class="track-author">' + escHtml(data.author || '') + (data.requestedBy ? ' &middot; ' + escHtml(data.requestedBy) : '') + '</div>' +
                 '<div class="progress-container">' +
@@ -5138,6 +6603,44 @@
                 await authFetch('/api/guild/' + currentGuild + '/clear-history', {method: 'POST'});
                 fetchHistory();
             } catch(e) {}
+        }
+
+        async function fetchFrequent() {
+            if (!currentGuild) return;
+            try {
+                var resp = await authFetch('/api/guild/' + currentGuild + '/frequent');
+                var data = await resp.json();
+                renderFrequent(data);
+            } catch(e) {}
+        }
+
+        function renderFrequent(data) {
+            var list = document.getElementById('frequentList');
+            var empty = document.getElementById('frequentEmpty');
+            var tracks = (data && data.tracks) ? data.tracks : [];
+            if (!tracks.length) {
+                if (lastFrequentSnapshot === '__empty__') return;
+                lastFrequentSnapshot = '__empty__';
+                list.innerHTML = '';
+                empty.style.display = '';
+                return;
+            }
+            var snap = tracks.map(function(t) {
+                return (t.identifier || t.uri || '') + '|' + (t.playCount || 0) + '|' + (t.title || '');
+            }).join(';');
+            if (snap === lastFrequentSnapshot) return;
+            lastFrequentSnapshot = snap;
+            empty.style.display = 'none';
+            list.innerHTML = tracks.map(function(t, i) {
+                var plays = t.playCount || 0;
+                return '<li class="history-item">' +
+                    '<span class="history-index">' + (i + 1) + '</span>' +
+                    '<div class="history-info"><div class="history-title">' + escHtml(t.title || 'Unknown') + '</div>' +
+                    '<div class="history-meta">' + escHtml(t.author || '') + '</div></div>' +
+                    '<span class="frequent-count" title="Times played">' + plays + '×</span>' +
+                    '<span class="history-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
+                    '<button class="history-replay" onclick="replayHistory(\'' + escAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
+            }).join('');
         }
 
         async function replayHistory(uri) {

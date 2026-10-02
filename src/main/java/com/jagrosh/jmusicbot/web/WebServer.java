@@ -23,6 +23,7 @@ import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.audio.SpotifyResolver;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
 import com.jagrosh.jmusicbot.settings.RepeatMode;
+import com.jagrosh.jmusicbot.settings.PlayCountStore;
 import com.jagrosh.jmusicbot.settings.Settings;
 import com.jagrosh.jmusicbot.utils.SoundCloudUtil;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
@@ -45,6 +46,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -74,7 +76,8 @@ import io.javalin.websocket.WsContext;
 public class WebServer
 {
     private static final Logger log = LoggerFactory.getLogger(WebServer.class);
-    private static final long SESSION_TTL_MS = TimeUnit.SECONDS.toMillis(86400);
+    private static final long SESSION_TTL_MS = TimeUnit.DAYS.toMillis(30);
+    private static final int SESSION_COOKIE_MAX_AGE_SEC = (int) TimeUnit.DAYS.toSeconds(30);
     private static final long OAUTH_STATE_TTL_MS = TimeUnit.MINUTES.toMillis(10);
     private static final HttpClient HTTP = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
 
@@ -132,6 +135,7 @@ public class WebServer
         });
 
         app.get("/", ctx -> ctx.redirect("/web/index.html"));
+        app.get("/favicon.ico", this::handleFavicon);
 
         app.ws("/ws", ws ->
         {
@@ -192,6 +196,8 @@ public class WebServer
         app.post("/api/guild/{guildId}/remove/{index}", this::handleRemove);
         app.get("/api/guild/{guildId}/history", this::handleGetHistory);
         app.post("/api/guild/{guildId}/clear-history", this::handleClearHistory);
+        app.get("/api/guild/{guildId}/frequent", this::handleGetFrequent);
+        app.post("/api/guild/{guildId}/clear-frequent", this::handleClearFrequent);
         app.post("/api/guild/{guildId}/clear-queue", this::handleClearQueue);
         app.get("/api/guild/{guildId}/lyrics", this::handleGetLyrics);
         app.get("/api/auth/discord", this::handleDiscordAuthStart);
@@ -228,6 +234,27 @@ public class WebServer
         }
     }
 
+    /** Browsers request /favicon.ico at the site root; Jetty also ships a default one. */
+    private void handleFavicon(Context ctx)
+    {
+        try (InputStream in = WebServer.class.getResourceAsStream("/web/favicon.png"))
+        {
+            if (in == null)
+            {
+                ctx.status(404).result("Favicon not found");
+                return;
+            }
+            ctx.contentType("image/png");
+            ctx.header("Cache-Control", "no-cache, must-revalidate, max-age=0");
+            ctx.result(in.readAllBytes());
+        }
+        catch (IOException e)
+        {
+            log.warn("Failed to serve favicon", e);
+            ctx.status(500);
+        }
+    }
+
     public void broadcastUpdate(String guildId, String type)
     {
         Guild guild = bot.getJDA().getGuildById(guildId);
@@ -247,6 +274,10 @@ public class WebServer
             else if ("history".equals(type))
             {
                 payload.put("data", buildHistoryData(guild));
+            }
+            else if ("frequent".equals(type))
+            {
+                payload.put("data", buildFrequentData(guild));
             }
         }
         String message = gson.toJson(payload);
@@ -315,6 +346,7 @@ public class WebServer
                 result.put("author", track.getInfo().author);
                 result.put("uri", track.getInfo().uri);
                 result.put("identifier", track.getIdentifier());
+                result.put("artworkUrl", resolveArtworkUrl(track));
                 result.put("position", track.getPosition());
                 result.put("duration", track.getDuration());
                 result.put("positionFormatted", TimeUtil.formatTime(track.getPosition()));
@@ -329,6 +361,33 @@ public class WebServer
             }
         }
         return result;
+    }
+
+    /**
+     * Lavaplayer SoundCloud fills artworkUrl; youtube-source only does with *WithThumbnail clients,
+     * which we don't use for OAuth/TV playback. Fall back to the standard ytimg URL for YouTube IDs.
+     */
+    private static String resolveArtworkUrl(AudioTrack track)
+    {
+        if (track == null || track.getInfo() == null)
+            return null;
+
+        String artwork = track.getInfo().artworkUrl;
+        if (artwork != null && !artwork.isBlank())
+            return artwork;
+
+        String id = track.getIdentifier();
+        if (id == null || !id.matches("[\\w-]{11}"))
+            return null;
+
+        String source = track.getSourceManager() != null ? track.getSourceManager().getSourceName() : null;
+        String uri = track.getInfo().uri;
+        boolean youtube = "youtube".equalsIgnoreCase(source)
+                || (uri != null && (uri.contains("youtube.com") || uri.contains("youtu.be") || uri.contains("music.youtube")));
+        if (!youtube)
+            return null;
+
+        return "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg";
     }
 
     private Map<String, Object> buildQueueData(Guild guild)
@@ -386,6 +445,21 @@ public class WebServer
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();
             t.put("requestedBy", rm != null && rm.user != null ? rm.user.username : "");
+            tracks.add(t);
+        }
+        result.put("tracks", tracks);
+        result.put("size", tracks.size());
+        return result;
+    }
+
+    private Map<String, Object> buildFrequentData(Guild guild)
+    {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> tracks = new ArrayList<>();
+        for (PlayCountStore.Entry e : bot.getPlayCountStore().topForGuild(guild.getIdLong(), PlayCountStore.TOP_N))
+        {
+            Map<String, Object> t = e.toMap();
+            t.put("durationFormatted", TimeUtil.formatTime(e.getDuration()));
             tracks.add(t);
         }
         result.put("tracks", tracks);
@@ -451,49 +525,7 @@ public class WebServer
     {
         Guild guild = resolveGuild(ctx);
         if (guild == null) return;
-
-        AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
-        Settings settings = bot.getSettingsManager().getSettings(guild.getIdLong());
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("playing", false);
-        result.put("paused", false);
-        result.put("volume", settings != null ? settings.getVolume() : 100);
-        result.put("repeatMode", settings != null ? settings.getRepeatMode().name() : RepeatMode.OFF.name());
-        result.put("shuffleMode", settings != null && settings.getShuffleMode());
-
-        if (handler != null)
-        {
-            result.put("paused", handler.getPlayer().isPaused());
-            result.put("volume", handler.getPlayer().getVolume());
-
-            if (handler.isMusicPlaying(bot.getJDA()))
-            {
-                AudioTrack track = handler.getPlayer().getPlayingTrack();
-                result.put("playing", true);
-                result.put("title", track.getInfo().title);
-                result.put("author", track.getInfo().author);
-                result.put("uri", track.getInfo().uri);
-                result.put("identifier", track.getIdentifier());
-                result.put("position", track.getPosition());
-                result.put("duration", track.getDuration());
-                result.put("positionFormatted", TimeUtil.formatTime(track.getPosition()));
-                result.put("durationFormatted", TimeUtil.formatTime(track.getDuration()));
-                result.put("isStream", track.getInfo().isStream);
-                if (track.getInfo().isStream)
-                {
-                    result.put("durationFormatted", "LIVE");
-                }
-
-                RequestMetadata rm = handler.getRequestMetadata();
-                if (rm != null && rm.user != null)
-                {
-                    result.put("requestedBy", rm.user.username);
-                }
-            }
-        }
-
-        ctx.json(result);
+        ctx.json(buildNowPlayingData(guild));
     }
 
     private void handleGetQueue(Context ctx)
@@ -616,7 +648,7 @@ public class WebServer
                 "JMBSESSION",
                 sessionId,
                 "/",
-                86400,
+                SESSION_COOKIE_MAX_AGE_SEC,
                 secureCookie,
                 0,
                 true,
@@ -2213,6 +2245,22 @@ public class WebServer
         }
         broadcastUpdate(guild.getId(), "history");
         ctx.json(Map.of("message", "History cleared"));
+    }
+
+    private void handleGetFrequent(Context ctx)
+    {
+        Guild guild = resolveGuild(ctx);
+        if (guild == null) return;
+        ctx.json(buildFrequentData(guild));
+    }
+
+    private void handleClearFrequent(Context ctx)
+    {
+        Guild guild = resolveGuild(ctx);
+        if (guild == null) return;
+        bot.getPlayCountStore().clearGuild(guild.getIdLong());
+        broadcastUpdate(guild.getId(), "frequent");
+        ctx.json(Map.of("message", "Most-played cleared"));
     }
 
     private void handleClearQueue(Context ctx)
