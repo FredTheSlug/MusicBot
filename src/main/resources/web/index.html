@@ -5663,7 +5663,7 @@
             searchDropdown.innerHTML = results.map(function(t, i) {
                 var dur = t.isStream ? 'LIVE' : (t.durationFormatted || '');
                 var src = t.source || inferSourceFromUri(t.uri);
-                return '<div class="search-result-item" onclick="addSearchResult(\'' + escAttr(t.uri || t.identifier) + '\')">' +
+                return '<div class="search-result-item" onclick="addSearchResult(\'' + escJsAttr(t.uri || t.identifier) + '\')">' +
                     '<span class="search-result-index">' + (i + 1) + '</span>' +
                     searchSourceBadge(src) +
                     '<div class="search-result-info"><div class="search-result-title">' + escHtml(t.title || 'Unknown') + '</div>' +
@@ -5893,7 +5893,7 @@
 
             var artHtml = '';
             if (data.artworkUrl) {
-                artHtml = '<img class="np-artwork" src="' + escAttr(data.artworkUrl) + '" alt="" decoding="async" onerror="this.remove()">';
+                artHtml = '<img class="np-artwork" src="' + escHtmlAttr(data.artworkUrl) + '" alt="" decoding="async" onerror="this.remove()">';
             }
 
             nowPlayingContent.innerHTML =
@@ -6235,9 +6235,29 @@
             return div.innerHTML;
         }
 
-        function escAttr(str) {
-            if (!str) return '';
-            return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        // For a '...' JS string inside an inline handler: onclick="fn('...')".
+        // JS-escape first, then HTML-escape: the browser HTML-decodes the attribute
+        // before the JS runs, so &#39; or a trailing backslash would otherwise end the string.
+        function escJsAttr(str) {
+            if (str == null) return '';
+            return escHtmlAttr(String(str)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\r/g, '\\r')
+                .replace(/\n/g, '\\n'));
+        }
+
+        // For a plain attribute value: title="...", src="...", value="...".
+        function escHtmlAttr(str) {
+            if (str == null) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\r/g, '&#13;')
+                .replace(/\n/g, '&#10;');
         }
 
         async function authFetch(url, opts) {
@@ -6593,7 +6613,7 @@
                     '<div class="history-info"><div class="history-title">' + escHtml(t.title || 'Unknown') + '</div>' +
                     '<div class="history-meta">' + escHtml(t.author || '') + (t.requestedBy ? ' &middot; ' + escHtml(t.requestedBy) : '') + '</div></div>' +
                     '<span class="history-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
-                    '<button class="history-replay" onclick="replayHistory(\'' + escAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
+                    '<button class="history-replay" onclick="replayHistory(\'' + escJsAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
             }).join('');
         }
 
@@ -6639,7 +6659,7 @@
                     '<div class="history-meta">' + escHtml(t.author || '') + '</div></div>' +
                     '<span class="frequent-count" title="Times played">' + plays + '×</span>' +
                     '<span class="history-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
-                    '<button class="history-replay" onclick="replayHistory(\'' + escAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
+                    '<button class="history-replay" onclick="replayHistory(\'' + escJsAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
             }).join('');
         }
 
@@ -6768,14 +6788,14 @@
                     var plCount = typeof folder.playlistCount === 'number' ? folder.playlistCount : (folder.playlists ? folder.playlists.length : 0);
                     var subCount = typeof folder.subFolderCount === 'number' ? folder.subFolderCount : (folder.folders ? folder.folders.length : 0);
                     var folderLabel = folder.name != null && folder.name !== '' ? folder.name : (folder.folder || 'Folder');
-                    html += '<li class="folder-item' + (isExpanded ? ' open' : ' closed') + '" onclick="toggleFolder(\'' + escAttr(folder.folder) + '\', event)">' +
+                    html += '<li class="folder-item' + (isExpanded ? ' open' : ' closed') + '" onclick="toggleFolder(\'' + escJsAttr(folder.folder) + '\', event)">' +
                         '<span class="folder-icon">' + (isExpanded ? '&#128194;' : '&#128193;') + '</span>' +
                         '<span class="folder-name">' + escHtml(folderLabel) + '</span>' +
                         '<span class="folder-meta">' + plCount + ' ' + pluralUnit(plCount, 'playlist', 'playlists') + (subCount > 0 ? ', ' + subCount + ' ' + pluralUnit(subCount, 'folder', 'folders') : '') + '</span>' +
                         '<div class="folder-actions">' +
-                        '<button class="playlist-btn" onclick="showNewPlaylistInFolder(\'' + escAttr(folder.folder) + '\', event)" title="New Playlist">+</button>' +
-                        '<button class="playlist-btn" onclick="showNewSubfolder(\'' + escAttr(folder.folder) + '\', event)" title="New Subfolder">&#128193;+</button>' +
-                        '<button class="playlist-btn danger" onclick="deleteFolder(\'' + escAttr(folder.folder) + '\', event)" title="Delete Folder">&#10005;</button>' +
+                        '<button class="playlist-btn" onclick="showNewPlaylistInFolder(\'' + escJsAttr(folder.folder) + '\', event)" title="New Playlist">+</button>' +
+                        '<button class="playlist-btn" onclick="showNewSubfolder(\'' + escJsAttr(folder.folder) + '\', event)" title="New Subfolder">&#128193;+</button>' +
+                        '<button class="playlist-btn danger" onclick="deleteFolder(\'' + escJsAttr(folder.folder) + '\', event)" title="Delete Folder">&#10005;</button>' +
                         '</div></li>';
                     if (isExpanded) {
                         html += '<div class="folder-contents">';
@@ -6788,16 +6808,16 @@
                 node.playlists.forEach(function(pl) {
                     var expIdx = firstExpandablePlaylistItemIndex(pl.items || []);
                     var expandTreeBtn = expIdx >= 0
-                        ? '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); showPlaylistDetailAndExpand(\'' + escAttr(pl.name) + '\',\'' + escAttr(pl.folder || '') + '\',' + expIdx + ')" title="Open details and expand remote playlist">Expand</button>'
+                        ? '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); showPlaylistDetailAndExpand(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\',' + expIdx + ')" title="Open details and expand remote playlist">Expand</button>'
                         : '';
                     html += '<li class="playlist-item">' +
                         '<span class="playlist-icon">&#9835;</span>' +
-                        '<span class="playlist-name" onclick="showPlaylistDetail(\'' + escAttr(pl.name) + '\',\'' + escAttr(pl.folder || '') + '\')">' + escHtml(pl.name) + '</span>' +
+                        '<span class="playlist-name" onclick="showPlaylistDetail(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')">' + escHtml(pl.name) + '</span>' +
                         '<span class="playlist-count">' + pl.trackCount + ' ' + pluralUnit(pl.trackCount, 'track', 'tracks') + '</span>' +
-                        '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); playPlaylist(\'' + escAttr(pl.name) + '\',\'' + escAttr(pl.folder || '') + '\')" title="Play">&#9654;</button>' +
+                        '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); playPlaylist(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')" title="Play">&#9654;</button>' +
                         expandTreeBtn +
-                        '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); showPlaylistDetail(\'' + escAttr(pl.name) + '\',\'' + escAttr(pl.folder || '') + '\')" title="Details">&#8943;</button>' +
-                        '<button type="button" class="playlist-btn danger" onclick="event.stopPropagation(); deletePlaylist(\'' + escAttr(pl.name) + '\',\'' + escAttr(pl.folder || '') + '\')" title="Delete">&#10005;</button>' +
+                        '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); showPlaylistDetail(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')" title="Details">&#8943;</button>' +
+                        '<button type="button" class="playlist-btn danger" onclick="event.stopPropagation(); deletePlaylist(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')" title="Delete">&#10005;</button>' +
                         '</li>';
                 });
             }
@@ -6886,7 +6906,7 @@
                     '<div class="playlist-expand-nest-meta">' +
                     '<div class="playlist-expand-nest-title">' + escHtml(t.title || 'Unknown') + '</div>' +
                     '<div class="playlist-expand-nest-sub">' + escHtml(t.author || '') + (t.durationFormatted ? ' · ' + escHtml(t.durationFormatted) : '') + '</div></div>' +
-                    '<button type="button" class="playlist-btn" onclick="playSingleUri(\'' + escAttr(u) + '\')" title="Play">&#9654;</button>' +
+                    '<button type="button" class="playlist-btn" onclick="playSingleUri(\'' + escJsAttr(u) + '\')" title="Play">&#9654;</button>' +
                     '</li>';
             }).join('');
             return '<ul class="playlist-expand-nested">' + rows + '</ul>' + trunc;
@@ -6965,10 +6985,10 @@
                 return '<li class="playlist-track-row">' +
                     '<div class="playlist-track-item-inner">' +
                     '<span class="playlist-track-idx">' + (i + 1) + '</span>' +
-                    '<span class="playlist-track-uri" title="' + escAttr(uri) + '">' + escHtml(displayUri) + '</span>' +
-                    '<button type="button" class="playlist-btn" onclick="playSingleUri(\'' + escAttr(uri) + '\')" title="Play">&#9654;</button>' +
+                    '<span class="playlist-track-uri" title="' + escHtmlAttr(uri) + '">' + escHtml(displayUri) + '</span>' +
+                    '<button type="button" class="playlist-btn" onclick="playSingleUri(\'' + escJsAttr(uri) + '\')" title="Play">&#9654;</button>' +
                     expandBtn +
-                    '<button type="button" class="playlist-btn danger" onclick="removePlaylistTrack(\'' + escAttr(data.name) + '\',\'' + escAttr(data.folder || '') + '\',' + i + ')" title="Remove">&#10005;</button>' +
+                    '<button type="button" class="playlist-btn danger" onclick="removePlaylistTrack(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\',' + i + ')" title="Remove">&#10005;</button>' +
                     '</div>' +
                     '<div class="playlist-expand-slot" id="playlist-expand-' + i + '"></div>' +
                     '</li>';
@@ -6979,16 +6999,16 @@
                 '<div class="playlist-detail-header">' +
                 '<span class="playlist-detail-title">' + escHtml(data.name) + '</span>' +
                 '<div style="display:flex;gap:6px;align-items:center">' +
-                '<button class="btn-sm" onclick="playPlaylist(\'' + escAttr(data.name) + '\',\'' + escAttr(data.folder || '') + '\')">&#9654; Play All</button>' +
-                '<button class="btn-sm" onclick="startRenamePlaylist(\'' + escAttr(data.name) + '\',\'' + escAttr(data.folder || '') + '\')">Rename</button>' +
-                '<select class="playlist-move-select" onchange="movePlaylistToFolder(\'' + escAttr(data.name) + '\',\'' + escAttr(data.folder || '') + '\', this.value)" title="Move to folder">' +
+                '<button class="btn-sm" onclick="playPlaylist(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\')">&#9654; Play All</button>' +
+                '<button class="btn-sm" onclick="startRenamePlaylist(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\')">Rename</button>' +
+                '<select class="playlist-move-select" onchange="movePlaylistToFolder(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\', this.value)" title="Move to folder">' +
                 '<option value="">Move to...</option>' + folderOptions + '</select>' +
                 '<button class="btn-sm" onclick="hidePlaylistDetail()" style="color:var(--text-tertiary)">Close</button>' +
                 '</div></div>' +
                 (data.folder ? '<div style="font-size:0.75rem;color:var(--text-tertiary);margin-bottom:10px">Folder: ' + escHtml(data.folder) + '</div>' : '') +
                 '<ul class="playlist-detail-tracks">' + tracksHtml + '</ul>' +
                 '<div class="playlist-action-row">' +
-                '<button class="btn-sm" onclick="addTrackToPlaylist(\'' + escAttr(data.name) + '\',\'' + escAttr(data.folder || '') + '\')">+ Add Track</button>' +
+                '<button class="btn-sm" onclick="addTrackToPlaylist(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\')">+ Add Track</button>' +
                 '</div>' +
                 '</div>';
             playlistDetailPanel.style.display = '';
@@ -7004,7 +7024,7 @@
             if (!node || !node.folders) return html;
             node.folders.forEach(function(folder) {
                 var displayPath = prefix ? prefix + ' / ' + folder.name : folder.name;
-                html += '<option value="' + escAttr(folder.folder) + '">' + escHtml(displayPath) + '</option>';
+                html += '<option value="' + escHtmlAttr(folder.folder) + '">' + escHtml(displayPath) + '</option>';
                 if (folder.folders && folder.folders.length > 0) {
                     html += buildFolderOptions(folder, displayPath);
                 }
