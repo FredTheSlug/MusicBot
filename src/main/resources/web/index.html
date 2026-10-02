@@ -13,7 +13,7 @@
                 var k = 'jmusicbot_theme_v1';
                 var t = localStorage.getItem(k);
                 if (t === 'nihon') { try { localStorage.setItem(k, 'sumi'); } catch (e2) {} t = 'sumi'; }
-                if (t && t !== 'nebula' && ['aurora', 'ember', 'crimson', 'dawn', 'dawn-dark', 'steel', 'verdant', 'grove', 'grapevine', 'sumi', 'rasta', 'cipher', 'signal', 'victory', 'neon'].indexOf(t) >= 0) {
+                if (t && t !== 'nebula' && ['aurora', 'ember', 'crimson', 'dawn', 'dawn-dark', 'steel', 'verdant', 'grove', 'grapevine', 'sumi', 'rasta', 'cipher', 'signal', 'victory', 'neon', 'revival'].indexOf(t) >= 0) {
                     document.documentElement.setAttribute('data-theme', t);
                 }
             } catch (e) {}
@@ -25,6 +25,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&family=Shippori+Mincho:wght@400;500;600;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&display=swap');
 
         :root {
             --bg-primary: #0b0d17;
@@ -4220,6 +4221,441 @@
             color: #ffffff;
             font-weight: 700;
         }
+
+        /* ===================== Revival =====================
+           Warm after-hours theme celebrating the bot's revival: terracotta and
+           amber on warm charcoal, a sunrise bloom with slow sunburst rays, and
+           the Now Playing artwork as a vinyl label that spins while music plays. */
+        html[data-theme="revival"] {
+            --bg-primary: #14100d;
+            --bg-secondary: #1b1612;
+            --bg-card: #211b17;
+            --bg-elevated: #2b231e;
+            --bg-hover: #372d26;
+            --accent: #e2825c;
+            --accent-light: #f2a882;
+            --accent-glow: rgba(226, 130, 92, 0.38);
+            --accent-gradient: linear-gradient(135deg, #d4694a 0%, #e98a5f 48%, #f2b35e 100%);
+            --text-primary: #f6efe5;
+            --text-secondary: #cdbcaa;
+            --text-tertiary: #a08f7e;
+            --border: rgba(242, 179, 94, 0.1);
+            --border-light: rgba(242, 179, 94, 0.2);
+            --success: #b4d48a;
+            --glass: rgba(24, 19, 16, 0.82);
+            --accent-r: 226;
+            --accent-g: 130;
+            --accent-b: 92;
+            --accent2-r: 242;
+            --accent2-g: 179;
+            --accent2-b: 94;
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --rv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+            --card-radius: 18px;
+            --card-padding: 24px;
+            --card-padding-compact: 18px;
+            --card-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 236, 214, 0.05);
+            --pane-drag-radius: 16px;
+            --lyrics-scroll-radius: 14px;
+            --track-title-size: 1.6rem;
+            --ctrl-btn-size: 44px;
+            --radius-btn: 999px;
+            --radius-input: 14px;
+            --radius-dropdown: 16px;
+            --rv-disc: 212px;
+            --rv-label: 124px;
+            scrollbar-color: rgba(226, 130, 92, 0.45) transparent;
+        }
+
+        html[data-theme="revival"] ::selection {
+            background: rgba(226, 130, 92, 0.38);
+            color: #ffffff;
+        }
+
+        /* Sunrise bloom + film grain; plays a short rise whenever the theme is applied */
+        html[data-theme="revival"] body::before {
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            filter: none;
+            background:
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.92 0 0 0 0 0.84 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,
+                radial-gradient(ellipse 85% 55% at 50% 118%, rgba(233, 138, 95, 0.42) 0%, rgba(212, 105, 74, 0.16) 40%, transparent 72%),
+                radial-gradient(ellipse 55% 35% at 50% 108%, rgba(242, 179, 94, 0.32) 0%, transparent 62%),
+                radial-gradient(circle at 12% 8%, rgba(242, 179, 94, 0.06) 0%, transparent 38%),
+                radial-gradient(circle at 88% 14%, rgba(212, 105, 74, 0.05) 0%, transparent 36%);
+            animation: revivalSunrise 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+        }
+
+        /* Sunburst rays fanning up from the horizon, turning very slowly */
+        html[data-theme="revival"] body::after {
+            content: '';
+            position: fixed;
+            z-index: 0;
+            left: 50%;
+            top: 100%;
+            width: 240vmax;
+            height: 240vmax;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(242, 179, 94, 0.07) 0deg 2deg, transparent 4deg 15deg);
+            -webkit-mask-image: radial-gradient(circle closest-side, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 30%, transparent 58%);
+            mask-image: radial-gradient(circle closest-side, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 30%, transparent 58%);
+            animation: revivalRaysIn 3.2s ease-out both, revivalRays 300s linear infinite;
+            will-change: transform;
+        }
+
+        @keyframes revivalSunrise {
+            from { opacity: 0; transform: translateY(14%); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes revivalRaysIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes revivalRays {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        @keyframes revivalSpin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes revivalFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        @keyframes revivalGlowPulse {
+            0%, 100% { opacity: 0.32; }
+            50% { opacity: 0.5; }
+        }
+
+        html[data-theme="revival"] .header {
+            background: linear-gradient(180deg, rgba(20, 16, 13, 0.94), rgba(20, 16, 13, 0.74));
+            border-bottom: 1px solid transparent;
+            border-image: linear-gradient(90deg, transparent, rgba(226, 130, 92, 0.55) 30%, rgba(242, 179, 94, 0.55) 70%, transparent) 1;
+        }
+
+        html[data-theme="revival"] .logo {
+            font-family: var(--rv-serif);
+            font-weight: 600;
+            font-size: 1.15rem;
+            line-height: 1.1;
+            letter-spacing: -0.01em;
+            color: #fbf3e8;
+        }
+
+        /* Header is crowded below ~1280px, so the badge only shows on wide screens */
+        @media (min-width: 1280px) {
+            html[data-theme="revival"] .logo {
+                font-size: 1.3rem;
+                white-space: nowrap;
+            }
+
+            html[data-theme="revival"] .logo::after {
+                content: 'revived';
+                font-family: 'Inter', sans-serif;
+                font-size: 0.6rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.18em;
+                padding: 3px 9px;
+                border-radius: 999px;
+                border: 1px solid rgba(242, 179, 94, 0.35);
+                background: rgba(242, 179, 94, 0.08);
+                color: #f2b35e;
+            }
+        }
+
+        /* The ♫ logo becomes a slowly turning sunburst */
+        html[data-theme="revival"] .logo-icon {
+            position: relative;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(242, 179, 94, 0.3) 0%, rgba(226, 130, 92, 0.08) 55%, transparent 72%);
+            box-shadow: none;
+            color: transparent;
+        }
+
+        html[data-theme="revival"] .logo-icon::before {
+            content: '';
+            position: absolute;
+            inset: 3px;
+            background: conic-gradient(from 0deg, #f2b35e, #e2825c, #f6d7a8, #e2825c, #f2b35e);
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpolygon points='50.0,2.0 53.9,35.5 74.0,8.4 60.6,39.4 91.6,26.0 64.5,46.1 98.0,50.0 64.5,53.9 91.6,74.0 60.6,60.6 74.0,91.6 53.9,64.5 50.0,98.0 46.1,64.5 26.0,91.6 39.4,60.6 8.4,74.0 35.5,53.9 2.0,50.0 35.5,46.1 8.4,26.0 39.4,39.4 26.0,8.4 46.1,35.5'/%3E%3Ccircle cx='50' cy='50' r='15'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpolygon points='50.0,2.0 53.9,35.5 74.0,8.4 60.6,39.4 91.6,26.0 64.5,46.1 98.0,50.0 64.5,53.9 91.6,74.0 60.6,60.6 74.0,91.6 53.9,64.5 50.0,98.0 46.1,64.5 26.0,91.6 39.4,60.6 8.4,74.0 35.5,53.9 2.0,50.0 35.5,46.1 8.4,26.0 39.4,39.4 26.0,8.4 46.1,35.5'/%3E%3Ccircle cx='50' cy='50' r='15'/%3E%3C/svg%3E") center / contain no-repeat;
+            animation: revivalSpin 30s linear infinite;
+        }
+
+        html[data-theme="revival"] .card {
+            background-color: rgba(33, 27, 23, 0.9);
+            background-image: linear-gradient(180deg, rgba(233, 138, 95, 0.07) 0%, rgba(233, 138, 95, 0) 30%);
+            border: 1px solid rgba(242, 179, 94, 0.11);
+        }
+
+        html[data-theme="revival"] .card:hover {
+            border-color: rgba(242, 179, 94, 0.2);
+        }
+
+        html[data-theme="revival"] .card-title,
+        html[data-theme="revival"] .pane-header-row .card-title,
+        html[data-theme="revival"] .pane-header-with-actions .card-title,
+        html[data-theme="revival"] .playlist-header .card-title {
+            font-family: var(--rv-serif);
+            font-style: italic;
+            font-weight: 500;
+            font-size: 1.05rem;
+            letter-spacing: 0.005em;
+            text-transform: none;
+            color: #f3c9a5;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 2px;
+        }
+
+        html[data-theme="revival"] .card-title::before {
+            content: '✦';
+            display: inline-block;
+            margin-right: 0.45em;
+            font-style: normal;
+            font-size: 0.75em;
+            color: var(--accent);
+            text-shadow: 0 0 10px rgba(226, 130, 92, 0.7);
+            transform: translateY(-0.1em);
+        }
+
+        html[data-theme="revival"] .layout-pane.card > .pane-drag-bar {
+            background: linear-gradient(90deg, transparent, rgba(226, 130, 92, 0.65), rgba(242, 179, 94, 0.65), transparent);
+            border-bottom: none;
+            min-height: 3px;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0.7;
+        }
+
+        html[data-theme="revival"] .layout-pane.card > .pane-drag-bar:hover {
+            opacity: 1;
+            box-shadow: 0 0 14px rgba(226, 130, 92, 0.45);
+        }
+
+        /* ---- Now Playing: the artwork is the label of a spinning record ---- */
+        html[data-theme="revival"] .np-glow {
+            width: 420px;
+            height: 160px;
+            top: -70px;
+            filter: blur(70px);
+        }
+
+        html[data-theme="revival"] .np-glow.active {
+            animation: revivalGlowPulse 6s ease-in-out infinite;
+        }
+
+        html[data-theme="revival"] #nowPlayingContent {
+            position: relative;
+        }
+
+        html[data-theme="revival"] #nowPlayingContent:has(> .np-artwork)::before {
+            content: '';
+            position: absolute;
+            z-index: 0;
+            top: 0;
+            left: 50%;
+            width: var(--rv-disc);
+            height: var(--rv-disc);
+            margin-left: calc(var(--rv-disc) / -2);
+            border-radius: 50%;
+            background:
+                conic-gradient(from 20deg, transparent 0deg 25deg, rgba(255, 228, 196, 0.13) 45deg, transparent 65deg 205deg, rgba(255, 228, 196, 0.09) 225deg, transparent 245deg),
+                repeating-radial-gradient(circle, #15110f 0 1.5px, #1e1915 1.5px 3px),
+                #120e0c;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(242, 179, 94, 0.12), 0 0 60px rgba(226, 130, 92, 0.18);
+        }
+
+        /* Spindle */
+        html[data-theme="revival"] #nowPlayingContent:has(> .np-artwork)::after {
+            content: '';
+            position: absolute;
+            z-index: 2;
+            top: calc(var(--rv-disc) / 2 - 5px);
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            margin-left: -5px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #0c0908 0 40%, #d9c4ad 46%, #8a7563 100%);
+            box-shadow: 0 0 0 2px rgba(20, 16, 13, 0.6);
+        }
+
+        html[data-theme="revival"] .np-artwork {
+            position: relative;
+            z-index: 1;
+            width: var(--rv-label);
+            margin: calc((var(--rv-disc) - var(--rv-label)) / 2) auto calc((var(--rv-disc) - var(--rv-label)) / 2 + 18px);
+            border-radius: 50%;
+            box-shadow: 0 0 0 3px rgba(18, 14, 12, 0.9), 0 0 0 4px rgba(242, 179, 94, 0.35);
+            animation: revivalSpin 6s linear infinite;
+            animation-play-state: paused;
+        }
+
+        /* YouTube thumbnails are letterboxed 4:3; crop the black bars off the label */
+        html[data-theme="revival"] .np-artwork[src*="i.ytimg.com"] {
+            object-view-box: inset(12.5% 0);
+        }
+
+        html[data-theme="revival"] #nowPlayingCard:has(.visualizer.active) .np-artwork {
+            animation-play-state: running;
+        }
+
+        html[data-theme="revival"] .track-title {
+            font-family: var(--rv-serif);
+            font-weight: 600;
+            letter-spacing: -0.015em;
+            color: #fbf3e8;
+            text-shadow: 0 2px 18px rgba(226, 130, 92, 0.25);
+        }
+
+        html[data-theme="revival"] .track-author {
+            color: #e7b98f;
+        }
+
+        html[data-theme="revival"] .visualizer {
+            gap: 4px;
+            height: 30px;
+            margin-bottom: 18px;
+        }
+
+        html[data-theme="revival"] .viz-bar {
+            width: 4px;
+            border-radius: 3px;
+            background: linear-gradient(0deg, #d4694a, #f2b35e);
+            box-shadow: 0 0 10px rgba(242, 179, 94, 0.45);
+        }
+
+        html[data-theme="revival"] .progress-bar-bg {
+            background: rgba(242, 179, 94, 0.12);
+        }
+
+        html[data-theme="revival"] .progress-bar-fill {
+            box-shadow: 0 0 12px rgba(242, 179, 94, 0.55);
+        }
+
+        html[data-theme="revival"] .progress-times {
+            font-variant-numeric: tabular-nums;
+        }
+
+        html[data-theme="revival"] .ctrl-btn {
+            border: 1px solid rgba(242, 179, 94, 0.18);
+            color: #f6efe5;
+        }
+
+        html[data-theme="revival"] .ctrl-btn:hover {
+            border-color: rgba(242, 179, 94, 0.4);
+            box-shadow: 0 0 16px rgba(226, 130, 92, 0.25);
+        }
+
+        html[data-theme="revival"] .ctrl-btn-primary {
+            background: var(--accent-gradient);
+            border-color: transparent;
+            color: #1a120d;
+            box-shadow: 0 6px 22px rgba(226, 130, 92, 0.45);
+        }
+
+        html[data-theme="revival"] .btn {
+            color: #1a120d;
+            font-weight: 700;
+            box-shadow: 0 6px 22px rgba(226, 130, 92, 0.4);
+        }
+
+        html[data-theme="revival"] .search-input:focus {
+            border-color: rgba(226, 130, 92, 0.6);
+            box-shadow: 0 0 0 3px rgba(226, 130, 92, 0.18);
+        }
+
+        html[data-theme="revival"] .queue-item:hover,
+        html[data-theme="revival"] .history-item:hover,
+        html[data-theme="revival"] .search-result-item:hover {
+            background: rgba(226, 130, 92, 0.09);
+        }
+
+        html[data-theme="revival"] .queue-index,
+        html[data-theme="revival"] .history-index {
+            font-family: var(--rv-serif);
+            font-style: italic;
+            color: #e7b98f;
+        }
+
+        html[data-theme="revival"] .empty-state .icon {
+            color: var(--accent);
+            opacity: 0.85;
+            text-shadow: 0 0 24px rgba(226, 130, 92, 0.55);
+            animation: revivalFloat 5s ease-in-out infinite;
+        }
+
+        /* ---- Lyrics: the current line gets warm, glowing karaoke type ---- */
+        html[data-theme="revival"] .lyrics-scroll {
+            background: rgba(14, 11, 9, 0.45);
+            border: 1px solid rgba(242, 179, 94, 0.08);
+            scrollbar-width: thin;
+            scrollbar-color: rgba(226, 130, 92, 0.6) transparent;
+        }
+
+        html[data-theme="revival"] .lyrics-line.active {
+            font-family: var(--rv-serif);
+            font-style: italic;
+            font-weight: 500;
+            font-size: 1.22rem;
+            color: #fff1e2;
+            background: radial-gradient(ellipse at center, rgba(226, 130, 92, 0.16), transparent 70%);
+            box-shadow: none;
+            text-shadow: 0 0 18px rgba(242, 179, 94, 0.55), 0 0 2px rgba(255, 220, 190, 0.6);
+        }
+
+        html[data-theme="revival"] .layout-col.layout-col-over {
+            background: rgba(226, 130, 92, 0.06);
+            box-shadow: inset 0 0 0 2px rgba(226, 130, 92, 0.4);
+        }
+
+        html[data-theme="revival"] .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 2px rgba(226, 130, 92, 0.55), 0 0 28px rgba(242, 179, 94, 0.25);
+        }
+
+        html[data-theme="revival"] .login-overlay {
+            background: radial-gradient(ellipse at 50% 120%, rgba(226, 130, 92, 0.25), rgba(20, 16, 13, 0.92) 60%);
+        }
+
+        html[data-theme="revival"] .login-box {
+            border: 1px solid rgba(242, 179, 94, 0.22);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 60px rgba(226, 130, 92, 0.15);
+        }
+
+        html[data-theme="revival"] .login-box h2 {
+            font-family: var(--rv-serif);
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        @media (max-width: 640px) {
+            html[data-theme="revival"] {
+                --rv-disc: 184px;
+                --rv-label: 108px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html[data-theme="revival"] body::before,
+            html[data-theme="revival"] body::after,
+            html[data-theme="revival"] .logo-icon::before,
+            html[data-theme="revival"] .np-glow.active,
+            html[data-theme="revival"] .np-artwork,
+            html[data-theme="revival"] .empty-state .icon {
+                animation: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -4261,6 +4697,7 @@
                     <option value="signal">Signal</option>
                     <option value="victory">Victory</option>
                     <option value="neon">Neon</option>
+                    <option value="revival">Revival ✦</option>
                 </select>
             </div>
             <div class="panels-menu-wrap" id="panelsMenuWrap">
@@ -4514,7 +4951,7 @@
         const THEME_STORAGE_KEY = 'jmusicbot_theme_v1';
 
         function applyTheme(themeId) {
-            var ok = { nebula: 1, aurora: 1, ember: 1, crimson: 1, dawn: 1, 'dawn-dark': 1, steel: 1, verdant: 1, grove: 1, grapevine: 1, sumi: 1, rasta: 1, cipher: 1, signal: 1, victory: 1, neon: 1 };
+            var ok = { nebula: 1, aurora: 1, ember: 1, crimson: 1, dawn: 1, 'dawn-dark': 1, steel: 1, verdant: 1, grove: 1, grapevine: 1, sumi: 1, rasta: 1, cipher: 1, signal: 1, victory: 1, neon: 1, revival: 1 };
             if (themeId === 'nihon') themeId = 'sumi';
             if (!ok[themeId]) themeId = 'nebula';
             if (themeId === 'nebula') {
