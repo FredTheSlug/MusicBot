@@ -55,7 +55,15 @@ public class PlaylistLoader
     {
         if(folderExists())
         {
-            File dir = getSubfolderFile(folder);
+            File dir;
+            try
+            {
+                dir = getSubfolderFile(folder);
+            }
+            catch(IllegalArgumentException e)
+            {
+                return Collections.emptyList();
+            }
             if(!dir.exists() || !dir.isDirectory())
                 return Collections.emptyList();
             File[] files = dir.listFiles((pathname) -> pathname.getName().endsWith(".txt") && pathname.isFile());
@@ -84,7 +92,15 @@ public class PlaylistLoader
             createFolder();
             return Collections.emptyList();
         }
-        File dir = getSubfolderFile(parentFolder);
+        File dir;
+        try
+        {
+            dir = getSubfolderFile(parentFolder);
+        }
+        catch(IllegalArgumentException e)
+        {
+            return Collections.emptyList();
+        }
         if(!dir.exists() || !dir.isDirectory())
             return Collections.emptyList();
         File[] subdirs = dir.listFiles(File::isDirectory);
@@ -111,10 +127,12 @@ public class PlaylistLoader
         Path path = resolvePlaylistPath(folderPath);
         Files.createDirectories(path);
     }
-    
+
     public void deleteSubfolder(String folderPath) throws IOException
     {
         Path path = resolvePlaylistPath(folderPath);
+        if(path.equals(playlistsRoot()))
+            throw new IllegalArgumentException("Refusing to delete the playlists folder");
         if(!Files.exists(path)) throw new IOException("Folder not found");
         File[] contents = path.toFile().listFiles();
         if(contents != null)
@@ -130,47 +148,43 @@ public class PlaylistLoader
     
     public void movePlaylist(String name, String fromFolder, String toFolder) throws IOException
     {
-        Path source = resolvePlaylistPath(fromFolder.isEmpty() ? "" : fromFolder).resolve(name + ".txt");
-        Path targetDir = resolvePlaylistPath(toFolder.isEmpty() ? "" : toFolder);
-        Files.createDirectories(targetDir);
-        Path target = targetDir.resolve(name + ".txt");
+        Path source = resolvePlaylistFile(name, fromFolder);
+        Path target = resolvePlaylistFile(name, toFolder);
+        Files.createDirectories(target.getParent());
         Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
     }
-    
+
     public void createPlaylist(String name) throws IOException
     {
-        Files.createFile(OtherUtil.getPath(config.getPlaylistsFolder()+File.separator+name+".txt"));
+        createPlaylistInFolder(name, "");
     }
-    
+
     public void createPlaylistInFolder(String name, String folder) throws IOException
     {
-        Path dir = resolvePlaylistPath(folder);
-        Files.createDirectories(dir);
-        Path file = dir.resolve(name + ".txt");
+        Path file = resolvePlaylistFile(name, folder);
+        Files.createDirectories(file.getParent());
         Files.createFile(file);
     }
-    
+
     public void deletePlaylist(String name) throws IOException
     {
-        Files.delete(OtherUtil.getPath(config.getPlaylistsFolder()+File.separator+name+".txt"));
+        deletePlaylistInFolder(name, "");
     }
-    
+
     public void deletePlaylistInFolder(String name, String folder) throws IOException
     {
-        Path file = resolvePlaylistPath(folder).resolve(name + ".txt");
-        Files.delete(file);
+        Files.delete(resolvePlaylistFile(name, folder));
     }
-    
+
     public void writePlaylist(String name, String text) throws IOException
     {
-        Files.write(OtherUtil.getPath(config.getPlaylistsFolder()+File.separator+name+".txt"), text.trim().getBytes());
+        writePlaylistInFolder(name, "", text);
     }
-    
+
     public void writePlaylistInFolder(String name, String folder, String text) throws IOException
     {
-        Path dir = resolvePlaylistPath(folder);
-        Files.createDirectories(dir);
-        Path file = dir.resolve(name + ".txt");
+        Path file = resolvePlaylistFile(name, folder);
+        Files.createDirectories(file.getParent());
         Files.write(file, text.trim().getBytes());
     }
     
@@ -188,7 +202,7 @@ public class PlaylistLoader
                 createFolder();
                 return null;
             }
-            Path filePath = resolvePlaylistPath(folder).resolve(name + ".txt");
+            Path filePath = resolvePlaylistFile(name, folder);
             if(!Files.exists(filePath))
                 return null;
             boolean[] shuffle = {false};
@@ -211,25 +225,43 @@ public class PlaylistLoader
                 shuffle(list);
             return new Playlist(name, list, shuffle[0]);
         }
-        catch(IOException e)
+        catch(IOException | IllegalArgumentException e)
         {
             return null;
         }
     }
     
+    private Path playlistsRoot()
+    {
+        return OtherUtil.getPath(config.getPlaylistsFolder()).toAbsolutePath().normalize();
+    }
+
+    /**
+     * Resolves a folder (relative, '/'-separated) under the playlists folder.
+     * Names and folders come from Discord and the web panel, so anything that would
+     * land outside the playlists folder (.., absolute paths) is rejected.
+     */
     private Path resolvePlaylistPath(String folder)
     {
-        Path base = OtherUtil.getPath(config.getPlaylistsFolder());
+        Path base = playlistsRoot();
         if(folder == null || folder.isEmpty())
             return base;
-        return base.resolve(folder.replace('/', File.separatorChar));
+        Path resolved = base.resolve(folder.replace('/', File.separatorChar)).normalize();
+        if(!resolved.startsWith(base))
+            throw new IllegalArgumentException("Invalid playlist folder: " + folder);
+        return resolved;
     }
-    
+
+    private Path resolvePlaylistFile(String name, String folder)
+    {
+        if(name == null || name.isEmpty() || name.contains("/") || name.contains("\\") || name.contains("\0"))
+            throw new IllegalArgumentException("Invalid playlist name: " + name);
+        return resolvePlaylistPath(folder).resolve(name + ".txt");
+    }
+
     private File getSubfolderFile(String folder)
     {
-        if(folder == null || folder.isEmpty())
-            return new File(OtherUtil.getPath(config.getPlaylistsFolder()).toString());
-        return new File(OtherUtil.getPath(config.getPlaylistsFolder()).toString(), folder.replace('/', File.separatorChar));
+        return resolvePlaylistPath(folder).toFile();
     }
     
     
