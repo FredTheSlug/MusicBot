@@ -7221,13 +7221,16 @@
         (function checkDiscordLoginError() {
             try {
                 var u = new URL(window.location.href);
-                if (u.searchParams.get('login') === 'error') {
+                var loginResult = u.searchParams.get('login');
+                if (loginResult === 'error' || loginResult === 'denied') {
                     authToken = '';
                     localStorage.removeItem('authToken');
                     authRequired = true;
                     showLoginOverlay();
                     var errEl = document.getElementById('loginError');
-                    if (errEl) errEl.textContent = 'Discord sign-in failed or was cancelled. Try again.';
+                    if (errEl) errEl.textContent = loginResult === 'denied'
+                        ? 'Your Discord account isn’t in any server this bot is in.'
+                        : 'Discord sign-in failed or was cancelled. Try again.';
                     u.searchParams.delete('login');
                     var qs = u.searchParams.toString();
                     window.history.replaceState({}, '', u.pathname + (qs ? '?' + qs : '') + u.hash);

@@ -68,6 +68,7 @@ evalengine = "Nashorn"
 
 webenabled = true
 webport = 8888
+webhost = "0.0.0.0" // "127.0.0.1" when behind a reverse proxy on the same machine
 webauthenabled = false
 webdiscordclientid = ""
 webdiscordclientsecret = ""

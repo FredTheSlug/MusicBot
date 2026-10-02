@@ -85,6 +85,7 @@ public class WebServer
     private final Gson gson = new Gson();
     private Javalin app;
     private final Map<WsContext, String> wsClients = new ConcurrentHashMap<>();
+    private final Map<WsContext, AuthSession> wsSessions = new ConcurrentHashMap<>();
     private final Map<String, AuthSession> authSessions = new ConcurrentHashMap<>();
     private final Map<String, Long> oauthPendingStates = new ConcurrentHashMap<>();
     private volatile ScheduledFuture<?> sessionCleanupTask;
@@ -136,20 +137,32 @@ public class WebServer
 
         app.get("/", ctx -> ctx.redirect("/web/index.html"));
         app.get("/favicon.ico", this::handleFavicon);
+        app.exception(IllegalArgumentException.class, (e, ctx) ->
+        {
+            log.debug("Web: rejected request to {}: {}", ctx.path(), e.getMessage());
+            ctx.status(400).json(Map.of("error", "Invalid request"));
+        });
 
         app.ws("/ws", ws ->
         {
             ws.onConnect(ctx ->
             {
-                String guildId = ctx.queryParam("guild");
-                if (guildId != null)
+                if (bot.getConfig().isWebAuthEnabled())
                 {
-                    wsClients.put(ctx, guildId);
+                    AuthSession session = findSession(ctx.cookie("JMBSESSION"), ctx.queryParam("token"));
+                    if (session == null)
+                    {
+                        ctx.closeSession(4401, "Authentication required");
+                        return;
+                    }
+                    wsSessions.put(ctx, session);
                 }
+                subscribeWs(ctx, ctx.queryParam("guild"));
             });
             ws.onClose(ctx ->
             {
                 wsClients.remove(ctx);
+                wsSessions.remove(ctx);
             });
             ws.onMessage(ctx ->
             {
@@ -160,8 +173,7 @@ public class WebServer
                 }
                 else if (msg != null && msg.startsWith("guild:"))
                 {
-                    String gid = msg.substring("guild:".length());
-                    wsClients.put(ctx, gid);
+                    subscribeWs(ctx, msg.substring("guild:".length()));
                 }
             });
         });
@@ -209,8 +221,9 @@ public class WebServer
             app.before("/api/*", this::authMiddleware);
         }
 
-        app.start(port);
-        log.info("Web interface started on port {}", port);
+        String host = bot.getConfig().getWebHost();
+        app.start(host, port);
+        log.info("Web interface started on {}:{}", host, port);
 
         if (bot.getJDA() != null)
         {
@@ -312,6 +325,47 @@ public class WebServer
             }
         });
         toRemove.forEach(wsClients::remove);
+    }
+
+    /** Discord login is open to any Discord account, so only the owner and members of a guild the bot is in get a session. */
+    static boolean mayUseWebPanel(long userId, long ownerId, Set<Long> userGuildIds, Set<Long> botGuildIds)
+    {
+        if (userId == ownerId)
+            return true;
+        for (Long id : userGuildIds)
+        {
+            if (botGuildIds.contains(id))
+                return true;
+        }
+        return false;
+    }
+
+    /** @param allowedGuildIds the session's guilds, or null when the socket is not logged in */
+    static boolean mayWatchGuild(boolean authEnabled, Set<Long> allowedGuildIds, String guildId)
+    {
+        if (!authEnabled)
+            return true;
+        if (allowedGuildIds == null)
+            return false;
+        try
+        {
+            return allowedGuildIds.contains(Long.parseUnsignedLong(guildId));
+        }
+        catch (NumberFormatException e)
+        {
+            return false;
+        }
+    }
+
+    private void subscribeWs(WsContext ctx, String guildId)
+    {
+        if (guildId == null)
+            return;
+        AuthSession session = wsSessions.get(ctx);
+        if (mayWatchGuild(bot.getConfig().isWebAuthEnabled(), session == null ? null : session.oauthGuildIds, guildId))
+            wsClients.put(ctx, guildId);
+        else
+            wsClients.remove(ctx);
     }
 
     private void pruneAuthSessions()
@@ -570,29 +624,26 @@ public class WebServer
 
     private AuthSession validateAndTouchSession(Context ctx)
     {
-        long now = System.currentTimeMillis();
-        String session = ctx.cookie("JMBSESSION");
-        if (session != null)
-        {
-            AuthSession s = authSessions.get(session);
-            if (s != null && now - s.lastUsedMs <= SESSION_TTL_MS)
-            {
-                s.lastUsedMs = now;
-                return s;
-            }
-            authSessions.remove(session);
-        }
         String authHeader = ctx.header("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer "))
+        String bearer = authHeader != null && authHeader.startsWith("Bearer ") ? authHeader.substring(7) : null;
+        return findSession(ctx.cookie("JMBSESSION"), bearer);
+    }
+
+    /** Looks up a live session by cookie value, then by bearer token; refreshes its last-used time. */
+    private AuthSession findSession(String cookieValue, String bearerToken)
+    {
+        long now = System.currentTimeMillis();
+        for (String id : new String[]{cookieValue, bearerToken})
         {
-            String token = authHeader.substring(7);
-            AuthSession s = authSessions.get(token);
+            if (id == null || id.isEmpty())
+                continue;
+            AuthSession s = authSessions.get(id);
             if (s != null && now - s.lastUsedMs <= SESSION_TTL_MS)
             {
                 s.lastUsedMs = now;
                 return s;
             }
-            authSessions.remove(token);
+            authSessions.remove(id);
         }
         return null;
     }
@@ -643,7 +694,9 @@ public class WebServer
 
     private void issueSessionCookie(Context ctx, String sessionId)
     {
-        boolean secureCookie = "https".equalsIgnoreCase(ctx.scheme());
+        // Behind a reverse proxy (Caddy) the bot itself sees plain http.
+        boolean secureCookie = "https".equalsIgnoreCase(ctx.scheme())
+                || "https".equalsIgnoreCase(ctx.header("X-Forwarded-Proto"));
         ctx.cookie(new Cookie(
                 "JMBSESSION",
                 sessionId,
@@ -2171,6 +2224,15 @@ public class WebServer
             if (sessionUser == null)
             {
                 ctx.redirect("/web/index.html?login=error");
+                return;
+            }
+            Set<Long> botGuildIds = new HashSet<>();
+            bot.getJDA().getGuilds().forEach(g -> botGuildIds.add(g.getIdLong()));
+            if (!mayUseWebPanel(sessionUser.discordUserId, bot.getConfig().getOwnerId(), sessionUser.oauthGuildIds, botGuildIds))
+            {
+                log.warn("Web login denied for Discord user {} ({}): not in any server with the bot",
+                        sessionUser.displayName, Long.toUnsignedString(sessionUser.discordUserId));
+                ctx.redirect("/web/index.html?login=denied");
                 return;
             }
             String sessionId = UUID.randomUUID().toString();
