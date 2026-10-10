@@ -4,6 +4,7 @@
 mod settings;
 mod bridge;
 mod state;
+mod tray;
 
 use settings::Settings;
 use std::collections::HashMap;
@@ -13,8 +14,6 @@ use std::sync::mpsc::Sender;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::ipc::CapabilityBuilder;
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use tauri_plugin_opener::OpenerExt;
@@ -28,10 +27,11 @@ pub struct AppState {
 }
 
 /// Fans state changes out to the tray, mini-player, media keys and notifier.
-fn dispatch(_app: &AppHandle, changes: Vec<Change>) {
+fn dispatch(app: &AppHandle, changes: Vec<Change>) {
     for change in &changes {
         log::info!("state change: {}", describe(change));
     }
+    tray::refresh(app);
 }
 
 /// Messages from the bot (e.g. "No results found"). Tasks 7 and 10 surface these to the user.
@@ -73,7 +73,7 @@ fn allowed_navigation(url: &url::Url, origin: &str) -> bool {
     url.scheme() == "https" && url.host_str() == Some("discord.com")
 }
 
-fn show_main(app: &AppHandle) {
+pub(crate) fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
@@ -97,26 +97,6 @@ fn create_main_window(app: &AppHandle, panel_url: url::Url, origin: String) -> t
             false
         })
         .build()?;
-    Ok(())
-}
-
-fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show-panel", "Show panel", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
-    let mut tray = TrayIconBuilder::with_id("main-tray")
-        .tooltip("Clout Kings Music Bot")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "show-panel" => show_main(app),
-            "quit" => app.exit(0),
-            _ => {}
-        });
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
-    }
-    tray.build(app)?;
     Ok(())
 }
 
@@ -156,7 +136,7 @@ fn main() {
                     .permission("allow-bridge-report"),
             )?;
             create_main_window(app.handle(), panel_url, origin)?;
-            build_tray(app.handle())?;
+            tray::build(app.handle())?;
             spawn_ticker(app.handle().clone());
             Ok(())
         })
