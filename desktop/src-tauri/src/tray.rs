@@ -43,10 +43,10 @@ struct TrayItems {
 
 pub fn tooltip_text(state: Option<&BotState>, stale: bool) -> String {
     let text = match state {
+        // signed_in is only false after the bot itself answered 401/4401, so it wins over `connected`.
+        Some(s) if !stale && !s.signed_in => "Not signed in".to_string(),
         Some(s) if s.connected && !stale => {
-            if !s.signed_in {
-                "Not signed in".to_string()
-            } else if let Some(track) = &s.track {
+            if let Some(track) = &s.track {
                 if track.author.is_empty() { track.title.clone() } else { format!("{} — {}", track.title, track.author) }
             } else {
                 "Nothing playing".to_string()
@@ -279,6 +279,9 @@ mod tests {
     fn tooltip_signed_out() {
         let out = BotState { signed_in: false, track: None, ..playing("x", "y") };
         assert_eq!(tooltip_text(Some(&out), false), "Not signed in");
+        // After a bot restart the bot rejects the socket (4401), so the bridge reports both false.
+        let rejected = BotState { connected: false, ..out };
+        assert_eq!(tooltip_text(Some(&rejected), false), "Not signed in");
     }
 
     #[test]

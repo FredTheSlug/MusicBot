@@ -14,17 +14,7 @@
   var statusTimer = null;
   var volumeDragging = false;
 
-  function view(u) {
-    var s = u && u.state;
-    var live = !!(s && s.connected && !u.stale);
-    var signedIn = !!(s && s.signedIn);
-    var track = live && signedIn ? s.track : null;
-    if (!live) return { title: 'Reconnecting…', meta: "Can't reach the bot right now", track: null, live: false, signedIn: signedIn };
-    if (!signedIn) return { title: 'Not signed in', meta: 'Sign in from the panel', track: null, live: true, signedIn: false };
-    if (!track) return { title: 'Nothing playing', meta: s.guild && s.guild.name ? s.guild.name : '', track: null, live: true, signedIn: true };
-    var meta = track.author + (track.requestedBy ? ' · requested by ' + track.requestedBy : '');
-    return { title: track.title || 'Unknown', meta: meta, track: track, live: true, signedIn: true };
-  }
+  var view = window.__cksMiniView.view;
 
   function render(u) {
     ui = u;

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
-    "test:js": "node --test \"bridge/*.test.js\"",
+    "test:js": "node --test \"bridge/*.test.js\" \"ui/mini-player/*.test.js\"",
     "tauri": "tauri"
   },
   "devDependencies": {

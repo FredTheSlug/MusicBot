@@ -43,7 +43,7 @@ jobs:
         run: npm ci
 
       - name: Bridge tests
-        run: node --test "desktop/bridge/*.test.js"
+        run: node --test "desktop/bridge/*.test.js" "desktop/ui/mini-player/*.test.js"
 
       - name: Rust tests
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
