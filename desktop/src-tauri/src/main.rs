@@ -9,6 +9,7 @@ mod settings;
 mod spotify;
 mod state;
 mod tray;
+mod updates;
 
 use settings::Settings;
 use std::collections::HashMap;
@@ -206,6 +207,8 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .setup(|app| {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
@@ -241,6 +244,7 @@ fn main() {
             tray::build(app.handle())?;
             mini_player::create(app.handle())?;
             spawn_ticker(app.handle().clone());
+            updates::check_for_updates(app.handle(), false);
             Ok(())
         })
         .on_window_event(|window, event| {

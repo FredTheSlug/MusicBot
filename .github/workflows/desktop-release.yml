@@ -1,0 +1,74 @@
+name: Desktop Release
+
+# Builds the Windows desktop app and publishes it on tags like desktop-v0.1.0.
+# The bot jar workflow uses v* tags, so the two never trigger each other.
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install Tauri CLI
+        working-directory: desktop
+        run: npm ci
+
+      - name: Bridge tests
+        run: node --test "desktop/bridge/*.test.js"
+
+      - name: Rust tests
+        run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
+
+      # Created up front with --latest=false so the bot jar release stays "Latest".
+      - name: Create release
+        id: release
+        run: |
+          gh release create "$TAG" --title "Desktop $TAG" --notes "Clout Kings Music Bot desktop app for Windows. Unsigned: on first run choose More info → Run anyway." --latest=false
+          echo "id=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq .id)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and upload installer
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: desktop
+          releaseId: ${{ steps.release.outputs.id }}
+          includeUpdaterJson: true
+
+      # The app checks this fixed release for updates, independent of which release is "Latest".
+      - name: Publish update manifest
+        run: |
+          gh release download "$TAG" -p latest.json
+          gh release view desktop-updates > /dev/null 2>&1 || gh release create desktop-updates --title "Desktop updates" --notes "Update manifest for the desktop app. Download installers from the desktop-v* releases." --prerelease
+          gh release upload desktop-updates latest.json --clobber

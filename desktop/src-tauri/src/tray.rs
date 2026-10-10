@@ -88,6 +88,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let notify_up_next = CheckMenuItem::with_id(app, NOTIFY_UP_NEXT, "\u{201c}Up next\u{201d} notifications", true, current.notify_up_next, None::<&str>)?;
     let pause_spotify_after_send = CheckMenuItem::with_id(app, PAUSE_SPOTIFY_AFTER_SEND, "Pause Spotify after sending", true, current.pause_spotify_after_send, None::<&str>)?;
     let start_with_windows = CheckMenuItem::with_id(app, START_WITH_WINDOWS, "Start with Windows", true, current.start_with_windows, None::<&str>)?;
+    let check_updates = MenuItem::with_id(app, CHECK_UPDATES, "Check for updates", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -106,6 +107,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &pause_spotify_after_send,
             &start_with_windows,
             &PredefinedMenuItem::separator(app)?,
+            &check_updates,
             &quit,
         ],
     )?;
@@ -159,6 +161,10 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         NOTIFY_NOW_PLAYING | NOTIFY_UP_NEXT | PAUSE_SPOTIFY_AFTER_SEND | START_WITH_WINDOWS => {
             toggle_setting(app, id);
+            None
+        }
+        CHECK_UPDATES => {
+            crate::updates::check_for_updates(app, true);
             None
         }
         QUIT => {

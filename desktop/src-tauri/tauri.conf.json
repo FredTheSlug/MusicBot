@@ -15,7 +15,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -26,6 +28,18 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser"
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlDRkE1RjdFOThBQUE0QkIKUldTN3BLcVlmbC82bkFFZktZSW5ZcWVDbnR1L0prZmRRY0crVmhTay9vQkU4dkd1MzV6RkZmdlAK",
+      "endpoints": [
+        "https://github.com/FredTheSlug/MusicBot/releases/download/desktop-updates/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }
