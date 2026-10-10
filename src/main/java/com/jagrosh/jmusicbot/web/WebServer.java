@@ -158,9 +158,13 @@ public class WebServer
                     wsSessions.put(ctx, session);
                 }
                 subscribeWs(ctx, ctx.queryParam("guild"));
+                // Jetty closes idle sockets after 30 s. Protocol pings are answered by the
+                // browser itself, so this works even when a hidden page's timers are throttled.
+                ctx.enableAutomaticPings(15, TimeUnit.SECONDS);
             });
             ws.onClose(ctx ->
             {
+                ctx.disableAutomaticPings();
                 wsClients.remove(ctx);
                 wsSessions.remove(ctx);
             });
