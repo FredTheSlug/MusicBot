@@ -1,18 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="ray" x1="0" y1="1" x2="1" y2="0">
+    <radialGradient id="disc" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2c241f"/>
+      <stop offset="0.8" stop-color="#1b1613"/>
+      <stop offset="1" stop-color="#110d0b"/>
+    </radialGradient>
+    <linearGradient id="label" x1="0" y1="1" x2="1" y2="0">
       <stop offset="0" stop-color="#d4694a"/>
       <stop offset="1" stop-color="#f2b35e"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#f2b35e" stop-opacity="0.32"/>
-      <stop offset="1" stop-color="#f2b35e" stop-opacity="0"/>
-    </radialGradient>
   </defs>
-  <rect width="1024" height="1024" rx="220" fill="#14100d"/>
-  <circle cx="512" cy="512" r="430" fill="url(#glow)"/>
-  <g transform="translate(512 512) scale(7.4) translate(-50 -50)" fill="url(#ray)">
-    <polygon points="50.0,2.0 53.9,35.5 74.0,8.4 60.6,39.4 91.6,26.0 64.5,46.1 98.0,50.0 64.5,53.9 91.6,74.0 60.6,60.6 74.0,91.6 53.9,64.5 50.0,98.0 46.1,64.5 26.0,91.6 39.4,60.6 8.4,74.0 35.5,53.9 2.0,50.0 35.5,46.1 8.4,26.0 39.4,39.4 26.0,8.4 46.1,35.5"/>
-    <circle cx="50" cy="50" r="15"/>
+  <circle cx="512" cy="512" r="488" fill="url(#disc)" stroke="#f2b35e" stroke-opacity="0.6" stroke-width="14"/>
+  <g fill="none" stroke="#3b302a" stroke-width="7">
+    <circle cx="512" cy="512" r="452"/>
+    <circle cx="512" cy="512" r="416"/>
+    <circle cx="512" cy="512" r="380"/>
+    <circle cx="512" cy="512" r="344"/>
+    <circle cx="512" cy="512" r="308"/>
+    <circle cx="512" cy="512" r="272"/>
   </g>
+  <path d="M512 512 L70.3 351.3 A470 470 0 0 1 262.9 113.4 Z" fill="#fff1de" opacity="0.13"/>
+  <path d="M512 512 L953.7 672.7 A470 470 0 0 1 761.1 910.6 Z" fill="#fff1de" opacity="0.08"/>
+  <circle cx="512" cy="512" r="212" fill="url(#label)"/>
+  <circle cx="512" cy="512" r="212" fill="none" stroke="#14100d" stroke-opacity="0.4" stroke-width="10"/>
+  <circle cx="512" cy="512" r="150" fill="none" stroke="#fff1de" stroke-opacity="0.18" stroke-width="6"/>
+  <circle cx="512" cy="512" r="36" fill="#14100d"/>
 </svg>
