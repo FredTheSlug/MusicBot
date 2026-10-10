@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { toBotState, parseWsMessage, commandToRequest } = require('./core.js');
+const { toBotState, parseWsMessage, commandToRequest, isOwnLoadError } = require('./core.js');
 
 test('maps now playing, queue and me into BotState', () => {
   const s = toBotState({ connected: true, signedIn: true, me: { id: '1', name: 'fred', avatarUrl: '' }, guild: { id: '9', name: 'CK' },
@@ -86,4 +86,12 @@ test('position advances from when the page received it', () => {
   assert.equal(toBotState(Object.assign({}, snap, { nowPlaying: Object.assign({}, np, { paused: true }) }), 31000).track.positionMs, 5000, 'paused stays put');
   assert.equal(toBotState(Object.assign({}, snap, { nowPlaying: Object.assign({}, np, { isStream: true }) }), 31000).track.positionMs, 5000, 'streams have no position to advance');
   assert.equal(toBotState(snap).track.positionMs, 5000, 'no clock given: as reported');
+});
+
+test('load errors count only shortly after this app asked to play', () => {
+  // The bot broadcasts load errors to everyone watching the server, including friends' failed searches.
+  assert.equal(isOwnLoadError(10000, 0), false, 'this app never asked to play');
+  assert.equal(isOwnLoadError(10000, 5000), true);
+  assert.equal(isOwnLoadError(5000 + 30000, 5000), true, 'Spotify playlists can take a while to resolve');
+  assert.equal(isOwnLoadError(5000 + 30001, 5000), false, 'too long after our request');
 });

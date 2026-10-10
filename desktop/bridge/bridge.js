@@ -18,6 +18,7 @@
   var ws = null;
   var backoff = BACKOFF_START_MS;
   var reconnectTimer = null;
+  var lastPlayAt = 0;
 
   function invoke(cmd, args) {
     var tauri = window.__TAURI__;
@@ -110,7 +111,10 @@
     ws.onmessage = function (event) {
       var msg = core.parseWsMessage(event.data, guildId);
       if (!msg) return;
-      if (msg.type === 'error') { notice('error', msg.message || 'The bot reported an error'); return; }
+      if (msg.type === 'error') {
+        if (core.isOwnLoadError(Date.now(), lastPlayAt)) notice('error', msg.message || 'The bot reported an error');
+        return;
+      }
       if (msg.type === 'player') { setNowPlaying(msg.data); reportState(); }
       else if (msg.type === 'queue') { snap.queue = msg.data; reportState(); }
     };
@@ -128,6 +132,7 @@
     if (!guildId) { result(false, 'Pick a server in the panel first'); return; }
     var req = core.commandToRequest(guildId, cmd, core.toBotState(snap));
     if (!req) { result(true); return; }
+    if (cmd.type === 'PlayQuery' || cmd.type === 'PlaySpotifyLink') lastPlayAt = Date.now();
     fetch(req.path, {
       method: req.method,
       credentials: 'same-origin',

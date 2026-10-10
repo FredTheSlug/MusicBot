@@ -72,6 +72,16 @@
     return { type: msg.type, data: msg.data === undefined ? null : msg.data };
   }
 
+  var OWN_LOAD_ERROR_MS = 30000;
+
+  /**
+   * The bot broadcasts load errors ("No results found…") to everyone watching the server, so treat
+   * one as ours only if this app asked to play something in the last 30 s (lastPlayAt, 0 = never).
+   */
+  function isOwnLoadError(now, lastPlayAt) {
+    return lastPlayAt > 0 && now - lastPlayAt <= OWN_LOAD_ERROR_MS;
+  }
+
   function request(path, body) { return { method: 'POST', path: path, body: body }; }
 
   /** command = {type, value?} (Rust BotCommand) → panel API request, or null when there's nothing to do. */
@@ -93,7 +103,7 @@
     }
   }
 
-  var api = { toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest };
+  var api = { toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest, isOwnLoadError: isOwnLoadError };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksCore = api;
 })(typeof window !== 'undefined' ? window : this);
