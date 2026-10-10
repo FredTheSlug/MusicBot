@@ -2,13 +2,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod settings;
+mod bridge;
 mod state;
 
 use settings::Settings;
+use std::collections::HashMap;
 use state::{Change, StateStore};
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tauri::ipc::CapabilityBuilder;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -19,12 +23,23 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     pub settings_path: PathBuf,
     pub store: Mutex<StateStore>,
+    /// Commands awaiting a `Result` report from the page, by id.
+    pub pending: Mutex<HashMap<u64, Sender<Result<(), String>>>>,
 }
 
 /// Fans state changes out to the tray, mini-player, media keys and notifier.
 fn dispatch(_app: &AppHandle, changes: Vec<Change>) {
     for change in &changes {
         log::info!("state change: {}", describe(change));
+    }
+}
+
+/// Messages from the bot (e.g. "No results found"). Tasks 7 and 10 surface these to the user.
+fn dispatch_notice(_app: &AppHandle, level: &str, message: &str) {
+    let message = bridge::redact_urls(message);
+    match level {
+        "error" => log::warn!("bot notice: {message}"),
+        _ => log::info!("bot notice: {message}"),
     }
 }
 
@@ -70,6 +85,7 @@ fn create_main_window(app: &AppHandle, panel_url: url::Url, origin: String) -> t
     let handle = app.clone();
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(panel_url))
         .title("Clout Kings Music Bot")
+        .initialization_script(bridge::init_script(&origin))
         .inner_size(1280.0, 860.0)
         .on_navigation(move |url| {
             if allowed_navigation(url, &origin) {
@@ -126,7 +142,19 @@ fn main() {
             let (Some(panel_url), Some(origin)) = (settings.panel_url(), settings.server_origin()) else {
                 return Err(format!("serverUrl in {} is not a valid URL", settings_path.display()).into());
             };
-            app.manage(AppState { settings: Mutex::new(settings), settings_path, store: Mutex::new(StateStore::new()) });
+            app.manage(AppState {
+                settings: Mutex::new(settings),
+                settings_path,
+                store: Mutex::new(StateStore::new()),
+                pending: Mutex::new(HashMap::new()),
+            });
+            // The remote panel page may call exactly one command: bridge_report.
+            app.add_capability(
+                CapabilityBuilder::new("panel")
+                    .remote(format!("{origin}/*"))
+                    .window("main")
+                    .permission("allow-bridge-report"),
+            )?;
             create_main_window(app.handle(), panel_url, origin)?;
             build_tray(app.handle())?;
             spawn_ticker(app.handle().clone());
@@ -141,6 +169,7 @@ fn main() {
                 }
             }
         })
+        .invoke_handler(tauri::generate_handler![bridge::bridge_report])
         .run(tauri::generate_context!())
         .expect("error while running the app");
 }

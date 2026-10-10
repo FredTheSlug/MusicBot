@@ -1,0 +1,173 @@
+//! The channel between the Rust core and the panel page.
+//! Page → Rust: the `bridge_report` command (the only command the remote page may call).
+//! Rust → page: `webview.eval` of `window.__cksBridge.run(id, command)`; the page reports the
+//! outcome back as a `Result` report with the same id.
+
+use crate::state::BotState;
+use crate::{dispatch, dispatch_notice, AppState};
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Manager};
+
+const CORE_JS: &str = include_str!("../../bridge/core.js");
+const BRIDGE_JS: &str = include_str!("../../bridge/bridge.js");
+
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value")]
+pub enum BotCommand {
+    TogglePause,
+    Pause,
+    Skip,
+    RestartTrack,
+    SetVolume(u8),
+    PlayQuery(String),
+    PlaySpotifyLink(String),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum BridgeReport {
+    State { state: BotState },
+    Notice { level: String, message: String },
+    Result { id: u64, ok: bool, message: Option<String> },
+}
+
+/// Runs in every page load of the main window; does nothing unless the page is the bot's site.
+pub fn init_script(origin: &str) -> String {
+    let origin_json = serde_json::to_string(origin).expect("a string always serializes");
+    format!("window.__CKS_ORIGIN = {origin_json};\nif (location.origin === window.__CKS_ORIGIN) {{\n{CORE_JS}\n{BRIDGE_JS}\n}}\n")
+}
+
+/// JS that hands a command to the page. Command data only ever enters the script as JSON.
+pub fn command_js(id: u64, cmd: &BotCommand) -> String {
+    let json = serde_json::to_string(cmd).expect("BotCommand always serializes");
+    format!("window.__cksBridge && window.__cksBridge.run({id}, {json});")
+}
+
+/// Drops query strings from URLs so log lines never carry tokens or tracking parameters.
+pub fn redact_urls(text: &str) -> String {
+    text.split(' ')
+        .map(|word| {
+            if word.starts_with("http://") || word.starts_with("https://") {
+                word.split('?').next().unwrap_or(word)
+            } else {
+                word
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn eval_command(app: &AppHandle, id: u64, cmd: &BotCommand) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("The panel window isn't open")?;
+    window.eval(command_js(id, cmd)).map_err(|e| e.to_string())
+}
+
+/// Fire-and-forget: the page runs the command; failures arrive later as notices/results.
+pub fn send_command(app: &AppHandle, cmd: BotCommand) -> Result<u64, String> {
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    eval_command(app, id, &cmd)?;
+    Ok(id)
+}
+
+/// Sends a command and waits for the page to report whether the bot accepted it.
+/// Blocks the calling thread: call it from async commands or worker threads, never the main thread.
+pub fn send_command_await(app: &AppHandle, cmd: BotCommand, timeout: Duration) -> Result<(), String> {
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let (tx, rx) = mpsc::channel();
+    let state = app.state::<AppState>();
+    state.pending.lock().unwrap().insert(id, tx);
+    if let Err(e) = eval_command(app, id, &cmd) {
+        state.pending.lock().unwrap().remove(&id);
+        return Err(e);
+    }
+    match rx.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(_) => {
+            state.pending.lock().unwrap().remove(&id);
+            Err("The panel isn't loaded yet".into())
+        }
+    }
+}
+
+/// Async so it runs off the main thread: `send_command_await` may be blocking a thread
+/// while it waits for exactly this report.
+#[tauri::command]
+pub async fn bridge_report(app: AppHandle, report: BridgeReport) {
+    let state = app.state::<AppState>();
+    match report {
+        BridgeReport::State { state: bot } => {
+            let changes = state.store.lock().unwrap().apply(bot, Instant::now());
+            dispatch(&app, changes);
+        }
+        BridgeReport::Notice { level, message } => dispatch_notice(&app, &level, &message),
+        BridgeReport::Result { id, ok, message } => {
+            if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
+                let outcome = if ok { Ok(()) } else { Err(message.unwrap_or_else(|| "The bot rejected the request".into())) };
+                let _ = tx.send(outcome);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn init_script_embeds_origin_and_both_scripts() {
+        let s = init_script("https://cloutkings.duckdns.org");
+        assert!(s.contains("\"https://cloutkings.duckdns.org\""));
+        assert!(s.contains("__cksCore") && s.contains("__cksBridge"));
+    }
+
+    #[test]
+    fn command_js_round_trips_hostile_text() {
+        let cmd = BotCommand::PlayQuery("Ke$ha \"Tik\" \\ Tok\n</script>\u{2028}🎵".into());
+        let js = command_js(7, &cmd);
+        let prefix = "window.__cksBridge && window.__cksBridge.run(7, ";
+        assert!(js.starts_with(prefix) && js.ends_with(");"));
+        let back: BotCommand = serde_json::from_str(&js[prefix.len()..js.len() - 2]).unwrap();
+        assert_eq!(back, cmd);
+    }
+
+    #[test]
+    fn bot_command_json_shape() {
+        assert_eq!(serde_json::to_string(&BotCommand::Skip).unwrap(), r#"{"type":"Skip"}"#);
+        assert_eq!(serde_json::to_string(&BotCommand::SetVolume(80)).unwrap(), r#"{"type":"SetVolume","value":80}"#);
+    }
+
+    #[test]
+    fn bridge_report_deserializes_notice_and_result() {
+        let n: BridgeReport = serde_json::from_str(r#"{"type":"notice","level":"error","message":"No results"}"#).unwrap();
+        assert!(matches!(n, BridgeReport::Notice { ref message, .. } if message == "No results"));
+        let r: BridgeReport = serde_json::from_str(r#"{"type":"result","id":3,"ok":false,"message":"No voice channel available"}"#).unwrap();
+        assert!(matches!(r, BridgeReport::Result { id: 3, ok: false, .. }));
+    }
+
+    #[test]
+    fn bridge_report_deserializes_state() {
+        let r: BridgeReport = serde_json::from_str(
+            r#"{"type":"state","state":{"connected":true,"signedIn":true,"me":null,"guild":{"id":"9","name":"CK"},
+                "track":{"title":"T","author":"A","artworkUrl":null,"uri":"yt","durationMs":214000,"positionMs":85000,
+                "isStream":false,"requestedBy":"fred","requestedById":"1"},"paused":false,"volume":80,"queueHead":null}}"#,
+        )
+        .unwrap();
+        let BridgeReport::State { state } = r else { panic!("expected state") };
+        assert_eq!(state.track.unwrap().duration_ms, 214_000);
+        assert_eq!(state.volume, 80);
+    }
+
+    #[test]
+    fn redact_strips_query_strings() {
+        assert_eq!(
+            redact_urls("Could not load https://open.spotify.com/playlist/x?si=abc&t=1 now"),
+            "Could not load https://open.spotify.com/playlist/x now"
+        );
+        assert_eq!(redact_urls("No results found."), "No results found.");
+    }
+}
