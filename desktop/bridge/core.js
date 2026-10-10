@@ -11,17 +11,24 @@
   function num(v, fallback) { return typeof v === 'number' && isFinite(v) ? v : fallback; }
   function clampVolume(v) { return Math.max(0, Math.min(150, Math.round(num(Number(v), 0)))); }
 
-  function toTrack(np) {
+  /** elapsedMs = time since the page received np; a playing track has moved on by that much. */
+  function toTrack(np, elapsedMs) {
     if (!np || !np.playing) return null;
     var isStream = !!np.isStream;
+    var durationMs = isStream ? 0 : Math.max(0, num(np.duration, 0));
+    var positionMs = Math.max(0, num(np.position, 0));
+    if (!np.paused && !isStream && elapsedMs > 0) {
+      positionMs += elapsedMs;
+      if (durationMs > 0) positionMs = Math.min(positionMs, durationMs);
+    }
     return {
       title: str(np.title),
       author: str(np.author),
       artworkUrl: strOrNull(np.artworkUrl),
       uri: str(np.uri),
       // Lavaplayer reports streams with a huge duration; the app treats 0 as "no known length".
-      durationMs: isStream ? 0 : Math.max(0, num(np.duration, 0)),
-      positionMs: Math.max(0, num(np.position, 0)),
+      durationMs: durationMs,
+      positionMs: positionMs,
       isStream: isStream,
       requestedBy: strOrNull(np.requestedBy),
       requestedById: strOrNull(np.requestedById)
@@ -34,17 +41,21 @@
     return { title: str(first.title), requestedById: strOrNull(first.requestedById) };
   }
 
-  /** snapshot = {connected, signedIn, me, guild, nowPlaying, queue} → BotState (spec §2). */
-  function toBotState(snapshot) {
+  /**
+   * snapshot = {connected, signedIn, me, guild, nowPlaying, nowPlayingAt, queue} → BotState (spec §2).
+   * nowPlayingAt and now (ms clock) let the position advance past the last `player` message.
+   */
+  function toBotState(snapshot, now) {
     var snap = snapshot || {};
     var signedIn = !!snap.signedIn;
     var np = signedIn ? (snap.nowPlaying || {}) : {};
+    var elapsedMs = num(now, NaN) - num(snap.nowPlayingAt, NaN);
     return {
       connected: !!snap.connected,
       signedIn: signedIn,
       me: signedIn && snap.me ? { id: str(snap.me.id), name: str(snap.me.name), avatarUrl: typeof snap.me.avatarUrl === 'string' ? snap.me.avatarUrl : null } : null,
       guild: snap.guild ? { id: str(snap.guild.id), name: str(snap.guild.name) } : null,
-      track: signedIn ? toTrack(np) : null,
+      track: signedIn ? toTrack(np, isFinite(elapsedMs) ? elapsedMs : 0) : null,
       paused: !!np.paused,
       volume: np.volume === undefined ? 100 : clampVolume(np.volume),
       queueHead: signedIn ? toQueueHead(snap.queue) : null

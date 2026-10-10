@@ -13,7 +13,7 @@
   var BACKOFF_START_MS = 1000;
   var BACKOFF_MAX_MS = 30000;
 
-  var snap = { connected: false, signedIn: true, me: null, guild: null, nowPlaying: null, queue: null };
+  var snap = { connected: false, signedIn: true, me: null, guild: null, nowPlaying: null, nowPlayingAt: 0, queue: null };
   var guildId = '';
   var ws = null;
   var backoff = BACKOFF_START_MS;
@@ -28,7 +28,13 @@
   }
 
   function report(r) { invoke('bridge_report', { report: r }).catch(function () {}); }
-  function reportState() { report({ type: 'state', state: core.toBotState(snap) }); }
+  function reportState() { report({ type: 'state', state: core.toBotState(snap, Date.now()) }); }
+
+  /** The bot sends positions only on events, so remember when this one arrived. */
+  function setNowPlaying(np) {
+    snap.nowPlaying = np;
+    snap.nowPlayingAt = Date.now();
+  }
   function notice(level, message) { report({ type: 'notice', level: level, message: message }); }
 
   function selectedGuild() {
@@ -72,7 +78,7 @@
       var base = '/api/guild/' + encodeURIComponent(guildId);
       return Promise.all([getJson(base + '/nowplaying'), getJson(base + '/queue')]).then(function (res) {
         if (res[0].status === 401 || res[1].status === 401) { signedOut(); return; }
-        snap.nowPlaying = res[0].status === 200 ? res[0].body : null;
+        setNowPlaying(res[0].status === 200 ? res[0].body : null);
         snap.queue = res[1].status === 200 ? res[1].body : null;
         reportState();
       });
@@ -105,7 +111,7 @@
       var msg = core.parseWsMessage(event.data, guildId);
       if (!msg) return;
       if (msg.type === 'error') { notice('error', msg.message || 'The bot reported an error'); return; }
-      if (msg.type === 'player') { snap.nowPlaying = msg.data; reportState(); }
+      if (msg.type === 'player') { setNowPlaying(msg.data); reportState(); }
       else if (msg.type === 'queue') { snap.queue = msg.data; reportState(); }
     };
     ws.onclose = function (event) {

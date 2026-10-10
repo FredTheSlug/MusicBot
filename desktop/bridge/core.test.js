@@ -76,3 +76,14 @@ test('commands map to panel endpoints', () => {
 test('command_paths_encode_guild_id', () => {
   assert.equal(commandToRequest('9/../x', { type: 'Skip' }, { paused: false }).path, '/api/guild/9%2F..%2Fx/skip');
 });
+
+test('position advances from when the page received it', () => {
+  // The bot only sends `player` on events, so heartbeats and queue updates re-report an old position.
+  const np = { playing: true, paused: false, title: 'T', duration: 200000, position: 5000, isStream: false };
+  const snap = { connected: true, signedIn: true, guild: { id: '9', name: 'CK' }, nowPlaying: np, nowPlayingAt: 1000, queue: null };
+  assert.equal(toBotState(snap, 31000).track.positionMs, 35000);
+  assert.equal(toBotState(snap, 900000).track.positionMs, 200000, 'capped at the track length');
+  assert.equal(toBotState(Object.assign({}, snap, { nowPlaying: Object.assign({}, np, { paused: true }) }), 31000).track.positionMs, 5000, 'paused stays put');
+  assert.equal(toBotState(Object.assign({}, snap, { nowPlaying: Object.assign({}, np, { isStream: true }) }), 31000).track.positionMs, 5000, 'streams have no position to advance');
+  assert.equal(toBotState(snap).track.positionMs, 5000, 'no clock given: as reported');
+});
