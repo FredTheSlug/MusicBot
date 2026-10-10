@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod settings;
+mod spotify;
 mod bridge;
 mod media_keys;
 mod mini_player;
@@ -28,6 +29,8 @@ pub struct AppState {
     pub pending: Mutex<HashMap<u64, Sender<Result<(), String>>>>,
     /// None when media controls failed to start; the app works without them.
     pub media: Mutex<Option<media_keys::MediaKeys>>,
+    /// Last Spotify status seen by the ticker.
+    pub spotify: Mutex<spotify::SpotifyStatus>,
 }
 
 /// Fans state changes out to the tray, mini-player, media keys and notifier.
@@ -65,7 +68,7 @@ fn start_media_keys(app: &AppHandle) {
 }
 
 /// Messages from the bot (e.g. "No results found"). Tasks 7 and 10 surface these to the user.
-fn dispatch_notice(app: &AppHandle, level: &str, message: &str) {
+pub(crate) fn dispatch_notice(app: &AppHandle, level: &str, message: &str) {
     if mini_player::is_visible(app) {
         mini_player::emit_notice(app, level, message);
     }
@@ -95,7 +98,28 @@ fn spawn_ticker(app: AppHandle) {
         if !changes.is_empty() {
             dispatch(&app, changes);
         }
+        poll_spotify(&app);
     });
+}
+
+/// Keeps the tray item and mini-player label in step with what Spotify is playing.
+fn poll_spotify(app: &AppHandle) {
+    let status = spotify::current(&spotify::own_app_id(app));
+    let changed = {
+        let app_state = app.state::<AppState>();
+        let mut last = app_state.spotify.lock().unwrap();
+        let changed = *last != status;
+        *last = status.clone();
+        changed
+    };
+    if changed {
+        match &status.now {
+            Some(now) => log::info!("spotify: \"{}\" by {} (playing: {})", now.title, now.artist, now.playing),
+            None => log::info!("spotify: not open (media sessions available: {})", status.available),
+        }
+        tray::set_spotify(app, &status);
+        mini_player::emit_spotify(app, &status);
+    }
 }
 
 /// The panel window may only navigate within the bot's site and Discord's OAuth pages.
@@ -149,6 +173,7 @@ fn main() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let settings = settings::load(&settings_path);
@@ -161,6 +186,7 @@ fn main() {
                 store: Mutex::new(StateStore::new()),
                 pending: Mutex::new(HashMap::new()),
                 media: Mutex::new(None),
+                spotify: Mutex::new(spotify::SpotifyStatus::default()),
             });
             // The remote panel page may call exactly one command: bridge_report.
             app.add_capability(
@@ -194,7 +220,11 @@ fn main() {
             mini_player::mini_get_state,
             mini_player::mini_command,
             mini_player::mini_open_panel,
-            mini_player::mini_hide
+            mini_player::mini_hide,
+            mini_player::mini_spotify_now,
+            mini_player::mini_send_spotify,
+            mini_player::mini_play_spotify_text,
+            mini_player::mini_play_spotify_clipboard
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");

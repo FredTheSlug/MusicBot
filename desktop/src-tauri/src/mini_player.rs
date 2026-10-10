@@ -1,6 +1,7 @@
 //! The always-on-top mini-player window and the commands its bundled UI may call.
 
 use crate::bridge::{self, BotCommand};
+use crate::spotify::{self, SpotifyStatus};
 use crate::state::BotState;
 use crate::{settings, show_main, AppState};
 use serde::Serialize;
@@ -11,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWi
 
 pub const LABEL: &str = "mini-player";
 const WIDTH: f64 = 360.0;
-const HEIGHT: f64 = 140.0;
+const HEIGHT: f64 = 170.0;
 const MARGIN: i32 = 12;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -129,6 +130,10 @@ pub fn emit_state(app: &AppHandle) {
     let _ = app.emit_to(LABEL, "state-changed", ui_state(app));
 }
 
+pub fn emit_spotify(app: &AppHandle, status: &SpotifyStatus) {
+    let _ = app.emit_to(LABEL, "spotify-changed", status);
+}
+
 pub fn emit_notice(app: &AppHandle, level: &str, message: &str) {
     let _ = app.emit_to(LABEL, "notice", Notice { level: level.into(), message: message.into() });
 }
@@ -182,6 +187,32 @@ pub fn mini_hide(app: AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();
     }
+}
+
+/// Runs a blocking Spotify action on a worker thread.
+async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn mini_spotify_now(app: AppHandle) -> SpotifyStatus {
+    let own = spotify::own_app_id(&app);
+    blocking(move || Ok(spotify::current(&own))).await.unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn mini_send_spotify(app: AppHandle) -> Result<String, String> {
+    blocking(move || spotify::send_current(&app)).await
+}
+
+#[tauri::command]
+pub async fn mini_play_spotify_text(app: AppHandle, text: String) -> Result<String, String> {
+    blocking(move || spotify::play_link_text(&app, &text)).await
+}
+
+#[tauri::command]
+pub async fn mini_play_spotify_clipboard(app: AppHandle) -> Result<String, String> {
+    blocking(move || spotify::play_clipboard(&app)).await
 }
 
 #[cfg(test)]

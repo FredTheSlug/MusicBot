@@ -9,6 +9,10 @@
     "allow-mini-get-state",
     "allow-mini-command",
     "allow-mini-open-panel",
-    "allow-mini-hide"
+    "allow-mini-hide",
+    "allow-mini-spotify-now",
+    "allow-mini-send-spotify",
+    "allow-mini-play-spotify-text",
+    "allow-mini-play-spotify-clipboard"
   ]
 }

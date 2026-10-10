@@ -212,3 +212,46 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .art, .art.spinning { animation: none; }
 }
+
+/* Spotify row (send current song / paste a link) and the drop target. */
+.spotify-row {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chip {
+  min-width: 0;
+  padding: 4px 10px;
+  border: 1px solid rgba(30, 215, 96, 0.35);
+  border-radius: 999px;
+  background: rgba(30, 215, 96, 0.1);
+  color: #c9f7d8;
+  font: 500 0.72rem var(--sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.chip:first-child { flex: 1 1 auto; }
+.chip.ghost { flex: 0 0 auto; border-color: var(--line); background: transparent; color: var(--text-2); }
+.chip:hover:not(:disabled) { border-color: rgba(30, 215, 96, 0.6); }
+.chip:disabled { opacity: 0.5; cursor: default; }
+
+.drop-hint {
+  position: absolute;
+  inset: 4px;
+  z-index: 5;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed rgba(30, 215, 96, 0.7);
+  border-radius: 10px;
+  background: rgba(20, 16, 13, 0.92);
+  color: #c9f7d8;
+  font: 600 0.85rem var(--sans);
+  pointer-events: none;
+}
+
+.mini.dropping .drop-hint { display: flex; }

@@ -2,6 +2,7 @@
 
 use crate::bridge::{self, BotCommand};
 use crate::mini_player;
+use crate::spotify::{self, SpotifyStatus};
 use crate::state::BotState;
 use crate::{show_main, AppState};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -32,6 +33,7 @@ struct TrayItems {
     now_playing: MenuItem<Wry>,
     toggle_pause: MenuItem<Wry>,
     skip: MenuItem<Wry>,
+    send_spotify: MenuItem<Wry>,
 }
 
 pub fn tooltip_text(state: Option<&BotState>, stale: bool) -> String {
@@ -72,6 +74,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let now_playing = MenuItem::with_id(app, NOW_PLAYING, "Can't reach the bot", false, None::<&str>)?;
     let toggle_pause = MenuItem::with_id(app, TOGGLE_PAUSE, "Pause", false, None::<&str>)?;
     let skip = MenuItem::with_id(app, SKIP, "Skip", false, None::<&str>)?;
+    let send_spotify = MenuItem::with_id(app, SEND_SPOTIFY, "Send my Spotify song", false, None::<&str>)?;
+    let paste_spotify = MenuItem::with_id(app, PASTE_SPOTIFY, "Play Spotify link from clipboard", true, None::<&str>)?;
     let show_panel = MenuItem::with_id(app, SHOW_PANEL, "Show panel", true, None::<&str>)?;
     let mini = MenuItem::with_id(app, MINI_PLAYER, "Mini-player", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?;
@@ -81,6 +85,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &now_playing,
             &toggle_pause,
             &skip,
+            &send_spotify,
+            &paste_spotify,
             &PredefinedMenuItem::separator(app)?,
             &show_panel,
             &mini,
@@ -103,7 +109,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
-    app.manage(TrayItems { now_playing, toggle_pause, skip });
+    app.manage(TrayItems { now_playing, toggle_pause, skip, send_spotify });
     Ok(())
 }
 
@@ -119,6 +125,14 @@ fn on_menu(app: &AppHandle, id: &str) {
             mini_player::toggle(app);
             None
         }
+        SEND_SPOTIFY => {
+            run_spotify_action(app, spotify::send_current);
+            None
+        }
+        PASTE_SPOTIFY => {
+            run_spotify_action(app, spotify::play_clipboard);
+            None
+        }
         QUIT => {
             app.exit(0);
             None
@@ -130,6 +144,22 @@ fn on_menu(app: &AppHandle, id: &str) {
             log::warn!("tray command failed: {e}");
         }
     }
+}
+
+/// Spotify actions block (media sessions, waiting for the bot), so they run on a worker thread.
+fn run_spotify_action(app: &AppHandle, action: fn(&AppHandle) -> Result<String, String>) {
+    let app = app.clone();
+    std::thread::spawn(move || match action(&app) {
+        Ok(message) => crate::dispatch_notice(&app, "info", &message),
+        Err(message) => crate::dispatch_notice(&app, "error", &message),
+    });
+}
+
+pub fn set_spotify(app: &AppHandle, status: &SpotifyStatus) {
+    let items = app.state::<TrayItems>();
+    let playing = status.now.as_ref().is_some_and(|n| n.playing);
+    let _ = items.send_spotify.set_text(if status.available { "Send my Spotify song" } else { "Spotify not available" });
+    let _ = items.send_spotify.set_enabled(status.available && playing);
 }
 
 /// Re-reads the store and updates the tooltip and menu labels.

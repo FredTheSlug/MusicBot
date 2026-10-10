@@ -89,6 +89,40 @@
   el('close').addEventListener('click', function () { invoke('mini_hide'); });
   el('openPanel').addEventListener('click', function () { invoke('mini_open_panel'); });
 
+  // ---- Spotify: send the current song, paste a link, or drop one onto the window ----
+  function renderSpotify(status) {
+    var send = el('spotifySend');
+    send.hidden = !(status && status.available);
+    var now = status && status.now;
+    var playing = !!(now && now.playing);
+    send.disabled = !playing;
+    send.textContent = playing ? '▶ Send ' + now.title + (now.artist ? ' – ' + now.artist : '') : "Spotify isn't playing";
+  }
+
+  function spotifyAction(cmd, args) {
+    invoke(cmd, args).then(function (msg) { if (msg) showStatus(msg); }).catch(function (e) { showStatus(String(e)); });
+  }
+
+  el('spotifySend').addEventListener('click', function () { spotifyAction('mini_send_spotify'); });
+  el('spotifyPaste').addEventListener('click', function () { spotifyAction('mini_play_spotify_clipboard'); });
+
+  var dragDepth = 0;
+  window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; el('mini').classList.add('dropping'); });
+  window.addEventListener('dragleave', function () { if (--dragDepth <= 0) { dragDepth = 0; el('mini').classList.remove('dropping'); } });
+  window.addEventListener('dragover', function (e) { e.preventDefault(); });
+  window.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dragDepth = 0;
+    el('mini').classList.remove('dropping');
+    var dt = e.dataTransfer;
+    // Whatever arrives is logged by the app, so we can see what Spotify's drag data looks like.
+    var text = dt.getData('text/uri-list') || dt.getData('text/plain') || ('[no text; types: ' + Array.prototype.join.call(dt.types, ', ') + ']');
+    spotifyAction('mini_play_spotify_text', { text: text });
+  });
+
+  listen('spotify-changed', function (e) { renderSpotify(e.payload); });
+  invoke('mini_spotify_now').then(renderSpotify);
+
   listen('state-changed', function (e) { render(e.payload); });
   listen('notice', function (e) { showStatus(e.payload.message); });
   invoke('mini_get_state').then(render);
