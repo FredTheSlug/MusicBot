@@ -211,10 +211,22 @@ pub fn send_current(app: &AppHandle) -> Result<String, String> {
     Ok(format!("Sent “{query}” to the bot"))
 }
 
+/// What gets logged about pasted or dropped text: never the text, which may be anything on the
+/// clipboard. A link is described by its kind only (track, album, playlist).
+fn link_input_log(text: &str) -> String {
+    let chars = text.chars().count();
+    match parse_spotify_link(text) {
+        Some(link) => {
+            let kind = link.split('/').nth(3).unwrap_or("link");
+            format!("Spotify link input: {kind} link ({chars} chars)")
+        }
+        None => format!("Spotify link input: not a Spotify link ({chars} chars)"),
+    }
+}
+
 /// Plays the first Spotify link found in pasted or dropped text.
 pub fn play_link_text(app: &AppHandle, text: &str) -> Result<String, String> {
-    let preview: String = bridge::redact_urls(text.trim()).chars().take(120).collect();
-    log::info!("Spotify link input: {preview}");
+    log::info!("{}", link_input_log(text));
     let link = parse_spotify_link(text).ok_or("That's not a Spotify link")?;
     bridge::send_command_await(app, BotCommand::PlaySpotifyLink(link), SEND_TIMEOUT)?;
     Ok("Sent the Spotify link to the bot".into())
@@ -228,6 +240,15 @@ pub fn play_clipboard(app: &AppHandle) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_input_log_never_contains_the_pasted_text() {
+        let line = link_input_log("my bank password is hunter2");
+        assert!(!line.contains("hunter2"), "{line}");
+        let line = link_input_log("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc");
+        assert!(!line.contains("37i9dQZF1DXcBWIGoYBM5M"), "{line}");
+        assert!(line.contains("playlist"), "{line}");
+    }
 
     #[test]
     fn parses_accepted_link_forms() {

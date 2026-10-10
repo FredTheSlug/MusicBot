@@ -105,8 +105,7 @@
     dragDepth = 0;
     el('mini').classList.remove('dropping');
     var dt = e.dataTransfer;
-    // Whatever arrives is logged by the app, so we can see what Spotify's drag data looks like.
-    var text = dt.getData('text/uri-list') || dt.getData('text/plain') || ('[no text; types: ' + Array.prototype.join.call(dt.types, ', ') + ']');
+    var text = dt.getData('text/uri-list') || dt.getData('text/plain') || '';
     spotifyAction('mini_play_spotify_text', { text: text });
   });
 
