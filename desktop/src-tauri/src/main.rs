@@ -2,10 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod settings;
+mod state;
 
 use settings::Settings;
+use state::{Change, StateStore};
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -15,6 +18,36 @@ use tauri_plugin_opener::OpenerExt;
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub settings_path: PathBuf,
+    pub store: Mutex<StateStore>,
+}
+
+/// Fans state changes out to the tray, mini-player, media keys and notifier.
+fn dispatch(_app: &AppHandle, changes: Vec<Change>) {
+    for change in &changes {
+        log::info!("state change: {}", describe(change));
+    }
+}
+
+/// Log-safe summary of a change (titles only, no URLs).
+fn describe(change: &Change) -> String {
+    match change {
+        Change::TrackChanged { track, initial } => format!("track \"{}\" (initial: {initial})", track.title),
+        Change::PlaybackChanged { paused } => format!("paused: {paused}"),
+        Change::Cleared => "nothing playing".into(),
+        Change::QueueHeadChanged(head) => format!("queue head: {:?}", head.as_ref().map(|h| &h.title)),
+        Change::ConnectionChanged { connected, signed_in } => format!("connected: {connected}, signed in: {signed_in}"),
+    }
+}
+
+/// Marks the bot unreachable when the bridge goes quiet for `state::STALE_AFTER`.
+fn spawn_ticker(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(5));
+        let changes = app.state::<AppState>().store.lock().unwrap().check_stale(Instant::now());
+        if !changes.is_empty() {
+            dispatch(&app, changes);
+        }
+    });
 }
 
 /// The panel window may only navigate within the bot's site and Discord's OAuth pages.
@@ -93,9 +126,10 @@ fn main() {
             let (Some(panel_url), Some(origin)) = (settings.panel_url(), settings.server_origin()) else {
                 return Err(format!("serverUrl in {} is not a valid URL", settings_path.display()).into());
             };
-            app.manage(AppState { settings: Mutex::new(settings), settings_path });
+            app.manage(AppState { settings: Mutex::new(settings), settings_path, store: Mutex::new(StateStore::new()) });
             create_main_window(app.handle(), panel_url, origin)?;
             build_tray(app.handle())?;
+            spawn_ticker(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
