@@ -4,10 +4,11 @@ use crate::bridge::{self, BotCommand};
 use crate::mini_player;
 use crate::spotify::{self, SpotifyStatus};
 use crate::state::BotState;
-use crate::{show_main, AppState};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use crate::{settings, show_main, AppState};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
+use tauri_plugin_autostart::ManagerExt;
 
 pub const TRAY_ID: &str = "main-tray";
 
@@ -34,6 +35,10 @@ struct TrayItems {
     toggle_pause: MenuItem<Wry>,
     skip: MenuItem<Wry>,
     send_spotify: MenuItem<Wry>,
+    notify_now_playing: CheckMenuItem<Wry>,
+    notify_up_next: CheckMenuItem<Wry>,
+    pause_spotify_after_send: CheckMenuItem<Wry>,
+    start_with_windows: CheckMenuItem<Wry>,
 }
 
 pub fn tooltip_text(state: Option<&BotState>, stale: bool) -> String {
@@ -78,6 +83,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let paste_spotify = MenuItem::with_id(app, PASTE_SPOTIFY, "Play Spotify link from clipboard", true, None::<&str>)?;
     let show_panel = MenuItem::with_id(app, SHOW_PANEL, "Show panel", true, None::<&str>)?;
     let mini = MenuItem::with_id(app, MINI_PLAYER, "Mini-player", true, None::<&str>)?;
+    let current = app.state::<AppState>().settings.lock().unwrap().clone();
+    let notify_now_playing = CheckMenuItem::with_id(app, NOTIFY_NOW_PLAYING, "Now-playing notifications", true, current.notify_now_playing, None::<&str>)?;
+    let notify_up_next = CheckMenuItem::with_id(app, NOTIFY_UP_NEXT, "\u{201c}Up next\u{201d} notifications", true, current.notify_up_next, None::<&str>)?;
+    let pause_spotify_after_send = CheckMenuItem::with_id(app, PAUSE_SPOTIFY_AFTER_SEND, "Pause Spotify after sending", true, current.pause_spotify_after_send, None::<&str>)?;
+    let start_with_windows = CheckMenuItem::with_id(app, START_WITH_WINDOWS, "Start with Windows", true, current.start_with_windows, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -90,6 +100,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &show_panel,
             &mini,
+            &PredefinedMenuItem::separator(app)?,
+            &notify_now_playing,
+            &notify_up_next,
+            &pause_spotify_after_send,
+            &start_with_windows,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -109,7 +124,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
-    app.manage(TrayItems { now_playing, toggle_pause, skip, send_spotify });
+    app.manage(TrayItems {
+        now_playing,
+        toggle_pause,
+        skip,
+        send_spotify,
+        notify_now_playing,
+        notify_up_next,
+        pause_spotify_after_send,
+        start_with_windows,
+    });
     Ok(())
 }
 
@@ -133,6 +157,10 @@ fn on_menu(app: &AppHandle, id: &str) {
             run_spotify_action(app, spotify::play_clipboard);
             None
         }
+        NOTIFY_NOW_PLAYING | NOTIFY_UP_NEXT | PAUSE_SPOTIFY_AFTER_SEND | START_WITH_WINDOWS => {
+            toggle_setting(app, id);
+            None
+        }
         QUIT => {
             app.exit(0);
             None
@@ -143,6 +171,38 @@ fn on_menu(app: &AppHandle, id: &str) {
         if let Err(e) = bridge::send_command(app, command) {
             log::warn!("tray command failed: {e}");
         }
+    }
+}
+
+/// The menu has already flipped the check mark; mirror it into settings and save.
+fn toggle_setting(app: &AppHandle, id: &str) {
+    let items = app.state::<TrayItems>();
+    let item = match id {
+        NOTIFY_NOW_PLAYING => &items.notify_now_playing,
+        NOTIFY_UP_NEXT => &items.notify_up_next,
+        PAUSE_SPOTIFY_AFTER_SEND => &items.pause_spotify_after_send,
+        START_WITH_WINDOWS => &items.start_with_windows,
+        _ => return,
+    };
+    let checked = item.is_checked().unwrap_or(false);
+    if id == START_WITH_WINDOWS {
+        let autolaunch = app.autolaunch();
+        if let Err(e) = if checked { autolaunch.enable() } else { autolaunch.disable() } {
+            let _ = item.set_checked(!checked);
+            crate::dispatch_notice(app, "error", &format!("Couldn't change Start with Windows: {e}"));
+            return;
+        }
+    }
+    let app_state = app.state::<AppState>();
+    let mut current = app_state.settings.lock().unwrap();
+    match id {
+        NOTIFY_NOW_PLAYING => current.notify_now_playing = checked,
+        NOTIFY_UP_NEXT => current.notify_up_next = checked,
+        PAUSE_SPOTIFY_AFTER_SEND => current.pause_spotify_after_send = checked,
+        _ => current.start_with_windows = checked,
+    }
+    if let Err(e) = settings::save(&app_state.settings_path, &current) {
+        log::warn!("could not save settings: {e}");
     }
 }
 

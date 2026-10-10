@@ -1,11 +1,12 @@
 // No console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod settings;
-mod spotify;
 mod bridge;
 mod media_keys;
 mod mini_player;
+mod notify;
+mod settings;
+mod spotify;
 mod state;
 mod tray;
 
@@ -18,6 +19,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::ipc::CapabilityBuilder;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 use tauri_plugin_opener::OpenerExt;
 
@@ -38,9 +40,29 @@ fn dispatch(app: &AppHandle, changes: Vec<Change>) {
     for change in &changes {
         log::info!("state change: {}", describe(change));
     }
+    show_toasts(app, &changes);
     tray::refresh(app);
     mini_player::emit_state(app);
     update_media_keys(app);
+}
+
+/// True when the panel window is visible and has focus (toasts would be redundant).
+fn main_window_in_front(app: &AppHandle) -> bool {
+    app.get_webview_window("main")
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
+}
+
+fn show_toasts(app: &AppHandle, changes: &[Change]) {
+    if changes.is_empty() {
+        return;
+    }
+    let app_state = app.state::<AppState>();
+    let state = app_state.store.lock().unwrap().current().cloned();
+    let settings = app_state.settings.lock().unwrap().clone();
+    let toasts = notify::toasts_for(changes, state.as_ref(), &settings, main_window_in_front(app), mini_player::is_visible(app));
+    for toast in &toasts {
+        notify::show(app, toast);
+    }
 }
 
 fn update_media_keys(app: &AppHandle) {
@@ -67,10 +89,13 @@ fn start_media_keys(app: &AppHandle) {
     }
 }
 
-/// Messages from the bot (e.g. "No results found"). Tasks 7 and 10 surface these to the user.
+/// Messages for the user (bot errors like "No results found", Spotify action results).
+/// Shown in the mini-player when it's open, otherwise as a toast unless the panel is in front.
 pub(crate) fn dispatch_notice(app: &AppHandle, level: &str, message: &str) {
     if mini_player::is_visible(app) {
         mini_player::emit_notice(app, level, message);
+    } else if !main_window_in_front(app) {
+        notify::show(app, &notify::Toast { title: "Clout Kings Music Bot".into(), body: message.into() });
     }
     let message = bridge::redact_urls(message);
     match level {
@@ -130,6 +155,11 @@ fn allowed_navigation(url: &url::Url, origin: &str) -> bool {
     url.scheme() == "https" && url.host_str() == Some("discord.com")
 }
 
+/// Launched by "Start with Windows": stay in the tray instead of opening the panel.
+fn start_hidden(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--hidden")
+}
+
 pub(crate) fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -138,12 +168,13 @@ pub(crate) fn show_main(app: &AppHandle) {
     }
 }
 
-fn create_main_window(app: &AppHandle, panel_url: url::Url, origin: String) -> tauri::Result<()> {
+fn create_main_window(app: &AppHandle, panel_url: url::Url, origin: String, visible: bool) -> tauri::Result<()> {
     let handle = app.clone();
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(panel_url))
         .title("Clout Kings Music Bot")
         .initialization_script(bridge::init_script(&origin))
         .inner_size(1280.0, 860.0)
+        .visible(visible)
         .on_navigation(move |url| {
             if allowed_navigation(url, &origin) {
                 return true;
@@ -174,12 +205,15 @@ fn main() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .setup(|app| {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let settings = settings::load(&settings_path);
             let (Some(panel_url), Some(origin)) = (settings.panel_url(), settings.server_origin()) else {
                 return Err(format!("serverUrl in {} is not a valid URL", settings_path.display()).into());
             };
+            let start_with_windows = settings.start_with_windows;
             app.manage(AppState {
                 settings: Mutex::new(settings),
                 settings_path,
@@ -195,7 +229,14 @@ fn main() {
                     .window("main")
                     .permission("allow-bridge-report"),
             )?;
-            create_main_window(app.handle(), panel_url, origin)?;
+            let hidden = start_hidden(&std::env::args().collect::<Vec<_>>());
+            create_main_window(app.handle(), panel_url, origin, !hidden)?;
+            if start_with_windows {
+                // Re-register so the entry follows the app if an update moved it.
+                if let Err(e) = app.autolaunch().enable() {
+                    log::warn!("could not register Start with Windows: {e}");
+                }
+            }
             start_media_keys(app.handle());
             tray::build(app.handle())?;
             mini_player::create(app.handle())?;
@@ -233,6 +274,12 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_hidden_flag() {
+        assert!(start_hidden(&["app.exe".to_string(), "--hidden".to_string()]));
+        assert!(!start_hidden(&["app.exe".to_string()]));
+    }
 
     #[test]
     fn navigation_allowlist() {

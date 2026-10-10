@@ -18,6 +18,8 @@ url = "2"
 log = "0.4"
 souvlaki = "0.8.3"
 tauri-plugin-clipboard-manager = "2.4"
+tauri-plugin-notification = "2.6"
+tauri-plugin-autostart = "2.7"
 windows = { version = "0.62", features = ["Media_Control", "Foundation", "Foundation_Collections"] }
 
 [dev-dependencies]
