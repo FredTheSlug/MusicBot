@@ -12,3 +12,11 @@
 .env.*
 !.env.example
 nb*.xml
+# Desktop companion app (desktop/)
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+!desktop/package.json
+!desktop/package-lock.json
+!desktop/src-tauri/tauri.conf.json
+!desktop/src-tauri/capabilities/*.json
