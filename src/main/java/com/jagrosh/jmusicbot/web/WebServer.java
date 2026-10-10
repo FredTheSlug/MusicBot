@@ -178,6 +178,7 @@ public class WebServer
             });
         });
 
+        app.get("/api/me", this::handleMe);
         app.get("/api/guilds", this::handleGetGuilds);
         app.get("/api/guild/{guildId}/nowplaying", this::handleGetNowPlaying);
         app.get("/api/guild/{guildId}/queue", this::handleGetQueue);
@@ -357,6 +358,23 @@ public class WebServer
         }
     }
 
+    /** Adds requestedBy (name, or fallbackName) and requestedById (unsigned id string, or null) to a track payload. */
+    static void putRequester(Map<String, Object> target, RequestMetadata rm, String fallbackName)
+    {
+        boolean known = rm != null && rm.user != null;
+        target.put("requestedBy", known ? rm.user.username : fallbackName);
+        target.put("requestedById", known && rm.user.id != 0L ? Long.toUnsignedString(rm.user.id) : null);
+    }
+
+    static Map<String, Object> mePayload(long discordUserId, String name, String avatarUrl)
+    {
+        Map<String, Object> me = new HashMap<>();
+        me.put("id", Long.toUnsignedString(discordUserId));
+        me.put("name", name);
+        me.put("avatarUrl", avatarUrl);
+        return me;
+    }
+
     private void subscribeWs(WsContext ctx, String guildId)
     {
         if (guildId == null)
@@ -407,11 +425,7 @@ public class WebServer
                 result.put("durationFormatted", track.getInfo().isStream ? "LIVE" : TimeUtil.formatTime(track.getDuration()));
                 result.put("isStream", track.getInfo().isStream);
 
-                RequestMetadata rm = handler.getRequestMetadata();
-                if (rm != null && rm.user != null)
-                {
-                    result.put("requestedBy", rm.user.username);
-                }
+                putRequester(result, handler.getRequestMetadata(), "");
             }
         }
         return result;
@@ -467,7 +481,7 @@ public class WebServer
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();
-            t.put("requestedBy", rm != null && rm.user != null ? rm.user.username : "Web");
+            putRequester(t, rm, "Web");
             tracks.add(t);
         }
         result.put("tracks", tracks);
@@ -498,7 +512,7 @@ public class WebServer
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();
-            t.put("requestedBy", rm != null && rm.user != null ? rm.user.username : "");
+            putRequester(t, rm, "");
             tracks.add(t);
         }
         result.put("tracks", tracks);
@@ -541,6 +555,17 @@ public class WebServer
             }
         }
         return guild;
+    }
+
+    private void handleMe(Context ctx)
+    {
+        AuthSession session = bot.getConfig().isWebAuthEnabled() ? ctx.attribute(AuthSession.CTX_KEY) : null;
+        if (session == null)
+        {
+            ctx.status(404).json(Map.of("error", "Web authentication is disabled"));
+            return;
+        }
+        ctx.json(mePayload(session.discordUserId, session.displayName, session.avatarUrl));
     }
 
     private void handleGetGuilds(Context ctx)
@@ -610,7 +635,7 @@ public class WebServer
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();
-            t.put("requestedBy", rm != null && rm.user != null ? rm.user.username : "Web");
+            putRequester(t, rm, "Web");
             tracks.add(t);
         }
         result.put("tracks", tracks);
@@ -2287,7 +2312,7 @@ public class WebServer
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();
-            t.put("requestedBy", rm != null && rm.user != null ? rm.user.username : "");
+            putRequester(t, rm, "");
             tracks.add(t);
         }
         result.put("tracks", tracks);
