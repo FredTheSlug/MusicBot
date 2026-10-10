@@ -1,0 +1,214 @@
+/* Mini-player — Revival palette (see the panel's html[data-theme="revival"]). */
+:root {
+  --bg: #14100d;
+  --card: #211b17;
+  --elevated: #2b231e;
+  --accent: #e2825c;
+  --amber: #f2b35e;
+  --text: #f6efe5;
+  --text-2: #cdbcaa;
+  --text-3: #a08f7e;
+  --line: rgba(242, 179, 94, 0.14);
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+  user-select: none;
+}
+
+.mini {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  height: 100%;
+  padding: 12px 14px;
+  background:
+    radial-gradient(ellipse 70% 90% at 0% 100%, rgba(226, 130, 92, 0.16), transparent 70%),
+    linear-gradient(180deg, var(--card), var(--bg));
+  border: 1px solid var(--line);
+}
+
+/* Artwork as the label of a small record; spins while playing. */
+.disc {
+  position: relative;
+  flex: 0 0 88px;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 20deg, transparent 0 25deg, rgba(255, 228, 196, 0.12) 45deg, transparent 65deg 205deg, rgba(255, 228, 196, 0.08) 225deg, transparent 245deg),
+    repeating-radial-gradient(circle, #15110f 0 1.5px, #1e1915 1.5px 3px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(242, 179, 94, 0.18);
+}
+
+.disc::before {
+  content: '';
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, #d4694a, var(--amber));
+}
+
+.art {
+  position: absolute;
+  inset: 22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  animation: spin 6s linear infinite;
+  animation-play-state: paused;
+}
+
+.art.spinning { animation-play-state: running; }
+.art[src*="i.ytimg.com"] { object-view-box: inset(12.5% 0); }
+
+.spindle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #0c0908;
+  box-shadow: 0 0 0 1.5px #d9c4ad;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 18px;
+}
+
+.title {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 1.02rem;
+  line-height: 1.25;
+  color: #fbf3e8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  font-size: 0.74rem;
+  color: #e7b98f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1em;
+}
+
+.progress {
+  height: 4px;
+  margin: 4px 0 2px;
+  border-radius: 4px;
+  background: rgba(242, 179, 94, 0.14);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #d4694a, var(--amber));
+  box-shadow: 0 0 10px rgba(242, 179, 94, 0.5);
+  transition: width 0.5s linear;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ctrl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(242, 179, 94, 0.2);
+  border-radius: 50%;
+  background: var(--elevated);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ctrl svg { width: 14px; height: 14px; fill: currentColor; }
+.ctrl:hover:not(:disabled) { border-color: rgba(242, 179, 94, 0.45); box-shadow: 0 0 12px rgba(226, 130, 92, 0.3); }
+.ctrl:disabled { opacity: 0.35; cursor: default; }
+
+.ctrl.primary {
+  width: 32px;
+  height: 32px;
+  border-color: transparent;
+  background: linear-gradient(135deg, #d4694a, #e98a5f 48%, var(--amber));
+  color: #1a120d;
+  box-shadow: 0 4px 14px rgba(226, 130, 92, 0.45);
+}
+
+.volume {
+  flex: 1;
+  min-width: 40px;
+  margin-left: 6px;
+  accent-color: var(--accent);
+}
+
+.open-panel {
+  margin-left: auto;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #d4694a, var(--amber));
+  color: #1a120d;
+  font: 600 0.75rem var(--sans);
+  cursor: pointer;
+}
+
+.status {
+  font-size: 0.72rem;
+  color: #f0a58a;
+  min-height: 0.9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.close svg { width: 100%; height: 100%; fill: currentColor; }
+.close:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+
+@media (prefers-reduced-motion: reduce) {
+  .art, .art.spinning { animation: none; }
+}

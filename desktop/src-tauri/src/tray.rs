@@ -1,10 +1,11 @@
 //! Tray icon: tooltip, now-playing label, and the menu. Later tasks add their own items.
 
 use crate::bridge::{self, BotCommand};
+use crate::mini_player;
 use crate::state::BotState;
 use crate::{show_main, AppState};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
 pub const TRAY_ID: &str = "main-tray";
@@ -72,6 +73,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let toggle_pause = MenuItem::with_id(app, TOGGLE_PAUSE, "Pause", false, None::<&str>)?;
     let skip = MenuItem::with_id(app, SKIP, "Skip", false, None::<&str>)?;
     let show_panel = MenuItem::with_id(app, SHOW_PANEL, "Show panel", true, None::<&str>)?;
+    let mini = MenuItem::with_id(app, MINI_PLAYER, "Mini-player", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -81,6 +83,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &skip,
             &PredefinedMenuItem::separator(app)?,
             &show_panel,
+            &mini,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -90,7 +93,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("Can't reach the bot")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
+        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                mini_player::toggle(tray.app_handle());
+            }
+        });
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
@@ -105,6 +113,10 @@ fn on_menu(app: &AppHandle, id: &str) {
         SKIP => Some(BotCommand::Skip),
         SHOW_PANEL => {
             show_main(app);
+            None
+        }
+        MINI_PLAYER => {
+            mini_player::toggle(app);
             None
         }
         QUIT => {

@@ -3,6 +3,7 @@
 
 mod settings;
 mod bridge;
+mod mini_player;
 mod state;
 mod tray;
 
@@ -32,10 +33,14 @@ fn dispatch(app: &AppHandle, changes: Vec<Change>) {
         log::info!("state change: {}", describe(change));
     }
     tray::refresh(app);
+    mini_player::emit_state(app);
 }
 
 /// Messages from the bot (e.g. "No results found"). Tasks 7 and 10 surface these to the user.
-fn dispatch_notice(_app: &AppHandle, level: &str, message: &str) {
+fn dispatch_notice(app: &AppHandle, level: &str, message: &str) {
+    if mini_player::is_visible(app) {
+        mini_player::emit_notice(app, level, message);
+    }
     let message = bridge::redact_urls(message);
     match level {
         "error" => log::warn!("bot notice: {message}"),
@@ -137,19 +142,30 @@ fn main() {
             )?;
             create_main_window(app.handle(), panel_url, origin)?;
             tray::build(app.handle())?;
+            mini_player::create(app.handle())?;
             spawn_ticker(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
             // Closing the panel hides it to the tray; Quit in the tray exits.
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+            match event {
+                WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                     api.prevent_close();
                     let _ = window.hide();
                 }
+                WindowEvent::Moved(position) if window.label() == mini_player::LABEL => {
+                    mini_player::on_moved(window.app_handle(), *position);
+                }
+                _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![bridge::bridge_report])
+        .invoke_handler(tauri::generate_handler![
+            bridge::bridge_report,
+            mini_player::mini_get_state,
+            mini_player::mini_command,
+            mini_player::mini_open_panel,
+            mini_player::mini_hide
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the app");
 }

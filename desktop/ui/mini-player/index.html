@@ -1,5 +1,47 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Mini-player</title></head>
-<body></body>
+<head>
+  <meta charset="utf-8">
+  <title>Clout Kings Mini-player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500..700;1,9..144,500&family=Inter:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="mini.css">
+</head>
+<body>
+  <main class="mini" data-tauri-drag-region>
+    <div class="disc" id="disc" data-tauri-drag-region>
+      <img class="art" id="art" alt="" hidden>
+      <span class="spindle"></span>
+    </div>
+
+    <section class="info" data-tauri-drag-region>
+      <div class="title" id="title" data-tauri-drag-region>Connecting…</div>
+      <div class="meta" id="meta" data-tauri-drag-region></div>
+
+      <div class="progress" id="progress"><div class="progress-fill" id="progressFill"></div></div>
+
+      <div class="controls">
+        <button type="button" id="restart" class="ctrl" title="Restart song" aria-label="Restart song">
+          <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>
+        </button>
+        <button type="button" id="toggle" class="ctrl primary" title="Pause" aria-label="Pause">
+          <svg viewBox="0 0 24 24" id="toggleIcon"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+        </button>
+        <button type="button" id="skip" class="ctrl" title="Skip" aria-label="Skip">
+          <svg viewBox="0 0 24 24"><path d="M4 5v14l10.5-7zM16 5h2v14h-2z"/></svg>
+        </button>
+        <input type="range" id="volume" class="volume" min="0" max="150" step="1" value="100" title="Volume" aria-label="Volume">
+        <button type="button" id="openPanel" class="open-panel" hidden>Open panel</button>
+      </div>
+
+      <div class="spotify-row" id="spotifyRow" hidden></div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <button type="button" class="close" id="close" title="Hide mini-player" aria-label="Hide mini-player">
+      <svg viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z"/></svg>
+    </button>
+  </main>
+  <script src="mini.js"></script>
+</body>
 </html>

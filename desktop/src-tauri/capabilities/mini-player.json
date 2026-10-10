@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mini-player",
+  "description": "The bundled mini-player window: state events, dragging, and its own commands.",
+  "windows": ["mini-player"],
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-start-dragging",
+    "allow-mini-get-state",
+    "allow-mini-command",
+    "allow-mini-open-panel",
+    "allow-mini-hide"
+  ]
+}
