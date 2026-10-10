@@ -3,6 +3,7 @@
 
 mod settings;
 mod bridge;
+mod media_keys;
 mod mini_player;
 mod state;
 mod tray;
@@ -25,6 +26,8 @@ pub struct AppState {
     pub store: Mutex<StateStore>,
     /// Commands awaiting a `Result` report from the page, by id.
     pub pending: Mutex<HashMap<u64, Sender<Result<(), String>>>>,
+    /// None when media controls failed to start; the app works without them.
+    pub media: Mutex<Option<media_keys::MediaKeys>>,
 }
 
 /// Fans state changes out to the tray, mini-player, media keys and notifier.
@@ -34,6 +37,31 @@ fn dispatch(app: &AppHandle, changes: Vec<Change>) {
     }
     tray::refresh(app);
     mini_player::emit_state(app);
+    update_media_keys(app);
+}
+
+fn update_media_keys(app: &AppHandle) {
+    let app_state = app.state::<AppState>();
+    let (state, position) = {
+        let store = app_state.store.lock().unwrap();
+        (store.current().cloned(), store.position_ms(Instant::now()))
+    };
+    let mut media = app_state.media.lock().unwrap();
+    if let Some(media) = media.as_mut() {
+        media.update(state.as_ref(), position);
+    }
+}
+
+fn start_media_keys(app: &AppHandle) {
+    let Some(main) = app.get_webview_window("main") else { return };
+    let media = main
+        .hwnd()
+        .map_err(|e| e.to_string())
+        .and_then(|hwnd| media_keys::MediaKeys::new(hwnd.0 as *mut std::ffi::c_void, app.clone()));
+    match media {
+        Ok(media) => *app.state::<AppState>().media.lock().unwrap() = Some(media),
+        Err(e) => log::warn!("media keys unavailable: {e}"),
+    }
 }
 
 /// Messages from the bot (e.g. "No results found"). Tasks 7 and 10 surface these to the user.
@@ -132,6 +160,7 @@ fn main() {
                 settings_path,
                 store: Mutex::new(StateStore::new()),
                 pending: Mutex::new(HashMap::new()),
+                media: Mutex::new(None),
             });
             // The remote panel page may call exactly one command: bridge_report.
             app.add_capability(
@@ -141,6 +170,7 @@ fn main() {
                     .permission("allow-bridge-report"),
             )?;
             create_main_window(app.handle(), panel_url, origin)?;
+            start_media_keys(app.handle());
             tray::build(app.handle())?;
             mini_player::create(app.handle())?;
             spawn_ticker(app.handle().clone());
