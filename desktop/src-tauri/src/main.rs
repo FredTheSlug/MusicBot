@@ -157,6 +157,11 @@ fn allowed_navigation(url: &url::Url, origin: &str) -> bool {
 }
 
 /// Launched by "Start with Windows": stay in the tray instead of opening the panel.
+/// Windows whose close request (X button, Alt+F4) hides them instead of destroying them.
+fn hides_on_close(label: &str) -> bool {
+    label == "main" || label == mini_player::LABEL
+}
+
 fn start_hidden(args: &[String]) -> bool {
     args.iter().any(|a| a == "--hidden")
 }
@@ -248,9 +253,9 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Closing the panel hides it to the tray; Quit in the tray exits.
+            // Closing the panel or the mini-player hides it to the tray; Quit in the tray exits.
             match event {
-                WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
+                WindowEvent::CloseRequested { api, .. } if hides_on_close(window.label()) => {
                     api.prevent_close();
                     let _ = window.hide();
                 }
@@ -278,6 +283,14 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_hides_main_and_mini_player() {
+        assert!(hides_on_close("main"));
+        // Alt+F4 on the focused mini-player must not destroy it: the tray could never reopen it.
+        assert!(hides_on_close(mini_player::LABEL));
+        assert!(!hides_on_close("anything-else"));
+    }
 
     #[test]
     fn start_hidden_flag() {
