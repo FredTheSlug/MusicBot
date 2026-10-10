@@ -2176,7 +2176,7 @@ public class WebServer
         return null;
     }
 
-    private void authMiddleware(Context ctx)
+    void authMiddleware(Context ctx)
     {
         String path = ctx.path();
         if ("/api/logout".equals(path)) return;
@@ -2189,7 +2189,9 @@ public class WebServer
             return;
         }
 
+        // Setting a status alone does not stop Javalin from running the endpoint.
         ctx.status(401).json(Map.of("error", "Authentication required"));
+        ctx.skipRemainingHandlers();
     }
 
     private void handleDiscordAuthStart(Context ctx)
