@@ -40,7 +40,8 @@
     }
     art.classList.toggle('spinning', !!(v.track && s && !s.paused));
 
-    ['restart', 'toggle', 'skip', 'lyricsBtn'].forEach(function (id) { el(id).disabled = !v.track; });
+    ['restart', 'toggle', 'skip'].forEach(function (id) { el(id).disabled = !v.track; });
+    el('lyricsBtn').disabled = !MV.lyricsButtonEnabled(!!v.track, panel);
     var paused = !!(s && s.paused);
     el('toggleIcon').innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
     el('toggle').title = paused ? 'Play' : 'Pause';
@@ -134,6 +135,7 @@
     el('lyricsPanel').hidden = next !== 'lyrics';
     el('menuBtn').setAttribute('aria-pressed', String(next === 'menu'));
     el('lyricsBtn').setAttribute('aria-pressed', String(next === 'lyrics'));
+    el('lyricsBtn').disabled = !MV.lyricsButtonEnabled(!!view(ui).track, next);
     if (next === 'menu') openMenu();
     if (next === 'lyrics') loadLyrics();
   }

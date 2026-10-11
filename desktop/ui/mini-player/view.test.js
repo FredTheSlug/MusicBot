@@ -140,3 +140,12 @@ test('trackKey', () => {
   assert.equal(trackKey({ track: null }), null);
   assert.equal(trackKey(null), null);
 });
+
+const { lyricsButtonEnabled } = require('./view.js');
+
+test('lyrics button stays usable to close the lyrics after the song ends', () => {
+  assert.equal(lyricsButtonEnabled(true, 'none'), true);
+  assert.equal(lyricsButtonEnabled(false, 'none'), false);
+  assert.equal(lyricsButtonEnabled(false, 'menu'), false);
+  assert.equal(lyricsButtonEnabled(false, 'lyrics'), true);
+});

@@ -99,7 +99,13 @@
     return t ? t.title + '\n' + t.uri : null;
   }
 
+  /** Needs a song to open, but must stay usable to close the lyrics once the song has ended. */
+  function lyricsButtonEnabled(hasTrack, panel) {
+    return hasTrack || panel === 'lyrics';
+  }
+
   var api = {
+    lyricsButtonEnabled: lyricsButtonEnabled,
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
     spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly,
     currentLyricIndex: currentLyricIndex, trackKey: trackKey
