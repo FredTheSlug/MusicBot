@@ -1,11 +1,14 @@
 //! The latest bot state as reported by the panel bridge, and what changed between reports.
 //! Pure logic: no Tauri, Windows or network code, so it can be unit-tested with a fake clock.
 
+use crate::lookup::cut;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// A hidden window's timers can be throttled to once a minute, so this is deliberately lenient.
 pub const STALE_AFTER: Duration = Duration::from_secs(180);
+const UP_NEXT_MAX: usize = 20;
+const TEXT_MAX: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -43,6 +46,37 @@ pub struct QueueHead {
     pub requested_by_id: Option<String>,
 }
 
+/// The bot's repeat setting; anything unrecognised reads as Off rather than dropping the report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE", from = "String")]
+pub enum RepeatMode {
+    #[default]
+    Off,
+    All,
+    Single,
+}
+
+impl From<String> for RepeatMode {
+    fn from(mode: String) -> Self {
+        match mode.as_str() {
+            "ALL" => RepeatMode::All,
+            "SINGLE" => RepeatMode::Single,
+            _ => RepeatMode::Off,
+        }
+    }
+}
+
+/// A song waiting in the queue, as Up Next shows it.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct QueueItem {
+    pub title: String,
+    pub author: String,
+    pub uri: String,
+    pub duration_ms: u64,
+    pub requested_by: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BotState {
@@ -54,6 +88,24 @@ pub struct BotState {
     pub paused: bool,
     pub volume: u8,
     pub queue_head: Option<QueueHead>,
+    pub shuffle: bool,
+    pub repeat: RepeatMode,
+    /// The next songs (at most 20); `queue_length` counts them all.
+    pub up_next: Vec<QueueItem>,
+    pub queue_length: u32,
+}
+
+impl BotState {
+    /// The report comes from a remote page: keep what reaches the UI bounded.
+    pub fn capped(mut self) -> BotState {
+        self.up_next.truncate(UP_NEXT_MAX);
+        for item in &mut self.up_next {
+            item.title = cut(&item.title, TEXT_MAX);
+            item.author = cut(&item.author, TEXT_MAX);
+            item.requested_by = item.requested_by.as_deref().map(|r| cut(r, TEXT_MAX));
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +156,7 @@ impl StateStore {
     }
 
     pub fn apply(&mut self, next: BotState, now: Instant) -> Vec<Change> {
+        let next = next.capped();
         let mut changes = Vec::new();
         let prev_connection = self.state.as_ref().map(|p| (p.connected && !self.stale, p.signed_in));
         if prev_connection != Some((next.connected, next.signed_in)) {
@@ -192,6 +245,30 @@ mod tests {
         }
     }
 
+    #[test]
+    fn old_state_payload_gets_defaults() {
+        let s: BotState = serde_json::from_str(r#"{"connected":true,"signedIn":true,"paused":false,"volume":80}"#).unwrap();
+        assert!(!s.shuffle);
+        assert_eq!(s.repeat, RepeatMode::Off);
+        assert!(s.up_next.is_empty());
+        assert_eq!(s.queue_length, 0);
+    }
+
+    #[test]
+    fn repeat_mode_serde() {
+        assert_eq!(serde_json::from_str::<RepeatMode>(r#""SINGLE""#).unwrap(), RepeatMode::Single);
+        assert_eq!(serde_json::from_str::<RepeatMode>(r#""WEIRD""#).unwrap(), RepeatMode::Off);
+        assert_eq!(serde_json::to_string(&RepeatMode::All).unwrap(), r#""ALL""#);
+    }
+
+    #[test]
+    fn up_next_is_capped() {
+        let item = QueueItem { title: "x".repeat(300), ..Default::default() };
+        let s = BotState { up_next: vec![item; 25], ..Default::default() }.capped();
+        assert_eq!(s.up_next.len(), 20);
+        assert_eq!(s.up_next[0].title.chars().count(), 200);
+    }
+
     fn st(title: &str, paused: bool, pos: u64) -> BotState {
         BotState {
             connected: true,
@@ -202,6 +279,7 @@ mod tests {
             paused,
             volume: 100,
             queue_head: None,
+            ..Default::default()
         }
     }
 

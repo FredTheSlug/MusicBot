@@ -35,6 +35,31 @@
     };
   }
 
+  var UP_NEXT_MAX = 20;
+  var REPEAT_MODES = ['OFF', 'ALL', 'SINGLE'];
+
+  /** The next songs, as the mini-player's Up Next lists them. */
+  function toUpNext(queue) {
+    var tracks = queue && Array.isArray(queue.tracks) ? queue.tracks : [];
+    return tracks.slice(0, UP_NEXT_MAX).map(function (t) {
+      t = t || {};
+      return {
+        title: str(t.title),
+        author: str(t.author),
+        uri: str(t.uri),
+        durationMs: Math.max(0, num(t.duration, 0)),
+        requestedBy: strOrNull(t.requestedBy)
+      };
+    });
+  }
+
+  function queueLength(queue) {
+    if (!queue) return 0;
+    var size = num(queue.size, NaN);
+    if (isFinite(size)) return Math.max(0, size);
+    return Array.isArray(queue.tracks) ? queue.tracks.length : 0;
+  }
+
   function toQueueHead(queue) {
     var first = queue && Array.isArray(queue.tracks) ? queue.tracks[0] : null;
     if (!first) return null;
@@ -58,7 +83,11 @@
       track: signedIn ? toTrack(np, isFinite(elapsedMs) ? elapsedMs : 0) : null,
       paused: !!np.paused,
       volume: np.volume === undefined ? 100 : clampVolume(np.volume),
-      queueHead: signedIn ? toQueueHead(snap.queue) : null
+      queueHead: signedIn ? toQueueHead(snap.queue) : null,
+      shuffle: signedIn && !!np.shuffleMode,
+      repeat: signedIn && REPEAT_MODES.indexOf(np.repeatMode) >= 0 ? np.repeatMode : 'OFF',
+      upNext: signedIn ? toUpNext(snap.queue) : [],
+      queueLength: signedIn ? queueLength(snap.queue) : 0
     };
   }
 

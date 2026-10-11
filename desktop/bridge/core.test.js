@@ -109,3 +109,22 @@ test('readTheme builds id and vars', () => {
   assert.deepEqual(readTheme('neon', getVar), { id: 'neon', vars: { '--accent': '#fff' } });
   assert.deepEqual(readTheme(null, () => ''), { id: 'nebula', vars: {} });
 });
+
+test('queue and modes map into BotState', () => {
+  const tracks = Array.from({ length: 22 }, (_, i) => ({ title: 'T' + i, author: 'A', uri: 'u' + i, duration: 1000 * i, requestedBy: i % 2 ? 'fred' : '' }));
+  const s = toBotState({ connected: true, signedIn: true, guild: { id: '9', name: 'CK' },
+    nowPlaying: { playing: true, title: 'Now', duration: 1000, position: 0, shuffleMode: true, repeatMode: 'ALL' },
+    queue: { tracks: tracks, size: 22 } });
+  assert.equal(s.upNext.length, 20);
+  assert.deepEqual(s.upNext[1], { title: 'T1', author: 'A', uri: 'u1', durationMs: 1000, requestedBy: 'fred' });
+  assert.equal(s.upNext[0].requestedBy, null);
+  assert.equal(s.queueLength, 22);
+  assert.equal(s.shuffle, true);
+  assert.equal(s.repeat, 'ALL');
+  assert.equal(toBotState({ connected: true, signedIn: true, nowPlaying: { repeatMode: 'WEIRD' } }).repeat, 'OFF');
+  const out = toBotState({ connected: true, signedIn: false, nowPlaying: { shuffleMode: true, repeatMode: 'ALL' }, queue: { tracks: tracks } });
+  assert.deepEqual(out.upNext, []);
+  assert.equal(out.queueLength, 0);
+  assert.equal(out.repeat, 'OFF');
+  assert.equal(out.shuffle, false);
+});

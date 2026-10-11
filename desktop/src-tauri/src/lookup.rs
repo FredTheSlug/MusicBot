@@ -39,7 +39,7 @@ pub struct Lyrics {
 }
 
 /// Cuts to `max` chars (not bytes), ending in "…" when something was cut.
-fn cut(text: &str, max: usize) -> String {
+pub(crate) fn cut(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
     }
