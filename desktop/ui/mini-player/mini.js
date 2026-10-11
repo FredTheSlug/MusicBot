@@ -529,7 +529,12 @@
     el('matchPanel').checked = prefs.matchPanel;
     el('themeSelect').value = prefs.theme;
     el('themeRow').hidden = prefs.matchPanel;
+    el('hideFullscreen').checked = prefs.hideInFullscreen;
   }
+
+  el('hideFullscreen').addEventListener('change', function () {
+    invoke('mini_set_hide_in_fullscreen', { on: el('hideFullscreen').checked });
+  });
 
   el('opacity').addEventListener('input', function () {
     var pct = Number(el('opacity').value);

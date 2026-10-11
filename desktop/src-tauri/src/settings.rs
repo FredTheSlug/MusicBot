@@ -34,6 +34,8 @@ pub struct Settings {
     pub mini_player_theme: String,
     /// The last theme the panel reported.
     pub panel_theme: Option<PanelTheme>,
+    /// Hide the mini-player while a fullscreen game, video or presentation runs.
+    pub hide_in_fullscreen: bool,
 }
 
 impl Default for Settings {
@@ -49,6 +51,7 @@ impl Default for Settings {
             mini_player_match_panel: true,
             mini_player_theme: "nebula".to_string(),
             panel_theme: None,
+            hide_in_fullscreen: true,
         }
     }
 }
@@ -110,6 +113,7 @@ mod tests {
         assert!(s.mini_player_match_panel);
         assert_eq!(s.mini_player_theme, "nebula");
         assert_eq!(s.panel_theme, None);
+        assert!(s.hide_in_fullscreen);
         assert_eq!(Settings { mini_player_opacity: 0.01, ..Settings::default() }.opacity(), 0.15);
         assert_eq!(Settings { mini_player_opacity: 7.0, ..Settings::default() }.opacity(), 1.0);
         assert_eq!(Settings { mini_player_opacity: f64::NAN, ..Settings::default() }.opacity(), 1.0);

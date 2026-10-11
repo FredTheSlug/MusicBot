@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bridge;
+mod fullscreen;
 mod lookup;
 mod media_keys;
 mod mini_player;
@@ -256,6 +257,7 @@ fn main() {
             mini_player::create(app.handle())?;
             spawn_ticker(app.handle().clone());
             sleep::spawn_worker(app.handle().clone());
+            fullscreen::spawn_worker(app.handle().clone());
             updates::check_for_updates(app.handle(), false);
             Ok(())
         })
@@ -297,7 +299,8 @@ fn main() {
             mini_player::mini_playlists,
             mini_player::mini_play_playlist,
             mini_player::mini_set_sleep,
-            mini_player::mini_get_sleep
+            mini_player::mini_get_sleep,
+            mini_player::mini_set_hide_in_fullscreen
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");

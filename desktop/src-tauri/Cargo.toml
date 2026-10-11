@@ -22,7 +22,7 @@ tauri-plugin-notification = "2.6"
 tauri-plugin-autostart = "2.7"
 tauri-plugin-updater = "2.13"
 tauri-plugin-dialog = "2"
-windows = { version = "0.62", features = ["Media_Control", "Foundation", "Foundation_Collections", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
+windows = { version = "0.62", features = ["Media_Control", "Foundation", "Foundation_Collections", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile = "3"

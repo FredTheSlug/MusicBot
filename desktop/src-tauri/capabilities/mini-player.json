@@ -25,6 +25,7 @@
     "allow-mini-playlists",
     "allow-mini-play-playlist",
     "allow-mini-set-sleep",
-    "allow-mini-get-sleep"
+    "allow-mini-get-sleep",
+    "allow-mini-set-hide-in-fullscreen"
   ]
 }

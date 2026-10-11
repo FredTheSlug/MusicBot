@@ -87,6 +87,7 @@ pub struct MiniPrefs {
     pub match_panel: bool,
     pub theme: String,
     pub effective: PanelTheme,
+    pub hide_in_fullscreen: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -391,7 +392,13 @@ pub fn mini_get_prefs(app: AppHandle) -> MiniPrefs {
         match_panel: settings.mini_player_match_panel,
         theme: settings.mini_player_theme.clone(),
         effective: theme::effective(&settings),
+        hide_in_fullscreen: settings.hide_in_fullscreen,
     }
+}
+
+#[tauri::command]
+pub fn mini_set_hide_in_fullscreen(app: AppHandle, on: bool) {
+    update_settings(&app, |s| s.hide_in_fullscreen = on);
 }
 
 #[tauri::command]

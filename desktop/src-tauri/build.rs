@@ -24,6 +24,7 @@ fn main() {
             "mini_play_playlist",
             "mini_set_sleep",
             "mini_get_sleep",
+            "mini_set_hide_in_fullscreen",
         ])),
     )
     .expect("failed to run tauri-build");
