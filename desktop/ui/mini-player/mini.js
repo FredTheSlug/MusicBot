@@ -536,10 +536,13 @@
   }
 
   function startRecording(action, button) {
-    if (recording) recording.button.classList.remove('recording');
+    if (recording) stopRecording(recording.previous);
     recording = { action: action, button: button, previous: button.textContent };
     button.classList.add('recording');
     button.textContent = 'Press keys…';
+    // Our own combinations would be swallowed (and fire) while recording, so release them.
+    invoke('mini_hotkeys_suspend', { suspend: true }).catch(function () {});
+    showStatus('Press the new keys (Esc cancels). If nothing happens, another app uses them.');
   }
 
   function stopRecording(text) {
@@ -547,7 +550,10 @@
     recording.button.classList.remove('recording');
     recording.button.textContent = text;
     recording = null;
+    invoke('mini_hotkeys_suspend', { suspend: false }).catch(function () {});
   }
+
+  window.addEventListener('blur', function () { if (recording) stopRecording(recording.previous); });
 
   // Capture before anything else (Escape would otherwise close the menu).
   document.addEventListener('keydown', function (e) {

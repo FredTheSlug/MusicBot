@@ -84,6 +84,16 @@ pub fn resized_origin(origin: (i32, i32), old_h: u32, new_h: u32, monitor: Rect)
     (origin.0, y.min(lowest).max(monitor.y))
 }
 
+/// The new origin for switching to `on`, or None when the player is already in that mode.
+pub fn compact_origin(current: bool, on: bool, origin: (i32, i32), scale: f64, monitor: Rect) -> Option<(i32, i32)> {
+    if current == on {
+        return None;
+    }
+    let (_, old_h) = closed_size(scale, current);
+    let (_, new_h) = closed_size(scale, on);
+    Some(resized_origin(origin, old_h, new_h, monitor))
+}
+
 fn is_compact(app: &AppHandle) -> bool {
     app.state::<AppState>().settings.lock().unwrap().mini_player_compact
 }
@@ -162,6 +172,10 @@ pub fn toggle(app: &AppHandle) {
         hide(app);
         return;
     }
+    crate::fullscreen::forget_auto_hide();
+    // The fullscreen hide bypasses tao, which then still thinks the window is shown; hiding first
+    // brings its record back in line so the show below actually happens.
+    let _ = window.hide();
     let monitors: Vec<Rect> = window
         .available_monitors()
         .unwrap_or_default()
@@ -295,8 +309,9 @@ pub fn collapse(app: &AppHandle) {
     let _ = app.emit_to(LABEL, "panel-reset", ());
 }
 
-/// Hides the mini-player; it always comes back closed.
+/// Hides the mini-player at the user's request; it always comes back closed.
 pub fn hide(app: &AppHandle) {
+    crate::fullscreen::forget_auto_hide();
     collapse(app);
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();
@@ -426,6 +441,12 @@ pub struct CompactChanged {
 /// Switches between the full player and the slim bar, keeping the bottom edge in place.
 #[tauri::command]
 pub fn mini_set_compact(app: AppHandle, on: bool) -> Result<(), String> {
+    let current = is_compact(&app);
+    if current == on {
+        // A double click or both switches at once: nothing to move, just keep the UI in step.
+        let _ = app.emit_to(LABEL, "compact-changed", CompactChanged { compact: on });
+        return Ok(());
+    }
     collapse(&app);
     update_settings(&app, |s| s.mini_player_compact = on);
     let window = app.get_webview_window(LABEL).ok_or("The mini-player isn't open")?;
@@ -437,13 +458,17 @@ pub fn mini_set_compact(app: AppHandle, on: bool) -> Result<(), String> {
         .flatten()
         .or_else(|| window.primary_monitor().ok().flatten())
         .ok_or("No monitor found")?;
-    let (_, old_h) = closed_size(scale, !on);
-    let (_, new_h) = closed_size(scale, on);
-    let (x, y) = resized_origin((position.x, position.y), old_h, new_h, work_area(&monitor));
+    let (x, y) = compact_origin(current, on, (position.x, position.y), scale, work_area(&monitor)).unwrap_or((position.x, position.y));
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = window.set_size(LogicalSize::new(WIDTH, closed_height(on)));
     let _ = app.emit_to(LABEL, "compact-changed", CompactChanged { compact: on });
     Ok(())
+}
+
+/// While the user records a new combination, our own registrations would swallow it.
+#[tauri::command]
+pub fn mini_hotkeys_suspend(app: AppHandle, suspend: bool) {
+    hotkeys::suspend(&app, suspend);
 }
 
 #[tauri::command]
@@ -611,6 +636,14 @@ mod tests {
     fn compact_sizes() {
         assert_eq!(closed_size(1.0, true), (360, 64));
         assert_eq!(closed_size(1.5, true), (540, 96));
+    }
+
+    #[test]
+    fn compact_switch_to_the_current_mode_does_nothing() {
+        assert_eq!(compact_origin(true, true, (100, 964), 1.0, SCREEN), None);
+        assert_eq!(compact_origin(false, false, (100, 858), 1.0, SCREEN), None);
+        assert_eq!(compact_origin(false, true, (100, 858), 1.0, SCREEN), Some((100, 964)));
+        assert_eq!(compact_origin(true, false, (100, 964), 1.0, SCREEN), Some((100, 858)));
     }
 
     #[test]

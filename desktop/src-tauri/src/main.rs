@@ -307,7 +307,8 @@ fn main() {
             mini_player::mini_get_hotkeys,
             mini_player::mini_set_hotkeys_enabled,
             mini_player::mini_set_hotkey,
-            mini_player::mini_set_compact
+            mini_player::mini_set_compact,
+            mini_player::mini_hotkeys_suspend
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");

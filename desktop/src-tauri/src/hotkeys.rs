@@ -140,6 +140,17 @@ pub fn apply(app: &AppHandle) -> Vec<HotkeyAction> {
     failed
 }
 
+/// Releases every combination while the user records a new one (or puts them back).
+pub fn suspend(app: &AppHandle, suspended: bool) {
+    if suspended {
+        if let Err(e) = app.global_shortcut().unregister_all() {
+            log::warn!("could not pause hotkeys: {e}");
+        }
+    } else {
+        apply(app);
+    }
+}
+
 /// The plugin's handler: runs the action bound to the pressed combination.
 pub fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state != ShortcutState::Pressed {

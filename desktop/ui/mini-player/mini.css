@@ -228,7 +228,12 @@ html, body {
   accent-color: var(--accent);
 }
 
+/* Signed out: Open panel instead of controls that can't work (both sizes). */
+.controls:has(.open-panel:not([hidden])) .ctrl,
+.controls:has(.open-panel:not([hidden])) .volume { display: none; }
+
 .open-panel {
+  white-space: nowrap;
   margin-left: auto;
   padding: 5px 12px;
   border: 0;
@@ -304,7 +309,7 @@ html.compact .meta { grid-area: meta; font-size: 0.7rem; min-height: 0; }
 html.compact .controls { grid-area: controls; gap: 4px; }
 html.compact .bottom-row { display: contents; }
 html.compact #menuBtn { grid-area: menu; }
-html.compact #restart, html.compact .ctrl.mode, html.compact .volume, html.compact .open-panel,
+html.compact #restart, html.compact .ctrl.mode, html.compact .volume,
 html.compact #spotifyBtn, html.compact #lyricsBtn, html.compact #queueBtn, html.compact .sleep-badge { display: none; }
 
 /* A message takes the artist line's place for a moment. */

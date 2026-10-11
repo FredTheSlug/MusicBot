@@ -30,6 +30,7 @@
     "allow-mini-get-hotkeys",
     "allow-mini-set-hotkeys-enabled",
     "allow-mini-set-hotkey",
-    "allow-mini-set-compact"
+    "allow-mini-set-compact",
+    "allow-mini-hotkeys-suspend"
   ]
 }

@@ -2,10 +2,25 @@
 //! "busy" notification state), and bring it back afterwards.
 
 use crate::{mini_player, AppState};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 const CHECK_EVERY: Duration = Duration::from_secs(1);
+
+/// Set while the mini-player is hidden because of a fullscreen app (and only then).
+static APP_HID: AtomicBool = AtomicBool::new(false);
+
+/// The user showed or hid the mini-player: whatever the app hid is the user's call now.
+pub fn forget_auto_hide() {
+    APP_HID.store(false, Ordering::SeqCst);
+}
+
+/// What counts as "fullscreen now": while the mini-player itself is in front (the user just
+/// showed it over the game) nothing changes, so that doesn't read as the game ending.
+pub fn observe(was: bool, fullscreen_now: bool, ours_in_front: bool) -> bool {
+    if ours_in_front { was } else { fullscreen_now }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fullscreen {
@@ -77,49 +92,66 @@ fn fullscreen_now() -> bool {
     false
 }
 
-/// Shows the mini-player without taking focus from whatever the user went back to.
+/// The app's own hide and show go straight to Windows, both of them, so tao's record of the
+/// window ("shown") stays true across the pair and later user hides/shows keep working. Showing
+/// this way doesn't take focus from whatever the user went back to.
 #[cfg(windows)]
-fn show_quietly(app: &AppHandle) {
+fn set_shown_quietly(app: &AppHandle, shown: bool) {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE};
     let Some(window) = app.get_webview_window(mini_player::LABEL) else { return };
     if let Ok(hwnd) = window.hwnd() {
+        let cmd = if shown { SW_SHOWNOACTIVATE } else { SW_HIDE };
         // SAFETY: the handle belongs to our own live window.
-        let _ = unsafe { ShowWindow(HWND(hwnd.0 as *mut std::ffi::c_void), SW_SHOWNOACTIVATE) };
+        let _ = unsafe { ShowWindow(HWND(hwnd.0 as *mut std::ffi::c_void), cmd) };
     }
 }
 
 #[cfg(not(windows))]
-fn show_quietly(app: &AppHandle) {
+fn set_shown_quietly(app: &AppHandle, shown: bool) {
     if let Some(window) = app.get_webview_window(mini_player::LABEL) {
-        let _ = window.show();
+        let _ = if shown { window.show() } else { window.hide() };
     }
+}
+
+#[cfg(windows)]
+fn ours_in_front(app: &AppHandle) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let Some(window) = app.get_webview_window(mini_player::LABEL) else { return false };
+    let Ok(hwnd) = window.hwnd() else { return false };
+    // SAFETY: plain query.
+    unsafe { GetForegroundWindow() }.0 as usize == hwnd.0 as usize
+}
+
+#[cfg(not(windows))]
+fn ours_in_front(_app: &AppHandle) -> bool {
+    false
 }
 
 /// Polls once a second while the setting is on.
 pub fn spawn_worker(app: AppHandle) {
     std::thread::spawn(move || {
         let mut was = false;
-        let mut hid_it = false;
         loop {
             std::thread::sleep(CHECK_EVERY);
             let enabled = app.state::<AppState>().settings.lock().unwrap().hide_in_fullscreen;
-            let now = enabled && fullscreen_now();
+            let now = enabled && observe(was, fullscreen_now(), ours_in_front(&app));
             if let Some(change) = transition(was, now) {
                 let visible = mini_player::is_visible(&app);
                 let same = change == Fullscreen::Started && visible && same_monitor(&app);
-                match on_change(change, visible, same, hid_it) {
+                match on_change(change, visible, same, APP_HID.load(Ordering::SeqCst)) {
                     Action::Hide => {
-                        mini_player::hide(&app);
-                        hid_it = true;
+                        mini_player::collapse(&app);
+                        set_shown_quietly(&app, false);
+                        APP_HID.store(true, Ordering::SeqCst);
                     }
                     Action::Restore => {
-                        show_quietly(&app);
-                        hid_it = false;
+                        set_shown_quietly(&app, true);
+                        APP_HID.store(false, Ordering::SeqCst);
                     }
                     Action::Nothing => {
                         if change == Fullscreen::Ended {
-                            hid_it = false;
+                            APP_HID.store(false, Ordering::SeqCst);
                         }
                     }
                 }
@@ -153,6 +185,15 @@ mod tests {
         assert_eq!(on_change(Fullscreen::Started, false, true, false), Nothing, "already hidden by the user");
         assert_eq!(on_change(Fullscreen::Ended, false, true, true), Restore);
         assert_eq!(on_change(Fullscreen::Ended, false, true, false), Nothing, "the user hid it, not us");
+    }
+
+    #[test]
+    fn our_own_window_in_front_is_not_the_game_ending() {
+        // Showing the mini-player over a game takes the foreground; that isn't the game ending.
+        assert!(observe(true, false, true));
+        assert!(!observe(false, true, true), "the mini-player in front can't start a game either");
+        assert!(!observe(true, false, false));
+        assert!(observe(false, true, false));
     }
 
     #[test]
