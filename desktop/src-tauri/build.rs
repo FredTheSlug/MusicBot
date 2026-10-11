@@ -12,6 +12,9 @@ fn main() {
             "mini_send_spotify",
             "mini_play_spotify_text",
             "mini_play_spotify_clipboard",
+            "mini_search",
+            "mini_lyrics",
+            "mini_play_link",
         ])),
     )
     .expect("failed to run tauri-build");

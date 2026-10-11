@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bridge;
+mod lookup;
 mod media_keys;
 mod mini_player;
 mod notify;
@@ -274,7 +275,10 @@ fn main() {
             mini_player::mini_spotify_now,
             mini_player::mini_send_spotify,
             mini_player::mini_play_spotify_text,
-            mini_player::mini_play_spotify_clipboard
+            mini_player::mini_play_spotify_clipboard,
+            mini_player::mini_search,
+            mini_player::mini_lyrics,
+            mini_player::mini_play_link
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");

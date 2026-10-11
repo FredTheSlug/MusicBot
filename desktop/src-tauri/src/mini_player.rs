@@ -1,6 +1,7 @@
 //! The always-on-top mini-player window and the commands its bundled UI may call.
 
 use crate::bridge::{self, BotCommand};
+use crate::lookup::{self, Lyrics, SearchResult};
 use crate::spotify::{self, SpotifyStatus};
 use crate::state::BotState;
 use crate::{settings, show_main, AppState};
@@ -15,6 +16,8 @@ const WIDTH: f64 = 360.0;
 const HEIGHT: f64 = 170.0;
 const MARGIN: i32 = 12;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
+const LYRICS_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -208,6 +211,30 @@ pub async fn mini_send_spotify(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn mini_play_spotify_text(app: AppHandle, text: String) -> Result<String, String> {
     blocking(move || spotify::play_link_text(&app, &text)).await
+}
+
+#[tauri::command]
+pub async fn mini_search(app: AppHandle, query: String) -> Result<Vec<SearchResult>, String> {
+    blocking(move || bridge::send_command_fetch(&app, BotCommand::Search(query), SEARCH_TIMEOUT))
+        .await
+        .map(|data| lookup::search_results(&data))
+}
+
+/// Lyrics for the song playing on the selected server.
+#[tauri::command]
+pub async fn mini_lyrics(app: AppHandle) -> Result<Lyrics, String> {
+    blocking(move || bridge::send_command_fetch(&app, BotCommand::Lyrics, LYRICS_TIMEOUT))
+        .await
+        .map(|data| lookup::lyrics_from(&data))
+}
+
+#[tauri::command]
+pub async fn mini_play_link(app: AppHandle, text: String) -> Result<String, String> {
+    blocking(move || {
+        bridge::send_command_await(&app, lookup::link_command(&text)?, COMMAND_TIMEOUT)?;
+        Ok("Playing the link".to_string())
+    })
+    .await
 }
 
 #[tauri::command]
