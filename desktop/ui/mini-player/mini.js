@@ -14,7 +14,13 @@
   var statusTimer = null;
   var volumeDragging = false;
 
-  var view = window.__cksMiniView.view;
+  var MV = window.__cksMiniView;
+  var view = MV.view;
+  var appliedThemeVars = [];
+
+  function showTheme(theme) {
+    appliedThemeVars = MV.applyTheme(document.documentElement, theme, appliedThemeVars);
+  }
 
   function render(u) {
     ui = u;
@@ -111,6 +117,12 @@
 
   listen('spotify-changed', function (e) { renderSpotify(e.payload); });
   invoke('mini_spotify_now').then(renderSpotify);
+
+  invoke('mini_get_prefs').then(function (prefs) {
+    MV.applyOpacity(document.documentElement, prefs.opacity);
+    showTheme(prefs.effective);
+  });
+  listen('theme-changed', function (e) { showTheme(e.payload); });
 
   listen('state-changed', function (e) { render(e.payload); });
   listen('notice', function (e) { showStatus(e.payload.message); });

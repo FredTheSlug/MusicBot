@@ -20,7 +20,36 @@
     return { title: track.title || 'Unknown', meta: meta, track: track, live: true, signedIn: true };
   }
 
-  var api = { view: view };
+  /** The panel's themes, in its picker's order. */
+  var THEMES = [
+    ['nebula', 'Nebula'], ['aurora', 'Aurora'], ['ember', 'Ember'], ['crimson', 'Crimson'], ['dawn', 'Dawn'],
+    ['dawn-dark', 'Dawn Dark'], ['steel', 'Steel'], ['verdant', 'Verdant'], ['grove', 'Grove'], ['grapevine', 'Grapevine'],
+    ['sumi', 'Sumi'], ['rasta', 'Rasta'], ['cipher', 'Cipher'], ['signal', 'Signal'], ['victory', 'Victory'],
+    ['neon', 'Neon'], ['revival', 'Revival']
+  ].map(function (t) { return { id: t[0], label: t[1] }; });
+
+  /**
+   * Shows theme {id, vars}: data-theme picks the built-in skin, inline vars (the panel's live colors)
+   * override it. Vars from the previous theme that this one lacks are removed. Returns the names set.
+   */
+  function applyTheme(root, theme, previous) {
+    var vars = (theme && theme.vars) || {};
+    var names = Object.keys(vars);
+    (previous || []).forEach(function (name) { if (names.indexOf(name) < 0) root.style.removeProperty(name); });
+    names.forEach(function (name) { root.style.setProperty(name, vars[name]); });
+    root.setAttribute('data-theme', (theme && theme.id) || 'nebula');
+    return names;
+  }
+
+  var LOW_ALPHA = 0.6;
+
+  /** Background card opacity (0.15–1); below 0.6 the text gets a shadow to stay readable. */
+  function applyOpacity(root, value) {
+    root.style.setProperty('--card-alpha', String(value));
+    root.classList.toggle('low-alpha', value < LOW_ALPHA);
+  }
+
+  var api = { view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksMiniView = api;
 })(typeof window !== 'undefined' ? window : this);

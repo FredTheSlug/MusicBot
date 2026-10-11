@@ -1,25 +1,49 @@
-/* Mini-player — Revival palette (see the panel's html[data-theme="revival"]). */
+/*
+ * Mini-player base look. Colors use the panel's variable names so a synced theme can override them
+ * inline; :root holds Nebula (the panel's default). Per-theme skins live in themes.css.
+ */
 :root {
-  --bg: #14100d;
-  --card: #211b17;
-  --elevated: #2b231e;
-  --accent: #e2825c;
-  --amber: #f2b35e;
-  --text: #f6efe5;
-  --text-2: #cdbcaa;
-  --text-3: #a08f7e;
-  --line: rgba(242, 179, 94, 0.14);
-  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --bg-primary: #0b0d17;
+  --bg-secondary: #121427;
+  --bg-card: #181b2e;
+  --bg-elevated: #1e2240;
+  --bg-hover: #252a4a;
+  --accent: #7c5cfc;
+  --accent-light: #9b82fc;
+  --accent-glow: rgba(124, 92, 252, 0.3);
+  --accent-gradient: linear-gradient(135deg, #7c5cfc, #e04cf0);
+  --text-primary: #eef0f6;
+  --text-secondary: #7a7f9a;
+  --text-tertiary: #4e5270;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-light: rgba(255, 255, 255, 0.1);
+  --success: #34d399;
+  --font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+
+  /* Mini-player knobs the skins set (never synced from the panel). */
+  --card-alpha: 1;
+  --radius: 16px;
+  --ctrl-radius: 50%;
+  --title-font: var(--font-family);
+  --title-style: normal;
+  --title-weight: 600;
+  --title-spacing: -0.01em;
+  --meta-font: var(--font-family);
+  --meta-transform: none;
+  --meta-spacing: normal;
+  --on-accent: #ffffff;
+  --legibility-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.6);
+  --spotify-green: #1ed760;
 }
 
 * { box-sizing: border-box; margin: 0; }
 
+/* The window itself is transparent; only the card is painted. */
 html, body {
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-family);
   overflow: hidden;
   user-select: none;
 }
@@ -31,58 +55,54 @@ html, body {
   align-items: center;
   height: 100%;
   padding: 12px 14px;
-  background:
-    radial-gradient(ellipse 70% 90% at 0% 100%, rgba(226, 130, 92, 0.16), transparent 70%),
-    linear-gradient(180deg, var(--card), var(--bg));
-  border: 1px solid var(--line);
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-card) calc(var(--card-alpha) * 100%), transparent);
+  border: 1px solid color-mix(in srgb, var(--border-light) calc(var(--card-alpha) * 100%), transparent);
+  isolation: isolate;
 }
 
-/* Artwork as the label of a small record; spins while playing. */
-.disc {
-  position: relative;
-  flex: 0 0 88px;
-  width: 88px;
-  height: 88px;
-  border-radius: 50%;
-  background:
-    conic-gradient(from 20deg, transparent 0 25deg, rgba(255, 228, 196, 0.12) 45deg, transparent 65deg 205deg, rgba(255, 228, 196, 0.08) 225deg, transparent 245deg),
-    repeating-radial-gradient(circle, #15110f 0 1.5px, #1e1915 1.5px 3px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(242, 179, 94, 0.18);
-}
-
-.disc::before {
+/* Theme decoration layer (glows, patterns); fades with the background. */
+.mini::before,
+.mini::after {
   content: '';
   position: absolute;
-  inset: 22px;
-  border-radius: 50%;
-  background: linear-gradient(45deg, #d4694a, var(--amber));
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--card-alpha);
+}
+
+.mini::before {
+  background: radial-gradient(ellipse 60% 80% at 100% 0%, var(--accent-glow), transparent 70%);
+}
+
+.low-alpha .title,
+.low-alpha .meta,
+.low-alpha .status { text-shadow: var(--legibility-shadow); }
+
+/* Artwork: a rounded square here; Revival turns it into a spinning record (themes.css). */
+.disc {
+  position: relative;
+  flex: 0 0 76px;
+  width: 76px;
+  height: 76px;
+  border-radius: calc(var(--radius) * 0.6);
+  background: var(--accent-gradient);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
 }
 
 .art {
   position: absolute;
-  inset: 22px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  animation: spin 6s linear infinite;
-  animation-play-state: paused;
 }
 
-.art.spinning { animation-play-state: running; }
 .art[src*="i.ytimg.com"] { object-view-box: inset(12.5% 0); }
-
-.spindle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
-  border-radius: 50%;
-  background: #0c0908;
-  box-shadow: 0 0 0 1.5px #d9c4ad;
-}
+.spindle { display: none; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -96,19 +116,24 @@ html, body {
 }
 
 .title {
-  font-family: var(--serif);
-  font-weight: 600;
+  font-family: var(--title-font);
+  font-style: var(--title-style);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-spacing);
   font-size: 1.02rem;
   line-height: 1.25;
-  color: #fbf3e8;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .meta {
+  font-family: var(--meta-font);
+  text-transform: var(--meta-transform);
+  letter-spacing: var(--meta-spacing);
   font-size: 0.74rem;
-  color: #e7b98f;
+  color: var(--accent-light);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -119,15 +144,15 @@ html, body {
   height: 4px;
   margin: 4px 0 2px;
   border-radius: 4px;
-  background: rgba(242, 179, 94, 0.14);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, #d4694a, var(--amber));
-  box-shadow: 0 0 10px rgba(242, 179, 94, 0.5);
+  background: var(--accent-gradient);
+  box-shadow: 0 0 10px var(--accent-glow);
   transition: width 0.5s linear;
 }
 
@@ -144,24 +169,24 @@ html, body {
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid rgba(242, 179, 94, 0.2);
-  border-radius: 50%;
-  background: var(--elevated);
-  color: var(--text);
+  border: 1px solid var(--border-light);
+  border-radius: var(--ctrl-radius);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
   cursor: pointer;
 }
 
 .ctrl svg { width: 14px; height: 14px; fill: currentColor; }
-.ctrl:hover:not(:disabled) { border-color: rgba(242, 179, 94, 0.45); box-shadow: 0 0 12px rgba(226, 130, 92, 0.3); }
+.ctrl:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
 .ctrl:disabled { opacity: 0.35; cursor: default; }
 
 .ctrl.primary {
   width: 32px;
   height: 32px;
   border-color: transparent;
-  background: linear-gradient(135deg, #d4694a, #e98a5f 48%, var(--amber));
-  color: #1a120d;
-  box-shadow: 0 4px 14px rgba(226, 130, 92, 0.45);
+  background: var(--accent-gradient);
+  color: var(--on-accent);
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 
 .volume {
@@ -176,15 +201,15 @@ html, body {
   padding: 5px 12px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(135deg, #d4694a, var(--amber));
-  color: #1a120d;
-  font: 600 0.75rem var(--sans);
+  background: var(--accent-gradient);
+  color: var(--on-accent);
+  font: 600 0.75rem var(--font-family);
   cursor: pointer;
 }
 
 .status {
   font-size: 0.72rem;
-  color: #f0a58a;
+  color: var(--accent-light);
   min-height: 0.9em;
   white-space: nowrap;
   overflow: hidden;
@@ -202,16 +227,12 @@ html, body {
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--text-3);
+  color: var(--text-tertiary);
   cursor: pointer;
 }
 
 .close svg { width: 100%; height: 100%; fill: currentColor; }
-.close:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
-
-@media (prefers-reduced-motion: reduce) {
-  .art, .art.spinning { animation: none; }
-}
+.close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 
 /* Spotify row (send current song / paste a link) and the drop target. */
 .spotify-row {
@@ -226,8 +247,8 @@ html, body {
   border: 1px solid rgba(30, 215, 96, 0.35);
   border-radius: 999px;
   background: rgba(30, 215, 96, 0.1);
-  color: #c9f7d8;
-  font: 500 0.72rem var(--sans);
+  color: var(--text-primary);
+  font: 500 0.72rem var(--font-family);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -235,7 +256,7 @@ html, body {
 }
 
 .chip:first-child { flex: 1 1 auto; }
-.chip.ghost { flex: 0 0 auto; border-color: var(--line); background: transparent; color: var(--text-2); }
+.chip.ghost { flex: 0 0 auto; border-color: var(--border-light); background: transparent; color: var(--text-secondary); }
 .chip:hover:not(:disabled) { border-color: rgba(30, 215, 96, 0.6); }
 .chip:disabled { opacity: 0.5; cursor: default; }
 
@@ -246,12 +267,16 @@ html, body {
   display: none;
   align-items: center;
   justify-content: center;
-  border: 2px dashed rgba(30, 215, 96, 0.7);
-  border-radius: 10px;
-  background: rgba(20, 16, 13, 0.92);
-  color: #c9f7d8;
-  font: 600 0.85rem var(--sans);
+  border: 2px dashed var(--spotify-green);
+  border-radius: calc(var(--radius) * 0.6);
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+  color: var(--text-primary);
+  font: 600 0.85rem var(--font-family);
   pointer-events: none;
 }
 
 .mini.dropping .drop-hint { display: flex; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; }
+}
