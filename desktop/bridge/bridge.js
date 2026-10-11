@@ -38,6 +38,14 @@
   }
   function notice(level, message) { report({ type: 'notice', level: level, message: message }); }
 
+  /** Tells the app which theme the panel shows and its colors, for the mini-player. */
+  function reportTheme() {
+    var root = document.documentElement;
+    var style = getComputedStyle(root);
+    var theme = core.readTheme(root.getAttribute('data-theme'), function (name) { return style.getPropertyValue(name); });
+    report({ type: 'theme', theme: theme });
+  }
+
   function selectedGuild() {
     try { return localStorage.getItem('defaultGuild') || ''; } catch (e) { return ''; }
   }
@@ -163,6 +171,8 @@
 
   function start() {
     connect();
+    reportTheme();
+    new MutationObserver(reportTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     var sel = document.getElementById('guildSelect');
     if (sel) sel.addEventListener('change', function () { if (selectedGuild() !== guildId) connect(); });
     // Same-document localStorage writes fire no 'storage' event, so watch the selection directly.

@@ -16,6 +16,9 @@
     "allow-mini-play-spotify-clipboard",
     "allow-mini-search",
     "allow-mini-lyrics",
-    "allow-mini-play-link"
+    "allow-mini-play-link",
+    "allow-mini-get-prefs",
+    "allow-mini-set-opacity",
+    "allow-mini-set-theme"
   ]
 }

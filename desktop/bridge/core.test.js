@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { toBotState, parseWsMessage, commandToRequest, isOwnLoadError } = require('./core.js');
+const { toBotState, parseWsMessage, commandToRequest, isOwnLoadError, readTheme, THEME_VARS } = require('./core.js');
 
 test('maps now playing, queue and me into BotState', () => {
   const s = toBotState({ connected: true, signedIn: true, me: { id: '1', name: 'fred', avatarUrl: '' }, guild: { id: '9', name: 'CK' },
@@ -101,4 +101,11 @@ test('fetch commands map to GET endpoints', () => {
     { method: 'GET', path: '/api/guild/9/search?q=Ke%24ha%20%26%20%22Tik%22%20Tok', body: null });
   assert.equal(commandToRequest('9', { type: 'Search', value: '   ' }, {}), null);
   assert.deepEqual(commandToRequest('9', { type: 'Lyrics' }, {}), { method: 'GET', path: '/api/guild/9/lyrics', body: null });
+});
+
+test('readTheme builds id and vars', () => {
+  assert.equal(THEME_VARS.length, 16);
+  const getVar = (name) => (name === '--accent' ? ' #fff ' : '');
+  assert.deepEqual(readTheme('neon', getVar), { id: 'neon', vars: { '--accent': '#fff' } });
+  assert.deepEqual(readTheme(null, () => ''), { id: 'nebula', vars: {} });
 });

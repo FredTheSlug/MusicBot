@@ -109,7 +109,25 @@
     }
   }
 
-  var api = { toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest, isOwnLoadError: isOwnLoadError };
+  /** The panel theme's variables the mini-player borrows (the app drops any other name). */
+  var THEME_VARS = ['--bg-primary', '--bg-secondary', '--bg-card', '--bg-elevated', '--bg-hover', '--accent',
+    '--accent-light', '--accent-glow', '--accent-gradient', '--text-primary', '--text-secondary', '--text-tertiary',
+    '--border', '--border-light', '--success', '--font-family'];
+
+  /** themeAttr = <html data-theme> (absent for Nebula); getVar(name) = the computed value. */
+  function readTheme(themeAttr, getVar) {
+    var vars = {};
+    THEME_VARS.forEach(function (name) {
+      var value = String(getVar(name) || '').trim();
+      if (value) vars[name] = value;
+    });
+    return { id: themeAttr || 'nebula', vars: vars };
+  }
+
+  var api = {
+    toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest,
+    isOwnLoadError: isOwnLoadError, readTheme: readTheme, THEME_VARS: THEME_VARS
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksCore = api;
 })(typeof window !== 'undefined' ? window : this);

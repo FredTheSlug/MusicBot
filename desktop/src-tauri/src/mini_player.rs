@@ -3,7 +3,9 @@
 use crate::bridge::{self, BotCommand};
 use crate::lookup::{self, Lyrics, SearchResult};
 use crate::spotify::{self, SpotifyStatus};
+use crate::settings::Settings;
 use crate::state::BotState;
+use crate::theme::{self, PanelTheme};
 use crate::{settings, show_main, AppState};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,6 +43,16 @@ pub struct UiState {
     pub position_ms: Option<u64>,
     pub position_at_ms: u64,
     pub stale: bool,
+}
+
+/// The mini-player's own settings, as its UI needs them on load.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MiniPrefs {
+    pub opacity: f64,
+    pub match_panel: bool,
+    pub theme: String,
+    pub effective: PanelTheme,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -141,6 +153,30 @@ pub fn emit_notice(app: &AppHandle, level: &str, message: &str) {
     let _ = app.emit_to(LABEL, "notice", Notice { level: level.into(), message: message.into() });
 }
 
+pub fn emit_theme(app: &AppHandle) {
+    let effective = theme::effective(&app.state::<AppState>().settings.lock().unwrap());
+    let _ = app.emit_to(LABEL, "theme-changed", effective);
+}
+
+fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
+    let state = app.state::<AppState>();
+    let mut settings = state.settings.lock().unwrap();
+    change(&mut settings);
+    if let Err(e) = settings::save(&state.settings_path, &settings) {
+        log::warn!("could not save settings: {e}");
+    }
+}
+
+/// The panel switched themes (or loaded): remember it and restyle the mini-player if it follows.
+pub fn on_panel_theme(app: &AppHandle, raw: PanelTheme) {
+    let Some(clean) = theme::sanitize(raw) else { return };
+    if app.state::<AppState>().settings.lock().unwrap().panel_theme.as_ref() == Some(&clean) {
+        return;
+    }
+    update_settings(app, |s| s.panel_theme = Some(clean));
+    emit_theme(app);
+}
+
 static LAST_MOVE: Mutex<Option<(i32, i32, Instant)>> = Mutex::new(None);
 static SAVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -211,6 +247,35 @@ pub async fn mini_send_spotify(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn mini_play_spotify_text(app: AppHandle, text: String) -> Result<String, String> {
     blocking(move || spotify::play_link_text(&app, &text)).await
+}
+
+#[tauri::command]
+pub fn mini_get_prefs(app: AppHandle) -> MiniPrefs {
+    let state = app.state::<AppState>();
+    let settings = state.settings.lock().unwrap();
+    MiniPrefs {
+        opacity: settings.opacity(),
+        match_panel: settings.mini_player_match_panel,
+        theme: settings.mini_player_theme.clone(),
+        effective: theme::effective(&settings),
+    }
+}
+
+#[tauri::command]
+pub fn mini_set_opacity(app: AppHandle, value: f64) {
+    update_settings(&app, |s| s.mini_player_opacity = settings::clamp_opacity(value));
+}
+
+/// An unknown theme id keeps the current pick.
+#[tauri::command]
+pub fn mini_set_theme(app: AppHandle, match_panel: bool, theme: String) {
+    update_settings(&app, |s| {
+        s.mini_player_match_panel = match_panel;
+        if theme::THEME_IDS.contains(&theme.as_str()) {
+            s.mini_player_theme = theme;
+        }
+    });
+    emit_theme(&app);
 }
 
 #[tauri::command]

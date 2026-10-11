@@ -4,6 +4,7 @@
 //! outcome back as a `Result` report with the same id.
 
 use crate::state::BotState;
+use crate::theme::PanelTheme;
 use crate::{dispatch, dispatch_notice, AppState};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -35,6 +36,7 @@ pub enum BotCommand {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum BridgeReport {
     State { state: BotState },
+    Theme { theme: PanelTheme },
     Notice { level: String, message: String },
     Result {
         id: u64,
@@ -123,6 +125,7 @@ pub async fn bridge_report(app: AppHandle, report: BridgeReport) {
             dispatch(&app, changes);
         }
         BridgeReport::Notice { level, message } => dispatch_notice(&app, &level, &message),
+        BridgeReport::Theme { theme } => crate::mini_player::on_panel_theme(&app, theme),
         BridgeReport::Result { id, ok, message, data } => {
             if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
                 let outcome = if ok { Ok(data) } else { Err(message.unwrap_or_else(|| "The bot rejected the request".into())) };

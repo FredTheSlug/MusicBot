@@ -9,6 +9,7 @@ mod notify;
 mod settings;
 mod spotify;
 mod state;
+mod theme;
 mod tray;
 mod updates;
 
@@ -278,7 +279,10 @@ fn main() {
             mini_player::mini_play_spotify_clipboard,
             mini_player::mini_search,
             mini_player::mini_lyrics,
-            mini_player::mini_play_link
+            mini_player::mini_play_link,
+            mini_player::mini_get_prefs,
+            mini_player::mini_set_opacity,
+            mini_player::mini_set_theme
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");

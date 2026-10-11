@@ -1,6 +1,7 @@
 //! User settings, stored as JSON in the app config dir. Missing fields take defaults;
 //! an unreadable file is replaced with defaults.
 
+use crate::theme::PanelTheme;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
@@ -8,6 +9,7 @@ use std::path::Path;
 
 pub const DEFAULT_SERVER_URL: &str = "https://cloutkings.duckdns.org";
 const PANEL_PATH: &str = "/web/index.html";
+const MIN_OPACITY: f64 = 0.15;
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -25,6 +27,13 @@ pub struct Settings {
     pub pause_spotify_after_send: bool,
     pub start_with_windows: bool,
     pub mini_player: MiniPos,
+    /// Background card opacity; see `opacity()`.
+    pub mini_player_opacity: f64,
+    pub mini_player_match_panel: bool,
+    /// The mini-player's own theme, used when it doesn't match the panel.
+    pub mini_player_theme: String,
+    /// The last theme the panel reported.
+    pub panel_theme: Option<PanelTheme>,
 }
 
 impl Default for Settings {
@@ -36,11 +45,24 @@ impl Default for Settings {
             pause_spotify_after_send: true,
             start_with_windows: false,
             mini_player: MiniPos::default(),
+            mini_player_opacity: 1.0,
+            mini_player_match_panel: true,
+            mini_player_theme: "nebula".to_string(),
+            panel_theme: None,
         }
     }
 }
 
+/// Keeps the background visible enough to grab and read: 0.15–1.0 (anything unusable → 1.0).
+pub fn clamp_opacity(value: f64) -> f64 {
+    if value.is_finite() { value.clamp(MIN_OPACITY, 1.0) } else { 1.0 }
+}
+
 impl Settings {
+    pub fn opacity(&self) -> f64 {
+        clamp_opacity(self.mini_player_opacity)
+    }
+
     /// `scheme://host[:port]` of the configured server, or None if `serverUrl` isn't a usable URL.
     pub fn server_origin(&self) -> Option<String> {
         let url = url::Url::parse(&self.server_url).ok()?;
@@ -80,6 +102,26 @@ pub fn save(path: &Path, settings: &Settings) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extras_default_and_clamp() {
+        let s = Settings::default();
+        assert_eq!(s.mini_player_opacity, 1.0);
+        assert!(s.mini_player_match_panel);
+        assert_eq!(s.mini_player_theme, "nebula");
+        assert_eq!(s.panel_theme, None);
+        assert_eq!(Settings { mini_player_opacity: 0.01, ..Settings::default() }.opacity(), 0.15);
+        assert_eq!(Settings { mini_player_opacity: 7.0, ..Settings::default() }.opacity(), 1.0);
+        assert_eq!(Settings { mini_player_opacity: f64::NAN, ..Settings::default() }.opacity(), 1.0);
+
+        // A settings.json from before these keys existed still loads.
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        fs::write(&path, r#"{"notifyUpNext": false, "miniPlayer": {"x": 5, "y": 6}}"#).unwrap();
+        let old = load(&path);
+        assert!(!old.notify_up_next && old.mini_player_match_panel);
+        assert_eq!(old.mini_player_opacity, 1.0);
+    }
 
     #[test]
     fn missing_file_gives_defaults() {
