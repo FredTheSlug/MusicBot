@@ -193,6 +193,8 @@ public class WebServer
         app.post("/api/guild/{guildId}/volume", this::handleVolume);
         app.post("/api/guild/{guildId}/shuffle", this::handleShuffle);
         app.post("/api/guild/{guildId}/repeat", this::handleRepeat);
+        app.post("/api/guild/{guildId}/autoplay", this::handleAutoplay);
+        app.post("/api/guild/{guildId}/sponsorblock", this::handleSponsorBlock);
         app.post("/api/guild/{guildId}/seek", this::handleSeek);
         app.post("/api/guild/{guildId}/upload", this::handleUpload);
         app.get("/api/playlists", this::handleListPlaylists);
@@ -414,6 +416,8 @@ public class WebServer
         result.put("volume", settings != null ? settings.getVolume() : 100);
         result.put("repeatMode", settings != null ? settings.getRepeatMode().name() : RepeatMode.OFF.name());
         result.put("shuffleMode", settings != null && settings.getShuffleMode());
+        result.put("autoplay", settings != null && settings.getAutoplay());
+        result.put("sponsorBlock", settings == null || settings.getSponsorBlock());
 
         if (handler != null)
         {
@@ -1181,6 +1185,38 @@ public class WebServer
         }
         broadcastUpdate(guild.getId(), "player");
         ctx.json(Map.of("volume", volume));
+    }
+
+    private void handleAutoplay(Context ctx)
+    {
+        Guild guild = resolveGuild(ctx);
+        if (guild == null) return;
+        Settings settings = bot.getSettingsManager().getSettings(guild.getIdLong());
+        if (settings == null)
+        {
+            ctx.status(400).json(Map.of("error", "No guild settings"));
+            return;
+        }
+        boolean next = !settings.getAutoplay();
+        settings.setAutoplay(next);
+        broadcastUpdate(guild.getId(), "player");
+        ctx.json(Map.of("autoplay", next));
+    }
+
+    private void handleSponsorBlock(Context ctx)
+    {
+        Guild guild = resolveGuild(ctx);
+        if (guild == null) return;
+        Settings settings = bot.getSettingsManager().getSettings(guild.getIdLong());
+        if (settings == null)
+        {
+            ctx.status(400).json(Map.of("error", "No guild settings"));
+            return;
+        }
+        boolean next = !settings.getSponsorBlock();
+        settings.setSponsorBlock(next);
+        broadcastUpdate(guild.getId(), "player");
+        ctx.json(Map.of("sponsorBlock", next));
     }
 
     private void handleShuffle(Context ctx)

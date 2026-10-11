@@ -53,7 +53,7 @@ public class SettingsManager implements GuildSettingsManager<Settings>
                     o.put("repeat_mode", RepeatMode.ALL);
 
 
-                settings.put(Long.parseLong(id), new Settings(this,
+                Settings loaded = new Settings(this,
                         o.has("text_channel_id") ? o.getString("text_channel_id")            : null,
                         o.has("voice_channel_id")? o.getString("voice_channel_id")           : null,
                         o.has("dj_role_id")      ? o.getString("dj_role_id")                 : null,
@@ -63,7 +63,9 @@ public class SettingsManager implements GuildSettingsManager<Settings>
                         o.has("prefix")          ? o.getString("prefix")                     : null,
                         o.has("skip_ratio")      ? o.getDouble("skip_ratio")                 : -1,
                         o.has("queue_type")      ? o.getEnum(QueueType.class, "queue_type")  : QueueType.LINEAR,
-                        o.has("shuffle_mode")     ? o.getBoolean("shuffle_mode")              : false));
+                        o.has("shuffle_mode")     ? o.getBoolean("shuffle_mode")              : false);
+                readExtras(o, loaded);
+                settings.put(Long.parseLong(id), loaded);
             });
         } catch (NoSuchFileException e) {
             // create an empty json file
@@ -129,6 +131,7 @@ public class SettingsManager implements GuildSettingsManager<Settings>
                 o.put("queue_type", s.getQueueType().name());
             if(s.getShuffleMode())
                 o.put("shuffle_mode", true);
+            writeExtras(s, o);
             obj.put(Long.toString(key), o);
         });
         try {
@@ -136,5 +139,20 @@ public class SettingsManager implements GuildSettingsManager<Settings>
         } catch(IOException ex){
             LOG.warn("Failed to write to file: "+ex);
         }
+    }
+
+    /** Reads the newer options (autoplay off and SponsorBlock on unless the file says otherwise). */
+    static void readExtras(JSONObject o, Settings s)
+    {
+        s.loadExtras(o.optBoolean("autoplay", false), o.optBoolean("sponsorblock", true));
+    }
+
+    /** Writes the newer options, only where they differ from the defaults. */
+    static void writeExtras(Settings s, JSONObject o)
+    {
+        if(s.getAutoplay())
+            o.put("autoplay", true);
+        if(!s.getSponsorBlock())
+            o.put("sponsorblock", false);
     }
 }

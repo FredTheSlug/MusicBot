@@ -42,6 +42,10 @@ public class Settings implements GuildSettingsProvider
     private String prefix;
     private double skipRatio;
     private boolean shuffleMode;
+    /** Queue a related song when the queue runs out. */
+    private boolean autoplay = false;
+    /** Skip "non-music" sections of YouTube music videos (SponsorBlock). */
+    private boolean sponsorBlock = true;
 
     public Settings(SettingsManager manager, String textId, String voiceId, String roleId, int volume, String defaultPlaylist, RepeatMode repeatMode, String prefix, double skipRatio, QueueType queueType, boolean shuffleMode)
     {
@@ -210,5 +214,34 @@ public class Settings implements GuildSettingsProvider
     {
         this.shuffleMode = shuffleMode;
         this.manager.writeSettings();
+    }
+
+    public boolean getAutoplay()
+    {
+        return autoplay;
+    }
+
+    public void setAutoplay(boolean autoplay)
+    {
+        this.autoplay = autoplay;
+        this.manager.writeSettings();
+    }
+
+    public boolean getSponsorBlock()
+    {
+        return sponsorBlock;
+    }
+
+    public void setSponsorBlock(boolean sponsorBlock)
+    {
+        this.sponsorBlock = sponsorBlock;
+        this.manager.writeSettings();
+    }
+
+    /** Sets the newer options while loading the settings file (no write back). */
+    void loadExtras(boolean autoplay, boolean sponsorBlock)
+    {
+        this.autoplay = autoplay;
+        this.sponsorBlock = sponsorBlock;
     }
 }
