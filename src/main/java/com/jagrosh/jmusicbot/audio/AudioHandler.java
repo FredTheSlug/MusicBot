@@ -295,6 +295,9 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
         }
         catch (Exception ignored) {}
         manager.getBot().getNowplayingHandler().onTrackUpdate(track);
+        Settings settings = manager.getBot().getSettingsManager().getSettings(guildId);
+        if(settings != null && settings.getSponsorBlock())
+            SponsorBlock.apply(track, () -> broadcastWeb("player"));
         broadcastWeb("player");
         broadcastWeb("history");
         broadcastWeb("frequent");
