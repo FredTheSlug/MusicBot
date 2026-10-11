@@ -362,6 +362,12 @@ public class WebServer
         }
     }
 
+    /** True when guildId is the server named by the webdefaultguild setting (blank = none). */
+    static boolean isDefaultGuild(String guildId, String configured)
+    {
+        return configured != null && !configured.isBlank() && configured.trim().equals(guildId);
+    }
+
     /** Adds requestedBy (name, or fallbackName) and requestedById (unsigned id string, or null) to a track payload. */
     static void putRequester(Map<String, Object> target, RequestMetadata rm, String fallbackName)
     {
@@ -586,6 +592,7 @@ public class WebServer
                 g.put("id", guild.getId());
                 g.put("name", guild.getName());
                 g.put("iconUrl", guild.getIconUrl());
+                g.put("isDefault", isDefaultGuild(guild.getId(), bot.getConfig().getWebDefaultGuild()));
 
                 AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
                 g.put("playing", handler != null && handler.isMusicPlaying(bot.getJDA()));

@@ -6151,6 +6151,14 @@
                     });
                 }
                 var saved = localStorage.getItem('defaultGuild') || '';
+                if (!saved && !currentGuild) {
+                    // Nobody picked a server yet: start on the bot's default one (webdefaultguild).
+                    var preferred = guilds.find(function (g) { return g.isDefault === true; });
+                    if (preferred) {
+                        saved = preferred.id;
+                        localStorage.setItem('defaultGuild', saved);
+                    }
+                }
                 if (saved && !currentGuild) {
                     currentGuild = saved;
                 }

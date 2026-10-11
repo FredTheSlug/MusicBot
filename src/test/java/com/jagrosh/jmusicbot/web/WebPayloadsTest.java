@@ -53,4 +53,14 @@ public class WebPayloadsTest
         assertEquals("fred", me.get("name"));
         assertEquals("https://cdn.discordapp.com/avatars/1/a.png", me.get("avatarUrl"));
     }
+
+    @Test
+    public void defaultGuildMatchesOnlyTheConfiguredId()
+    {
+        assertTrue(WebServer.isDefaultGuild("123", "123"));
+        assertFalse(WebServer.isDefaultGuild("456", "123"));
+        assertFalse(WebServer.isDefaultGuild("123", ""));
+        assertFalse(WebServer.isDefaultGuild("123", null));
+        assertTrue(WebServer.isDefaultGuild("123", " 123 "));
+    }
 }

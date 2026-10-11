@@ -43,7 +43,7 @@ public class BotConfig
     private Path path = null;
     private String token, prefix, altprefix, helpWord, playlistsFolder, logLevel,
             successEmoji, warningEmoji, errorEmoji, loadingEmoji, searchingEmoji,
-            evalEngine, webHost, webDiscordClientId, webDiscordClientSecret, webDiscordRedirectUri;
+            evalEngine, webHost, webDefaultGuild, webDiscordClientId, webDiscordClientSecret, webDiscordRedirectUri;
     private boolean stayInChannel, songInGame, npImages, updatealerts, useEval, webEnabled, webAuthEnabled;
     private long owner, maxSeconds, aloneTimeUntilStop;
     private int maxYTPlaylistPages, webPort, maxHistorySize;
@@ -112,6 +112,7 @@ public class BotConfig
             webEnabled = config.getBoolean("webenabled");
             webPort = config.getInt("webport");
             webHost = config.hasPath("webhost") ? config.getString("webhost") : "0.0.0.0";
+            webDefaultGuild = config.hasPath("webdefaultguild") ? config.getString("webdefaultguild").trim() : "";
             webAuthEnabled = config.getBoolean("webauthenabled");
             webDiscordClientId = config.hasPath("webdiscordclientid") ? config.getString("webdiscordclientid") : "";
             webDiscordClientSecret = config.hasPath("webdiscordclientsecret") ? config.getString("webdiscordclientsecret") : "";
@@ -455,6 +456,11 @@ public class BotConfig
     public String getWebHost()
     {
         return webHost;
+    }
+
+    public String getWebDefaultGuild()
+    {
+        return webDefaultGuild;
     }
 
     public boolean isWebAuthEnabled()
