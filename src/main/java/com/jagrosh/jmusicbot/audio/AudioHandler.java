@@ -64,6 +64,8 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     private final PlayerManager manager;
     private final AudioPlayer audioPlayer;
     private final long guildId;
+    /** True while stopAndClear() stops the track, so that stop never turns into autoplay. */
+    private volatile boolean stopping = false;
     
     private AudioFrame lastFrame;
     private AbstractQueue<QueuedTrack> queue;
@@ -122,7 +124,16 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     {
         queue.clear();
         defaultQueue.clear();
-        audioPlayer.stopTrack();
+        stopping = true;
+        try
+        {
+            // The track-end event fires synchronously inside stopTrack().
+            audioPlayer.stopTrack();
+        }
+        finally
+        {
+            stopping = false;
+        }
         broadcastWeb("player");
         broadcastWeb("queue");
     }
@@ -210,15 +221,8 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
         
         if(queue.isEmpty())
         {
-            if(!playFromDefault())
-            {
-                manager.getBot().getNowplayingHandler().onTrackUpdate(null);
-                if(!manager.getBot().getConfig().getStay())
-                    manager.getBot().closeAudioConnection(guildId);
-                // unpause, in the case when the player was paused and the track has been skipped.
-                // this is to prevent the player being paused next time it's being used.
-                player.setPaused(false);
-            }
+            if(!playFromDefault() && !startAutoplay(track, endReason, repeatMode))
+                endPlayback();
         }
         else
         {
@@ -228,6 +232,48 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
         }
         broadcastWeb("player");
         broadcastWeb("queue");
+    }
+
+    /** Nothing left to play: clear the now-playing status and leave voice unless told to stay. */
+    private void endPlayback()
+    {
+        manager.getBot().getNowplayingHandler().onTrackUpdate(null);
+        if(!manager.getBot().getConfig().getStay())
+            manager.getBot().closeAudioConnection(guildId);
+        // unpause, in the case when the player was paused and the track has been skipped.
+        // this is to prevent the player being paused next time it's being used.
+        audioPlayer.setPaused(false);
+    }
+
+    /**
+     * When autoplay is on and the queue just ran out (a song finished or was skipped), starts
+     * loading a related song. Returns false when autoplay doesn't apply; when it returns true the
+     * load ends playback itself if it finds nothing.
+     */
+    private boolean startAutoplay(AudioTrack ended, AudioTrackEndReason reason, RepeatMode repeatMode)
+    {
+        if(stopping || repeatMode != RepeatMode.OFF || !(reason.mayStartNext || reason == AudioTrackEndReason.STOPPED))
+            return false;
+        Settings settings = manager.getBot().getSettingsManager().getSettings(guildId);
+        Guild guild = manager.getBot().getJDA().getGuildById(guildId);
+        if(settings == null || !settings.getAutoplay() || guild == null)
+            return false;
+        Set<String> recent = new HashSet<>();
+        for(QueuedTrack played : history)
+            recent.add(played.getTrack().getIdentifier());
+        Autoplay.queueRelated(manager, guild, ended, recent,
+                next -> addTrack(new QueuedTrack(next, Autoplay.METADATA)),
+                () ->
+                {
+                    // Something else may have started meanwhile (someone queued a song).
+                    if(audioPlayer.getPlayingTrack() == null && queue.isEmpty())
+                    {
+                        endPlayback();
+                        broadcastWeb("player");
+                        broadcastWeb("queue");
+                    }
+                });
+        return true;
     }
 
     @Override
