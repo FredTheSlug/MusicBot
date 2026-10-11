@@ -49,6 +49,21 @@
 
     el('volume').disabled = !(v.live && v.signedIn);
     if (!volumeDragging && s) el('volume').value = s.volume;
+
+    var canControl = !!(v.live && v.signedIn);
+    var shuffleOn = !!(s && s.shuffle);
+    el('shuffleBtn').disabled = !canControl;
+    el('shuffleBtn').classList.toggle('on', shuffleOn);
+    el('shuffleBtn').setAttribute('aria-pressed', String(shuffleOn));
+    el('shuffleBtn').title = shuffleOn ? 'Shuffle: on' : 'Shuffle: off';
+    var rv = MV.repeatView(s && s.repeat);
+    el('repeatBtn').disabled = !canControl;
+    el('repeatBtn').classList.toggle('on', rv.active);
+    el('repeatBtn').title = rv.label;
+    el('repeatBtn').setAttribute('aria-label', rv.label);
+    el('repeatBadge').textContent = rv.badge;
+    el('seek').classList.toggle('off', !canSeek());
+    if (panel === 'queue') renderQueue();
     if (panel === 'lyrics' && MV.trackKey(s) !== lyricsKey) loadLyrics();
     tick();
   }
@@ -67,7 +82,7 @@
   function tick() {
     var t = ui && ui.state && ui.state.track;
     var pct = t && t.durationMs > 0 ? Math.max(0, Math.min(100, (currentPosition() / t.durationMs) * 100)) : 0;
-    el('progressFill').style.width = pct + '%';
+    if (!seeking) el('progressFill').style.width = pct + '%';
     followLyrics();
   }
 
@@ -84,6 +99,53 @@
   el('restart').addEventListener('click', function () { send({ type: 'RestartTrack' }); });
   el('toggle').addEventListener('click', function () { send({ type: 'TogglePause' }); });
   el('skip').addEventListener('click', function () { send({ type: 'Skip' }); });
+  el('shuffleBtn').addEventListener('click', function () { send({ type: 'ToggleShuffle' }); });
+  el('repeatBtn').addEventListener('click', function () { send({ type: 'CycleRepeat' }); });
+
+  // ---- Seek: click or drag the progress bar ----
+  var seeking = false;
+
+  function canSeek() {
+    var t = view(ui).track;
+    return !!(t && t.durationMs > 0 && !t.isStream);
+  }
+
+  function seekFraction(e) {
+    var r = el('progress').getBoundingClientRect();
+    return r.width > 0 ? (e.clientX - r.left) / r.width : 0;
+  }
+
+  function previewSeek(e) {
+    el('progressFill').style.width = Math.max(0, Math.min(1, seekFraction(e))) * 100 + '%';
+  }
+
+  el('seek').addEventListener('pointerdown', function (e) {
+    if (!canSeek()) return;
+    seeking = true;
+    el('seek').classList.add('dragging');
+    el('seek').setPointerCapture(e.pointerId);
+    previewSeek(e);
+  });
+  el('seek').addEventListener('pointermove', function (e) {
+    if (!canSeek()) { el('seek').title = ''; return; }
+    el('seek').title = MV.formatDuration(MV.seekPosition(seekFraction(e), ui.state.track.durationMs), false);
+    if (seeking) previewSeek(e);
+  });
+  el('seek').addEventListener('pointerup', function (e) {
+    if (!seeking) return;
+    seeking = false;
+    el('seek').classList.remove('dragging');
+    if (!canSeek()) return;
+    var ms = MV.seekPosition(seekFraction(e), ui.state.track.durationMs);
+    // Show the new spot right away; the bot's next report confirms it.
+    ui.positionMs = ms;
+    ui.positionAtMs = Date.now();
+    send({ type: 'Seek', value: ms });
+  });
+  el('seek').addEventListener('pointercancel', function () {
+    seeking = false;
+    el('seek').classList.remove('dragging');
+  });
   el('volume').addEventListener('input', function () { volumeDragging = true; });
   el('volume').addEventListener('change', function () {
     volumeDragging = false;
@@ -133,11 +195,14 @@
     el('drawer').hidden = next === 'none';
     el('menuPanel').hidden = next !== 'menu';
     el('lyricsPanel').hidden = next !== 'lyrics';
+    el('queuePanel').hidden = next !== 'queue';
+    el('queueBtn').setAttribute('aria-pressed', String(next === 'queue'));
     el('menuBtn').setAttribute('aria-pressed', String(next === 'menu'));
     el('lyricsBtn').setAttribute('aria-pressed', String(next === 'lyrics'));
     el('lyricsBtn').disabled = !MV.lyricsButtonEnabled(!!view(ui).track, next);
     if (next === 'menu') openMenu();
     if (next === 'lyrics') loadLyrics();
+    if (next === 'queue') renderQueue();
   }
 
   function setPanel(next) {
@@ -161,6 +226,56 @@
 
   el('menuBtn').addEventListener('click', function () { setPanel(panel === 'menu' ? 'none' : 'menu'); });
   el('lyricsBtn').addEventListener('click', function () { setPanel(panel === 'lyrics' ? 'none' : 'lyrics'); });
+  el('queueBtn').addEventListener('click', function () { setPanel(panel === 'queue' ? 'none' : 'queue'); });
+
+  // ---- Up next: the queue, with move-to-top and remove ----
+  function queueAction(label, glyph, onClick) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'icon-btn q-act';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.textContent = glyph;
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  /** Keeps the first row's columns in line with rows that have a move-to-top button. */
+  function spacer() {
+    var span = document.createElement('span');
+    span.className = 'q-spacer';
+    return span;
+  }
+
+  function renderQueue() {
+    var list = el('queueList');
+    while (list.firstChild) list.removeChild(list.firstChild);
+    var s = ui && ui.state;
+    var total = (s && s.queueLength) || 0;
+    el('queueCount').textContent = total ? total + (total === 1 ? ' song' : ' songs') : '';
+    var rows = view(ui).live && view(ui).signedIn ? MV.queueRows(s) : [];
+    if (!rows.length) {
+      list.appendChild(note('Nothing queued'));
+      return;
+    }
+    rows.forEach(function (row) {
+      var li = document.createElement('li');
+      li.className = 'qrow';
+      [['r-title', row.title], ['r-artist', row.sub], ['r-time', row.time]].forEach(function (part) {
+        if (!part[1]) return;
+        var span = document.createElement('span');
+        span.className = part[0];
+        span.textContent = part[1];
+        li.appendChild(span);
+      });
+      li.title = row.sub ? row.title + ' – ' + row.sub : row.title;
+      var song = { index: row.index, uri: row.uri };
+      if (row.index > 0) li.appendChild(queueAction('Play next', '⤒', function () { send({ type: 'MoveToTop', value: song }); }));
+      else li.appendChild(spacer());
+      li.appendChild(queueAction('Remove from queue', '✕', function () { send({ type: 'RemoveFromQueue', value: song }); }));
+      list.appendChild(li);
+    });
+  }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && panel !== 'none') setPanel('none'); });
 
   // ---- Lyrics for the song playing; timed lyrics follow along ----
@@ -298,19 +413,67 @@
     el('settings').hidden = !show;
     el('results').hidden = show;
     el('settingsBtn').setAttribute('aria-pressed', String(show));
+    showTabs(!show && !el('searchBox').value.trim());
   }
+
+  // ---- Menu: quick picks while the search box is empty ----
+  var TAB_KEY = 'cks.menuTab';
+  var tab = 'recent';
+  try { tab = localStorage.getItem(TAB_KEY) || 'recent'; } catch (e) { /* storage unavailable */ }
+
+  function showTabs(show) {
+    el('menuTabs').hidden = !show;
+    Array.prototype.forEach.call(el('menuTabs').querySelectorAll('.tab'), function (b) {
+      b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === tab));
+    });
+  }
+
+  function loadTab() {
+    var n = searches.next();
+    linkShown = false;
+    setResults([note('Loading…')]);
+    var current = tab;
+    var cmd = current === 'playlists' ? 'mini_playlists' : current === 'frequent' ? 'mini_frequent' : 'mini_history';
+    invoke(cmd).then(function (items) {
+      if (!searches.isLatest(n)) return;
+      if (!items.length) { setResults([note(current === 'playlists' ? 'No saved playlists' : 'Nothing here yet')]); return; }
+      setResults(items.map(function (it) {
+        if (current === 'playlists') {
+          var count = it.trackCount + (it.trackCount === 1 ? ' song' : ' songs');
+          return resultRow('playlist', it.name, it.folder || '', count, function () {
+            runAction('mini_play_playlist', { name: it.name, folder: it.folder });
+          });
+        }
+        return resultRow('', it.title || 'Unknown', it.author, MV.formatDuration(it.durationMs, it.isStream), function () { queue(it); });
+      }));
+    }).catch(function (e) {
+      if (searches.isLatest(n)) setResults([note(String(e))]);
+    });
+  }
+
+  el('menuTabs').addEventListener('click', function (e) {
+    var name = e.target && e.target.getAttribute && e.target.getAttribute('data-tab');
+    if (!name) return;
+    tab = name;
+    try { localStorage.setItem(TAB_KEY, tab); } catch (err) { /* storage unavailable */ }
+    showTabs(true);
+    loadTab();
+  });
 
   function openMenu() {
     showSettings(false);
     el('searchBox').focus();
     el('searchBox').select();
+    if (!el('searchBox').value.trim()) loadTab();
     invoke('mini_get_prefs').then(showPrefs);
   }
 
   el('searchBox').addEventListener('input', function () {
     var text = el('searchBox').value.trim();
-    if (MV.isLink(text)) showLinkRow(text);
-    else if (linkShown || !text) { searches.next(); linkShown = false; setResults([]); }
+    showTabs(!text);
+    if (!text) loadTab();
+    else if (MV.isLink(text)) showLinkRow(text);
+    else if (linkShown) { searches.next(); linkShown = false; setResults([]); }
   });
 
   el('searchForm').addEventListener('submit', function (e) {
@@ -318,6 +481,7 @@
     var text = el('searchBox').value.trim();
     if (!text) return;
     showSettings(false);
+    showTabs(false);
     if (MV.isLink(text)) runAction('mini_play_link', { text: text });
     else search(text);
   });

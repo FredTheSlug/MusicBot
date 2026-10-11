@@ -149,3 +149,31 @@ test('lyrics button stays usable to close the lyrics after the song ends', () =>
   assert.equal(lyricsButtonEnabled(false, 'menu'), false);
   assert.equal(lyricsButtonEnabled(false, 'lyrics'), true);
 });
+
+const { repeatView, seekPosition, queueRows } = require('./view.js');
+
+test('repeatView', () => {
+  assert.deepEqual(repeatView('OFF'), { label: 'Repeat: off', badge: '', active: false });
+  assert.deepEqual(repeatView('ALL'), { label: 'Repeat: whole queue', badge: '', active: true });
+  assert.deepEqual(repeatView('SINGLE'), { label: 'Repeat: this song', badge: '1', active: true });
+  assert.deepEqual(repeatView(undefined), repeatView('OFF'));
+});
+
+test('seekPosition', () => {
+  assert.equal(seekPosition(0.5, 200000), 100000);
+  assert.equal(seekPosition(-0.2, 200000), 0);
+  assert.equal(seekPosition(1.7, 200000), 200000);
+  assert.equal(seekPosition(0.5, 0), 0);
+});
+
+test('queueRows', () => {
+  const state = { upNext: [
+    { title: 'Toxic', author: 'slayr', uri: 'u0', durationMs: 161000, requestedBy: 'fred' },
+    { title: 'Nights', author: '', uri: 'u1', durationMs: 307000, requestedBy: null }
+  ] };
+  assert.deepEqual(queueRows(state), [
+    { index: 0, uri: 'u0', title: 'Toxic', sub: 'slayr · fred', time: '2:41' },
+    { index: 1, uri: 'u1', title: 'Nights', sub: '', time: '5:07' }
+  ]);
+  assert.deepEqual(queueRows(null), []);
+});

@@ -324,7 +324,7 @@ pub fn mini_hide(app: AppHandle) {
     hide(&app);
 }
 
-/// `panel` is "menu" or "lyrics" (grow; returns which way) or "none" (shrink back).
+/// `panel` is "menu", "lyrics" or "queue" (grow; returns which way) or "none" (shrink back).
 #[tauri::command]
 pub fn mini_set_panel(app: AppHandle, panel: String) -> Result<Option<Direction>, String> {
     match panel.as_str() {
@@ -332,7 +332,7 @@ pub fn mini_set_panel(app: AppHandle, panel: String) -> Result<Option<Direction>
             collapse(&app);
             Ok(None)
         }
-        "menu" | "lyrics" => expand(&app).map(Some),
+        "menu" | "lyrics" | "queue" => expand(&app).map(Some),
         _ => Err(format!("Unknown panel: {panel}")),
     }
 }

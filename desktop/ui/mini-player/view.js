@@ -104,7 +104,34 @@
     return hasTrack || panel === 'lyrics';
   }
 
+  var REPEAT_VIEWS = {
+    OFF: { label: 'Repeat: off', badge: '', active: false },
+    ALL: { label: 'Repeat: whole queue', badge: '', active: true },
+    SINGLE: { label: 'Repeat: this song', badge: '1', active: true }
+  };
+
+  /** The repeat button for the bot's mode (Off → All → One, the bot's own order). */
+  function repeatView(mode) {
+    return REPEAT_VIEWS[mode] || REPEAT_VIEWS.OFF;
+  }
+
+  /** Milliseconds for a click at `fraction` (0–1) of the progress bar; 0 when the length is unknown. */
+  function seekPosition(fraction, durationMs) {
+    if (!(durationMs > 0)) return 0;
+    return Math.round(Math.max(0, Math.min(1, fraction)) * durationMs);
+  }
+
+  /** Up Next rows; `index` and `uri` identify the song for remove / move to top. */
+  function queueRows(state) {
+    var items = (state && state.upNext) || [];
+    return items.map(function (item, index) {
+      var sub = [item.author, item.requestedBy].filter(Boolean).join(' · ');
+      return { index: index, uri: item.uri, title: item.title || 'Unknown', sub: sub, time: formatDuration(item.durationMs, false) };
+    });
+  }
+
   var api = {
+    repeatView: repeatView, seekPosition: seekPosition, queueRows: queueRows,
     lyricsButtonEnabled: lyricsButtonEnabled,
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
     spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly,

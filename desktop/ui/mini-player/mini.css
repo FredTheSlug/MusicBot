@@ -160,8 +160,37 @@ html, body {
 .controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
+
+/* Shuffle and repeat: quieter than the transport buttons, lit when on. */
+.ctrl.mode {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.ctrl.mode svg { width: 13px; height: 13px; }
+.ctrl.mode.on { color: var(--accent-light); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+
+.mode-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  color: var(--accent-light);
+  font: 700 0.55rem/1 var(--font-family);
+}
+
+/* A taller hit area around the thin progress bar; click or drag to seek. */
+.seek { padding: 5px 0; margin: -1px 0; cursor: pointer; touch-action: none; }
+.seek.off { cursor: default; }
+.seek .progress { margin: 0; transition: height 0.15s; }
+.seek:not(.off):hover .progress,
+.seek.dragging .progress { height: 6px; }
+.seek.dragging .progress-fill { transition: none; }
 
 .ctrl {
   display: inline-flex;
@@ -192,8 +221,8 @@ html, body {
 
 .volume {
   flex: 1;
-  min-width: 40px;
-  margin-left: 6px;
+  min-width: 36px;
+  margin-left: 4px;
   accent-color: var(--accent);
 }
 
@@ -402,6 +431,57 @@ html, body {
 }
 
 .switch { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* Menu quick picks (shown while the search box is empty). */
+.tabs { display: flex; gap: 4px; }
+.tabs[hidden], .results[hidden] { display: none; }
+
+.tab {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 600 0.72rem var(--font-family);
+  cursor: pointer;
+}
+
+.tab:hover { color: var(--text-primary); }
+.tab[aria-selected="true"] { border-color: transparent; background: var(--accent-gradient); color: var(--on-accent); }
+
+/* Up next */
+.queue-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+
+.queue-title {
+  flex: 1;
+  font-family: var(--title-font);
+  font-style: var(--title-style);
+  font-weight: var(--title-weight);
+  font-size: 0.85rem;
+}
+
+.queue-count { color: var(--text-tertiary); font-size: 0.7rem; }
+
+.qrow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  height: 28px;
+  padding: 0 2px 0 6px;
+  border-radius: calc(var(--radius) * 0.35);
+  font-size: 0.78rem;
+}
+
+.qrow:hover, .qrow:focus-within { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.qrow .r-title { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-primary); font-weight: 500; }
+.qrow .r-artist { flex: 0 1 38%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-secondary); font-size: 0.72rem; }
+.qrow .r-time { flex: 0 0 auto; color: var(--text-tertiary); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.qrow .q-act { align-self: center; width: 22px; height: 22px; opacity: 0; }
+.qrow:hover .q-act, .qrow:focus-within .q-act { opacity: 1; }
+.qrow .q-spacer { flex: 0 0 22px; }
+.low-alpha .qrow, .low-alpha .queue-head { text-shadow: var(--legibility-shadow); }
+.low-alpha .qrow .r-artist, .low-alpha .qrow .r-time, .low-alpha .queue-count { color: var(--text-primary); }
 
 /* Lyrics: timed lines follow the song, the current one highlighted and centered. */
 .lyrics-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
