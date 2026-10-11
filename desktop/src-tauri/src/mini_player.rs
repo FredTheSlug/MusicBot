@@ -1,7 +1,7 @@
 //! The always-on-top mini-player window and the commands its bundled UI may call.
 
 use crate::bridge::{self, BotCommand};
-use crate::lookup::{self, Lyrics, SearchResult};
+use crate::lookup::{self, Lyrics, PlaylistInfo, SearchResult};
 use crate::spotify::{self, SpotifyStatus};
 use crate::settings::Settings;
 use crate::state::BotState;
@@ -394,12 +394,52 @@ pub async fn mini_search(app: AppHandle, query: String) -> Result<Vec<SearchResu
         .map(|data| lookup::search_results(&data))
 }
 
-/// Lyrics for the song playing on the selected server.
+/// Lyrics for the song playing on the selected server, asked for by name.
 #[tauri::command]
 pub async fn mini_lyrics(app: AppHandle) -> Result<Lyrics, String> {
-    blocking(move || bridge::send_command_fetch(&app, BotCommand::Lyrics, LYRICS_TIMEOUT))
+    let cmd = {
+        let app_state = app.state::<AppState>();
+        let store = app_state.store.lock().unwrap();
+        lookup::lyrics_command(store.current().and_then(|s| s.track.as_ref()))?
+    };
+    blocking(move || bridge::send_command_fetch(&app, cmd, LYRICS_TIMEOUT))
         .await
         .map(|data| lookup::lyrics_from(&data))
+}
+
+async fn fetch_tracks(app: AppHandle, cmd: BotCommand) -> Result<Vec<SearchResult>, String> {
+    blocking(move || bridge::send_command_fetch(&app, cmd, SEARCH_TIMEOUT))
+        .await
+        .map(|data| lookup::track_list(&data))
+}
+
+/// Recently played on the selected server.
+#[tauri::command]
+pub async fn mini_history(app: AppHandle) -> Result<Vec<SearchResult>, String> {
+    fetch_tracks(app, BotCommand::History).await
+}
+
+/// Most played on the selected server.
+#[tauri::command]
+pub async fn mini_frequent(app: AppHandle) -> Result<Vec<SearchResult>, String> {
+    fetch_tracks(app, BotCommand::Frequent).await
+}
+
+#[tauri::command]
+pub async fn mini_playlists(app: AppHandle) -> Result<Vec<PlaylistInfo>, String> {
+    blocking(move || bridge::send_command_fetch(&app, BotCommand::Playlists, SEARCH_TIMEOUT))
+        .await
+        .map(|data| lookup::playlists(&data))
+}
+
+#[tauri::command]
+pub async fn mini_play_playlist(app: AppHandle, name: String, folder: Option<String>) -> Result<String, String> {
+    blocking(move || {
+        let message = format!("Playing “{name}”");
+        bridge::send_command_await(&app, BotCommand::PlayPlaylist { name, folder }, COMMAND_TIMEOUT)?;
+        Ok(message)
+    })
+    .await
 }
 
 #[tauri::command]

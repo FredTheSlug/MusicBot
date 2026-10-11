@@ -27,9 +27,21 @@ pub enum BotCommand {
     SetVolume(u8),
     PlayQuery(String),
     PlaySpotifyLink(String),
+    ToggleShuffle,
+    CycleRepeat,
+    /// Milliseconds from the start of the song.
+    Seek(u64),
+    /// Queue edits name the song too, so the page can refuse if the queue moved underneath.
+    RemoveFromQueue { index: u32, uri: String },
+    MoveToTop { index: u32, uri: String },
+    PlayPlaylist { name: String, folder: Option<String> },
     /// Fetches: the page answers with the bot's JSON as the result's `data`.
     Search(String),
-    Lyrics,
+    #[serde(rename_all = "camelCase")]
+    Lyrics { title: String, author: String, duration_ms: u64 },
+    History,
+    Frequent,
+    Playlists,
 }
 
 #[derive(Debug, Deserialize)]
@@ -188,7 +200,7 @@ mod tests {
         let prefix = "window.__cksBridge && window.__cksBridge.run(1, ";
         let back: BotCommand = serde_json::from_str(&js[prefix.len()..js.len() - 2]).unwrap();
         assert_eq!(back, cmd);
-        assert_eq!(serde_json::to_string(&BotCommand::Lyrics).unwrap(), r#"{"type":"Lyrics"}"#);
+        assert_eq!(serde_json::to_string(&BotCommand::History).unwrap(), r#"{"type":"History"}"#);
     }
 
     #[test]

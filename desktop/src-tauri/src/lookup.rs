@@ -3,10 +3,15 @@
 
 use crate::bridge::BotCommand;
 use crate::spotify::parse_spotify_link;
+use crate::state::Track;
 use serde::Serialize;
 use serde_json::Value;
 
 const MAX_RESULTS: usize = 16;
+/// Recently played / most played lists.
+const MAX_LIST: usize = 50;
+const MAX_PLAYLISTS: usize = 100;
+const MAX_FOLDER_DEPTH: usize = 8;
 const MAX_FIELD_CHARS: usize = 200;
 const MAX_LYRIC_LINES: usize = 500;
 const MAX_LINE_CHARS: usize = 300;
@@ -52,13 +57,30 @@ fn text_field(item: &Value, key: &str, max: usize) -> String {
     cut(item.get(key).and_then(Value::as_str).unwrap_or(""), max)
 }
 
+/// A playlist saved on the bot; `folder` is None for the top level.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistInfo {
+    pub name: String,
+    pub folder: Option<String>,
+    pub track_count: u32,
+}
+
 /// The bot's `/search` answer (an array of tracks) → at most 16 results that can be queued.
 pub fn search_results(data: &Value) -> Vec<SearchResult> {
-    let Some(items) = data.as_array() else { return Vec::new() };
+    data.as_array().map_or_else(Vec::new, |items| tracks_from(items, MAX_RESULTS))
+}
+
+/// The bot's `/history` or `/frequent` answer (`{tracks: [...]}`) → at most 50 songs.
+pub fn track_list(data: &Value) -> Vec<SearchResult> {
+    data.get("tracks").and_then(Value::as_array).map_or_else(Vec::new, |items| tracks_from(items, MAX_LIST))
+}
+
+fn tracks_from(items: &[Value], cap: usize) -> Vec<SearchResult> {
     items
         .iter()
         .filter(|item| item.get("uri").and_then(Value::as_str).is_some_and(|uri| !uri.is_empty()))
-        .take(MAX_RESULTS)
+        .take(cap)
         .map(|item| SearchResult {
             title: text_field(item, "title", MAX_FIELD_CHARS),
             author: text_field(item, "author", MAX_FIELD_CHARS),
@@ -93,6 +115,40 @@ pub fn lyrics_from(data: &Value) -> Lyrics {
         lines,
         error: data.get("error").and_then(Value::as_str).map(|e| cut(e, MAX_FIELD_CHARS)),
     }
+}
+
+/// The bot's `/playlists-tree` answer → every playlist, folders flattened (at most 100).
+pub fn playlists(tree: &Value) -> Vec<PlaylistInfo> {
+    let mut found = Vec::new();
+    collect_playlists(tree, 0, &mut found);
+    found
+}
+
+fn collect_playlists(node: &Value, depth: usize, found: &mut Vec<PlaylistInfo>) {
+    if depth > MAX_FOLDER_DEPTH {
+        return;
+    }
+    for playlist in node.get("playlists").and_then(Value::as_array).into_iter().flatten() {
+        if found.len() >= MAX_PLAYLISTS {
+            return;
+        }
+        // Names go into the bot's URL, so a name is used whole or not at all.
+        let Some(name) = playlist.get("name").and_then(Value::as_str).filter(|n| !n.is_empty() && n.chars().count() <= MAX_FIELD_CHARS) else {
+            continue;
+        };
+        let folder = playlist.get("folder").and_then(Value::as_str).filter(|f| !f.is_empty()).map(str::to_string);
+        let track_count = playlist.get("trackCount").and_then(Value::as_u64).unwrap_or(0).min(u64::from(u32::MAX)) as u32;
+        found.push(PlaylistInfo { name: name.to_string(), folder, track_count });
+    }
+    for folder in node.get("folders").and_then(Value::as_array).into_iter().flatten() {
+        collect_playlists(folder, depth + 1, found);
+    }
+}
+
+/// Lyrics for this exact song, so a song change mid-request can't show the next song's words.
+pub fn lyrics_command(track: Option<&Track>) -> Result<BotCommand, String> {
+    let track = track.ok_or_else(|| "Nothing playing".to_string())?;
+    Ok(BotCommand::Lyrics { title: track.title.clone(), author: track.author.clone(), duration_ms: track.duration_ms })
 }
 
 /// What to send for a pasted link: Spotify links in the form the bot resolves, else the first web link.
@@ -165,6 +221,54 @@ mod tests {
         let long = lyrics_from(&json!({"lines": [{"ms": 0, "text": "y".repeat(400)}]}));
         assert_eq!(long.lines[0].text.chars().count(), 300);
         assert!(long.lines[0].text.ends_with('…'));
+    }
+
+    #[test]
+    fn track_list_maps_and_caps() {
+        let items: Vec<_> = (0..60).map(|i| json!({"title": format!("t{i}"), "author": "A", "uri": format!("u{i}"), "duration": 1000})).collect();
+        let list = track_list(&json!({ "tracks": items, "size": 60 }));
+        assert_eq!(list.len(), 50);
+        assert_eq!(list[0].title, "t0");
+        assert_eq!(list[0].duration_ms, 1000);
+        assert!(track_list(&json!([])).is_empty());
+    }
+
+    #[test]
+    fn playlists_flatten_folders() {
+        let tree = json!({
+            "folder": "",
+            "playlists": [{"name": "Chill", "folder": "", "trackCount": 3, "items": ["a"]}],
+            "folders": [{
+                "folder": "Fred", "name": "Fred",
+                "playlists": [{"name": "Rap", "folder": "Fred", "trackCount": 12}],
+                "folders": [{"folder": "Fred/Old", "name": "Old", "playlists": [{"name": "2010", "folder": "Fred/Old", "trackCount": 1}], "folders": []}]
+            }]
+        });
+        assert_eq!(
+            playlists(&tree),
+            vec![
+                PlaylistInfo { name: "Chill".into(), folder: None, track_count: 3 },
+                PlaylistInfo { name: "Rap".into(), folder: Some("Fred".into()), track_count: 12 },
+                PlaylistInfo { name: "2010".into(), folder: Some("Fred/Old".into()), track_count: 1 },
+            ]
+        );
+        let many: Vec<_> = (0..150).map(|i| json!({"name": format!("p{i}"), "trackCount": 1})).collect();
+        assert_eq!(playlists(&json!({ "playlists": many })).len(), 100);
+    }
+
+    #[test]
+    fn lyrics_command_carries_the_song() {
+        let track = crate::state::Track { title: "T".into(), author: "A".into(), duration_ms: 1000, ..Default::default() };
+        let cmd = lyrics_command(Some(&track)).unwrap();
+        assert_eq!(
+            serde_json::to_value(&cmd).unwrap(),
+            json!({"type": "Lyrics", "value": {"title": "T", "author": "A", "durationMs": 1000}})
+        );
+        assert_eq!(lyrics_command(None), Err("Nothing playing".to_string()));
+        assert_eq!(
+            serde_json::to_value(BotCommand::RemoveFromQueue { index: 2, uri: "u".into() }).unwrap(),
+            json!({"type": "RemoveFromQueue", "value": {"index": 2, "uri": "u"}})
+        );
     }
 
     #[test]

@@ -128,3 +128,32 @@ test('queue and modes map into BotState', () => {
   assert.equal(out.repeat, 'OFF');
   assert.equal(out.shuffle, false);
 });
+
+const { queueEditError } = require('./core.js');
+
+test('new commands map to endpoints', () => {
+  const g = '9';
+  assert.deepEqual(commandToRequest(g, { type: 'ToggleShuffle' }, {}), { method: 'POST', path: '/api/guild/9/shuffle', body: null });
+  assert.deepEqual(commandToRequest(g, { type: 'CycleRepeat' }, {}), { method: 'POST', path: '/api/guild/9/repeat', body: null });
+  assert.deepEqual(commandToRequest(g, { type: 'Seek', value: 61000.7 }, {}), { method: 'POST', path: '/api/guild/9/seek', body: { position: 61000 } });
+  assert.equal(commandToRequest(g, { type: 'Seek', value: -5 }, {}), null);
+  assert.deepEqual(commandToRequest(g, { type: 'RemoveFromQueue', value: { index: 3, uri: 'u3' } }, {}), { method: 'POST', path: '/api/guild/9/remove/3', body: null });
+  assert.deepEqual(commandToRequest(g, { type: 'MoveToTop', value: { index: 3, uri: 'u3' } }, {}), { method: 'POST', path: '/api/guild/9/reorder', body: { from: 3, to: 0 } });
+  assert.equal(commandToRequest(g, { type: 'RemoveFromQueue', value: { index: -1, uri: 'x' } }, {}), null);
+  assert.deepEqual(commandToRequest(g, { type: 'PlayPlaylist', value: { name: 'Chill / Vibes', folder: "Fred's" } }, {}),
+    { method: 'POST', path: "/api/guild/9/playplaylist/Chill%20%2F%20Vibes?folder=Fred's", body: null });
+  assert.equal(commandToRequest(g, { type: 'PlayPlaylist', value: { name: 'Rap', folder: null } }, {}).path, '/api/guild/9/playplaylist/Rap');
+  assert.deepEqual(commandToRequest(g, { type: 'History' }, {}), { method: 'GET', path: '/api/guild/9/history', body: null });
+  assert.deepEqual(commandToRequest(g, { type: 'Frequent' }, {}), { method: 'GET', path: '/api/guild/9/frequent', body: null });
+  assert.deepEqual(commandToRequest(g, { type: 'Playlists' }, {}), { method: 'GET', path: '/api/playlists-tree', body: null });
+  assert.deepEqual(commandToRequest(g, { type: 'Lyrics', value: { title: 'Ke$ha & "Tik"', author: 'Kesha', durationMs: 200000 } }, {}),
+    { method: 'GET', path: '/api/guild/9/lyrics?title=Ke%24ha%20%26%20%22Tik%22&author=Kesha&duration=200000', body: null });
+});
+
+test('queue edits check the song', () => {
+  const queue = { tracks: [{ uri: 'a' }, { uri: 'b' }] };
+  assert.equal(queueEditError(queue, 1, 'b'), null);
+  assert.equal(queueEditError(queue, 1, 'a'), 'The queue changed — try again');
+  assert.equal(queueEditError(queue, 5, 'b'), 'The queue changed — try again');
+  assert.equal(queueEditError(null, 0, 'a'), 'The queue changed — try again');
+});

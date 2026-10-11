@@ -286,7 +286,11 @@ fn main() {
             mini_player::mini_get_prefs,
             mini_player::mini_set_opacity,
             mini_player::mini_set_theme,
-            mini_player::mini_set_panel
+            mini_player::mini_set_panel,
+            mini_player::mini_history,
+            mini_player::mini_frequent,
+            mini_player::mini_playlists,
+            mini_player::mini_play_playlist
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");

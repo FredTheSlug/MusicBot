@@ -142,6 +142,10 @@
     if (!guildId) { result(false, 'Pick a server in the panel first'); return; }
     var req = core.commandToRequest(guildId, cmd, core.toBotState(snap));
     if (!req) { result(true); return; }
+    if (cmd.type === 'RemoveFromQueue' || cmd.type === 'MoveToTop') {
+      var stale = core.queueEditError(snap.queue, cmd.value.index, cmd.value.uri);
+      if (stale) { result(false, stale); return; }
+    }
     if (cmd.type === 'PlayQuery' || cmd.type === 'PlaySpotifyLink') lastPlayAt = Date.now();
     fetch(req.path, {
       method: req.method,

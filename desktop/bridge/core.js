@@ -114,6 +114,31 @@
   function request(path, body) { return { method: 'POST', path: path, body: body }; }
   function fetchRequest(path) { return { method: 'GET', path: path, body: null }; }
 
+  /** {index, uri} of a queued song, or null when the index isn't a usable position. */
+  function queueIndex(value) {
+    var index = value && value.index;
+    return typeof index === 'number' && index >= 0 && Math.floor(index) === index ? index : null;
+  }
+
+  var QUEUE_CHANGED = 'The queue changed — try again';
+
+  /**
+   * Queue edits name the song as well as its position; refuse when the song at that position is no
+   * longer the one the user clicked (a friend edited the queue in between).
+   */
+  function queueEditError(queue, index, uri) {
+    var tracks = queue && Array.isArray(queue.tracks) ? queue.tracks : [];
+    var track = tracks[index];
+    return track && str(track.uri) === uri ? null : QUEUE_CHANGED;
+  }
+
+  function lyricsPath(base, song) {
+    if (!song || typeof song.title !== 'string' || !song.title) return base + 'lyrics';
+    return base + 'lyrics?title=' + encodeURIComponent(song.title) +
+      '&author=' + encodeURIComponent(str(song.author)) +
+      '&duration=' + Math.max(0, Math.floor(num(song.durationMs, 0)));
+  }
+
   /** command = {type, value?} (Rust BotCommand) → panel API request, or null when there's nothing to do. */
   function commandToRequest(guildId, command, state) {
     if (!guildId || !command) return null;
@@ -133,7 +158,31 @@
         return typeof command.value === 'string' && command.value.trim()
           ? fetchRequest(base + 'search?q=' + encodeURIComponent(command.value.trim()))
           : null;
-      case 'Lyrics': return fetchRequest(base + 'lyrics');
+      case 'Lyrics': return fetchRequest(lyricsPath(base, command.value));
+      case 'ToggleShuffle': return request(base + 'shuffle', null);
+      case 'CycleRepeat': return request(base + 'repeat', null);
+      case 'Seek':
+        return typeof command.value === 'number' && command.value >= 0
+          ? request(base + 'seek', { position: Math.floor(command.value) })
+          : null;
+      case 'RemoveFromQueue': {
+        var removeAt = queueIndex(command.value);
+        return removeAt === null ? null : request(base + 'remove/' + removeAt, null);
+      }
+      case 'MoveToTop': {
+        var moveFrom = queueIndex(command.value);
+        return moveFrom === null ? null : request(base + 'reorder', { from: moveFrom, to: 0 });
+      }
+      case 'PlayPlaylist': {
+        var pl = command.value || {};
+        if (typeof pl.name !== 'string' || !pl.name) return null;
+        var folder = typeof pl.folder === 'string' && pl.folder ? '?folder=' + encodeURIComponent(pl.folder) : '';
+        return request(base + 'playplaylist/' + encodeURIComponent(pl.name) + folder, null);
+      }
+      case 'History': return fetchRequest(base + 'history');
+      case 'Frequent': return fetchRequest(base + 'frequent');
+      // Playlists are shared by every server, so this one isn't under /guild/.
+      case 'Playlists': return fetchRequest('/api/playlists-tree');
       default: return null;
     }
   }
@@ -155,7 +204,7 @@
 
   var api = {
     toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest,
-    isOwnLoadError: isOwnLoadError, readTheme: readTheme, THEME_VARS: THEME_VARS
+    isOwnLoadError: isOwnLoadError, readTheme: readTheme, THEME_VARS: THEME_VARS, queueEditError: queueEditError
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksCore = api;
