@@ -83,9 +83,26 @@
     };
   }
 
+  /** Index of the lyric line being sung at positionMs (the last line that has started), or -1. */
+  function currentLyricIndex(lines, positionMs) {
+    var lo = 0, hi = (lines ? lines.length : 0) - 1, found = -1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (lines[mid].ms <= positionMs) { found = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return found;
+  }
+
+  /** Identifies the song in a state report, so lyrics reload only when the song changes. */
+  function trackKey(state) {
+    var t = state && state.track;
+    return t ? t.title + '\n' + t.uri : null;
+  }
+
   var api = {
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
-    spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly
+    spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly,
+    currentLyricIndex: currentLyricIndex, trackKey: trackKey
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksMiniView = api;

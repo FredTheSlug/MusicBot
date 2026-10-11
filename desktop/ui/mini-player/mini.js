@@ -48,20 +48,26 @@
 
     el('volume').disabled = !(v.live && v.signedIn);
     if (!volumeDragging && s) el('volume').value = s.volume;
+    if (panel === 'lyrics' && MV.trackKey(s) !== lyricsKey) loadLyrics();
     tick();
   }
 
-  /** Advances the progress bar between state reports. */
-  function tick() {
+  /** Where the song is now: the last reported position, advanced while it plays. */
+  function currentPosition() {
     var s = ui && ui.state;
     var t = s && s.track;
-    var pct = 0;
-    if (t && t.durationMs > 0 && ui.positionMs != null) {
-      var pos = ui.positionMs;
-      if (!s.paused && !t.isStream && s.connected && !ui.stale) pos += Date.now() - ui.positionAtMs;
-      pct = Math.max(0, Math.min(100, (pos / t.durationMs) * 100));
-    }
+    if (!t || ui.positionMs == null) return 0;
+    var pos = ui.positionMs;
+    if (!s.paused && !t.isStream && s.connected && !ui.stale) pos += Date.now() - ui.positionAtMs;
+    return pos;
+  }
+
+  /** Advances the progress bar (and the lyrics) between state reports. */
+  function tick() {
+    var t = ui && ui.state && ui.state.track;
+    var pct = t && t.durationMs > 0 ? Math.max(0, Math.min(100, (currentPosition() / t.durationMs) * 100)) : 0;
     el('progressFill').style.width = pct + '%';
+    followLyrics();
   }
 
   function showStatus(message) {
@@ -125,9 +131,11 @@
     el('shell').classList.toggle('down', direction === 'down');
     el('drawer').hidden = next === 'none';
     el('menuPanel').hidden = next !== 'menu';
+    el('lyricsPanel').hidden = next !== 'lyrics';
     el('menuBtn').setAttribute('aria-pressed', String(next === 'menu'));
     el('lyricsBtn').setAttribute('aria-pressed', String(next === 'lyrics'));
     if (next === 'menu') openMenu();
+    if (next === 'lyrics') loadLyrics();
   }
 
   function setPanel(next) {
@@ -150,7 +158,76 @@
   });
 
   el('menuBtn').addEventListener('click', function () { setPanel(panel === 'menu' ? 'none' : 'menu'); });
+  el('lyricsBtn').addEventListener('click', function () { setPanel(panel === 'lyrics' ? 'none' : 'lyrics'); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && panel !== 'none') setPanel('none'); });
+
+  // ---- Lyrics for the song playing; timed lyrics follow along ----
+  var lyricsRequests = MV.latestOnly();
+  var lyrics = null;
+  var lyricsKey = null;
+  var lyricLine = -1;
+
+  function clearLyrics() {
+    var body = el('lyricsBody');
+    while (body.firstChild) body.removeChild(body.firstChild);
+    lyrics = null;
+    lyricLine = -1;
+    return body;
+  }
+
+  function lyricsMessage(text) {
+    var p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = text;
+    clearLyrics().appendChild(p);
+  }
+
+  function loadLyrics() {
+    var s = ui && ui.state;
+    lyricsKey = MV.trackKey(s);
+    el('lyricsTitle').textContent = s && s.track ? s.track.title : '';
+    el('lyricsNote').textContent = '';
+    var n = lyricsRequests.next();
+    if (!lyricsKey) { lyricsMessage('Nothing playing'); return; }
+    lyricsMessage('Loading…');
+    invoke('mini_lyrics').then(function (result) {
+      if (!lyricsRequests.isLatest(n)) return;
+      if (result.instrumental) { lyricsMessage('Instrumental'); return; }
+      if (!result.lines.length) { lyricsMessage(result.error || 'No lyrics found'); return; }
+      showLyrics(result);
+    }).catch(function (e) {
+      if (lyricsRequests.isLatest(n)) lyricsMessage(String(e));
+    });
+  }
+
+  function showLyrics(result) {
+    var body = clearLyrics();
+    result.lines.forEach(function (line) {
+      var p = document.createElement('p');
+      p.className = 'lyric';
+      p.textContent = line.text || '♪';
+      body.appendChild(p);
+    });
+    body.scrollTop = 0;
+    el('lyricsNote').textContent = result.synced ? '' : 'not synced';
+    lyrics = result;
+    followLyrics();
+  }
+
+  /** Highlights the line being sung and keeps it in the middle (timed lyrics only). */
+  function followLyrics() {
+    if (panel !== 'lyrics' || !lyrics || !lyrics.synced) return;
+    var i = MV.currentLyricIndex(lyrics.lines, currentPosition());
+    if (i === lyricLine) return;
+    var body = el('lyricsBody');
+    var previous = body.children[lyricLine];
+    if (previous) previous.classList.remove('now');
+    lyricLine = i;
+    var line = body.children[i];
+    if (!line) return;
+    line.classList.add('now');
+    body.scrollTo({ top: line.offsetTop - body.clientHeight / 2 + line.offsetHeight / 2, behavior: 'smooth' });
+  }
 
   // ---- Menu: search or paste a link ----
   var searches = MV.latestOnly();
@@ -288,5 +365,5 @@
   listen('state-changed', function (e) { render(e.payload); });
   listen('notice', function (e) { showStatus(e.payload.message); });
   invoke('mini_get_state').then(render);
-  setInterval(tick, 500);
+  setInterval(tick, 250);
 })();

@@ -120,3 +120,23 @@ test('latestOnly', () => {
   assert.equal(seq.isLatest(a), false);
   assert.equal(seq.isLatest(b), true);
 });
+
+const { currentLyricIndex, trackKey } = require('./view.js');
+
+test('currentLyricIndex', () => {
+  const lines = [{ ms: 1000, text: 'a' }, { ms: 5000, text: 'b' }, { ms: 9000, text: 'c' }];
+  assert.equal(currentLyricIndex(lines, 0), -1);
+  assert.equal(currentLyricIndex(lines, 1000), 0);
+  assert.equal(currentLyricIndex(lines, 4999), 0);
+  assert.equal(currentLyricIndex(lines, 5000), 1);
+  assert.equal(currentLyricIndex(lines, 99999), 2);
+  assert.equal(currentLyricIndex([], 5000), -1);
+});
+
+test('trackKey', () => {
+  const a = { track: { title: 'T', uri: 'u1' } };
+  assert.equal(trackKey(a), trackKey({ track: { title: 'T', uri: 'u1', positionMs: 5 } }));
+  assert.notEqual(trackKey(a), trackKey({ track: { title: 'T', uri: 'u2' } }));
+  assert.equal(trackKey({ track: null }), null);
+  assert.equal(trackKey(null), null);
+});

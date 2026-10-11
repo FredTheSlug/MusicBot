@@ -79,6 +79,8 @@ html, body {
 .low-alpha .title,
 .low-alpha .meta,
 .low-alpha .status { text-shadow: var(--legibility-shadow); }
+.low-alpha .meta,
+.low-alpha .status { color: var(--text-primary); }
 
 /* Artwork: a rounded square here; Revival turns it into a spinning record (themes.css). */
 .disc {
@@ -400,6 +402,61 @@ html, body {
 }
 
 .switch { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* Lyrics: timed lines follow the song, the current one highlighted and centered. */
+.lyrics-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+
+.lyrics-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--title-font);
+  font-style: var(--title-style);
+  font-weight: var(--title-weight);
+  font-size: 0.85rem;
+}
+
+.lyrics-note {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lyrics-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 6px 2px 48px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-hover) transparent;
+  mask-image: linear-gradient(transparent, #000 10%, #000 85%, transparent);
+}
+
+.lyric {
+  padding: 3px 8px;
+  border-radius: calc(var(--radius) * 0.3);
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  transition: color 0.25s, background-color 0.25s;
+}
+
+.lyric.now {
+  color: var(--text-primary);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.lyrics-body .note { padding: 6px 8px; color: var(--text-secondary); font-size: 0.8rem; }
+.low-alpha .lyrics-head, .low-alpha .lyric, .low-alpha .lyrics-body .note { text-shadow: var(--legibility-shadow); }
+.low-alpha .lyric, .low-alpha .lyrics-note, .low-alpha .lyrics-body .note { color: var(--text-primary); }
 
 .drop-hint {
   position: absolute;
