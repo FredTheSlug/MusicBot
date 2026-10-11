@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 pub const LABEL: &str = "mini-player";
 const WIDTH: f64 = 360.0;
@@ -57,9 +57,15 @@ pub fn expanded_rect(collapsed: Rect, extra: u32, monitor: Rect) -> (Rect, Direc
 }
 
 /// Where the closed player sits, given the open window's position and how far the player was
-/// pushed (`offset` = closed y − open y): this is what gets saved, never the open window's spot.
-pub fn collapsed_origin(window: (i32, i32), offset: i32) -> (i32, i32) {
-    (window.0, window.1 + offset)
+/// pushed (`offset` = closed y − open y, in logical px so a move to a monitor with a different
+/// scale keeps it right): this is what gets saved, never the open window's spot.
+pub fn collapsed_origin(window: (i32, i32), offset: f64, scale: f64) -> (i32, i32) {
+    (window.0, window.1 + (offset * scale).round() as i32)
+}
+
+/// The closed player's size in physical px on a monitor with this scale factor.
+pub fn closed_size(scale: f64) -> (u32, u32) {
+    ((WIDTH * scale).round() as u32, (HEIGHT * scale).round() as u32)
 }
 
 /// What the mini-player UI renders. `position_at_ms` lets it advance the progress bar locally.
@@ -209,8 +215,8 @@ pub fn on_panel_theme(app: &AppHandle, raw: PanelTheme) {
 #[derive(Debug, Clone, Copy)]
 struct Open {
     direction: Direction,
-    offset: i32,
-    collapsed: Rect,
+    /// Logical px between the closed player's top and the open window's top.
+    offset: f64,
 }
 
 /// Set while the menu or lyrics are open.
@@ -227,7 +233,6 @@ fn expand(app: &AppHandle) -> Result<Direction, String> {
     }
     let window = app.get_webview_window(LABEL).ok_or("The mini-player isn't open")?;
     let position = window.outer_position().map_err(|e| e.to_string())?;
-    let size = window.outer_size().map_err(|e| e.to_string())?;
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
     let monitor = window
         .current_monitor()
@@ -235,11 +240,13 @@ fn expand(app: &AppHandle) -> Result<Direction, String> {
         .flatten()
         .or_else(|| window.primary_monitor().ok().flatten())
         .ok_or("No monitor found")?;
-    let collapsed = Rect { x: position.x, y: position.y, w: size.width, h: size.height };
+    // From the fixed logical size, not outer_size(), so a window mis-sized by a DPI change heals.
+    let (w, h) = closed_size(scale);
+    let collapsed = Rect { x: position.x, y: position.y, w, h };
     let extra = (EXTRA_HEIGHT * scale).round() as u32;
     let (rect, direction) = expanded_rect(collapsed, extra, work_area(&monitor));
     // Recorded before moving so the Moved event saves the closed spot.
-    *OPEN.lock().unwrap() = Some(Open { direction, offset: collapsed.y - rect.y, collapsed });
+    *OPEN.lock().unwrap() = Some(Open { direction, offset: f64::from(collapsed.y - rect.y) / scale });
     let _ = window.set_position(PhysicalPosition::new(rect.x, rect.y));
     let _ = window.set_size(PhysicalSize::new(rect.w, rect.h));
     Ok(direction)
@@ -249,9 +256,10 @@ fn expand(app: &AppHandle) -> Result<Direction, String> {
 pub fn collapse(app: &AppHandle) {
     let Some(open) = OPEN.lock().unwrap().take() else { return };
     let Some(window) = app.get_webview_window(LABEL) else { return };
-    let current = window.outer_position().map(|p| (p.x, p.y)).unwrap_or((open.collapsed.x, open.collapsed.y));
-    let (x, y) = collapsed_origin(current, open.offset);
-    let _ = window.set_size(PhysicalSize::new(open.collapsed.w, open.collapsed.h));
+    let Ok(current) = window.outer_position() else { return };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let (x, y) = collapsed_origin((current.x, current.y), open.offset, scale);
+    let _ = window.set_size(LogicalSize::new(WIDTH, HEIGHT));
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = app.emit_to(LABEL, "panel-reset", ());
 }
@@ -269,8 +277,9 @@ static SAVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Remembers where the user dragged the mini-player; writes settings at most once a second.
 pub fn on_moved(app: &AppHandle, position: PhysicalPosition<i32>) {
-    let offset = OPEN.lock().unwrap().map_or(0, |open| open.offset);
-    let (x, y) = collapsed_origin((position.x, position.y), offset);
+    let offset = OPEN.lock().unwrap().map_or(0.0, |open| open.offset);
+    let scale = app.get_webview_window(LABEL).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+    let (x, y) = collapsed_origin((position.x, position.y), offset, scale);
     *LAST_MOVE.lock().unwrap() = Some((x, y, Instant::now()));
     if SAVER_RUNNING.swap(true, Ordering::SeqCst) {
         return;
@@ -436,8 +445,17 @@ mod tests {
 
     #[test]
     fn saved_position_is_the_closed_one() {
-        assert_eq!(collapsed_origin((1548, 608), 250), (1548, 858));
-        assert_eq!(collapsed_origin((5, 5), 0), (5, 5));
+        assert_eq!(collapsed_origin((1548, 608), 250.0, 1.0), (1548, 858));
+        assert_eq!(collapsed_origin((5, 5), 0.0, 1.0), (5, 5));
+        // Dragged onto a 150% monitor while open: the 250 px gap is 375 physical px there.
+        assert_eq!(collapsed_origin((100, 100), 250.0, 1.5), (100, 475));
+    }
+
+    #[test]
+    fn closed_size_follows_the_monitor_scale() {
+        assert_eq!(closed_size(1.0), (360, 170));
+        assert_eq!(closed_size(1.5), (540, 255));
+        assert_eq!(closed_size(1.25), (450, 213));
     }
 
     const SIZE: (u32, u32) = (360, 140);
