@@ -942,6 +942,38 @@
             color: var(--accent-light);
         }
 
+        /* Server switches under the volume: autoplay and SponsorBlock. */
+        .np-toggles {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .np-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 11px;
+            border: 1px solid var(--border-light);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-secondary);
+            font: 600 0.72rem var(--font-family);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .np-toggle .np-ctrl-icon { width: 14px; height: 14px; }
+        .np-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
+
+        .np-toggle.on {
+            color: var(--accent);
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12);
+        }
+
         .volume-container {
             display: flex;
             align-items: center;
@@ -6276,7 +6308,7 @@
 
         function nowPlayingStableKey(data) {
             if (!data.playing) return '';
-            return (data.identifier || data.uri || '') + '|' + (data.artworkUrl || '') + '|' + (data.repeatMode || 'OFF') + '|' + (data.shuffleMode ? '1' : '0') + '|' + (data.paused ? '1' : '0');
+            return (data.identifier || data.uri || '') + '|' + (data.artworkUrl || '') + '|' + (data.repeatMode || 'OFF') + '|' + (data.shuffleMode ? '1' : '0') + '|' + (data.paused ? '1' : '0') + '|' + (data.autoplay ? '1' : '0') + (data.sponsorBlock === false ? '0' : '1');
         }
 
         function updateNowPlayingPartial(data) {
@@ -6383,6 +6415,12 @@
         function npIconShuffle() {
             return npIconSvgStroked('<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6a4 4 0 0 1 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1 0 2 .5 2.6 1.4"/><path d="M22 18h-5.9c-1 0-2-.5-2.6-1.4"/>');
         }
+        function npIconAutoplay() {
+            return npIconSvgStroked('<path d="M12 12c-2-2.7-4-4-6-4a4 4 0 0 0 0 8c2 0 4-1.3 6-4zm0 0c2 2.7 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.3-6 4z"/>');
+        }
+        function npIconSponsorBlock() {
+            return npIconSvgStroked('<path d="M3 12h10"/><path d="m10 8 4 4-4 4"/><path d="M19 5v14"/>');
+        }
         function npIconRepeatAll() {
             return npIconSvgStroked('<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>');
         }
@@ -6424,6 +6462,22 @@
             return '<button type="button" class="' + cls + '" onclick="toggleShuffle()" title="' + title + '">' + npIconShuffle() + '</button>';
         }
 
+        function renderAutoplayButton(data) {
+            const on = !!(data && data.autoplay);
+            const title = on
+                ? 'Autoplay on — related songs play when the queue runs out — click to turn off'
+                : 'Autoplay off — click to keep playing related songs when the queue runs out';
+            return '<button type="button" class="np-toggle' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="toggleAutoplay()" title="' + title + '">' + npIconAutoplay() + 'Autoplay</button>';
+        }
+
+        function renderSponsorBlockButton(data) {
+            const on = !(data && data.sponsorBlock === false);
+            const title = on
+                ? 'SponsorBlock on — non-music parts of YouTube videos are skipped — click to turn off'
+                : 'SponsorBlock off — click to skip non-music parts of YouTube videos';
+            return '<button type="button" class="np-toggle' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="toggleSponsorBlock()" title="' + title + '">' + npIconSponsorBlock() + 'Skip non-music</button>';
+        }
+
         function renderControls(data) {
             const pauseIcon = isPaused ? npIconPlay() : npIconPause();
             const pauseTitle = isPaused ? 'Resume' : 'Pause';
@@ -6440,7 +6494,8 @@
                 '<span class="volume-icon">' + volIcon + '</span>' +
                 '<input type="range" class="volume-slider" min="0" max="150" value="' + vol + '" oninput="setVolume(this.value)" />' +
                 '<span class="volume-value" id="volVal">' + vol + '%</span>' +
-                '</div>';
+                '</div>' +
+                '<div class="np-toggles">' + renderAutoplayButton(data) + renderSponsorBlockButton(data) + '</div>';
         }
 
         function updateProgress() {
@@ -6493,6 +6548,22 @@
             if (!currentGuild) return;
             try {
                 await authFetch('/api/guild/' + currentGuild + '/repeat', {method: 'POST'});
+                fetchNowPlaying();
+            } catch(e) {}
+        }
+
+        async function toggleAutoplay() {
+            if (!currentGuild) return;
+            try {
+                await authFetch('/api/guild/' + currentGuild + '/autoplay', {method: 'POST'});
+                fetchNowPlaying();
+            } catch(e) {}
+        }
+
+        async function toggleSponsorBlock() {
+            if (!currentGuild) return;
+            try {
+                await authFetch('/api/guild/' + currentGuild + '/sponsorblock', {method: 'POST'});
                 fetchNowPlaying();
             } catch(e) {}
         }
