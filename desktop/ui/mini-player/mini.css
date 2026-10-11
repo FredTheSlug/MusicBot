@@ -53,7 +53,6 @@ html, body {
   display: flex;
   gap: 14px;
   align-items: center;
-  height: 100%;
   padding: 12px 14px;
   overflow: hidden;
   border-radius: var(--radius);
@@ -234,31 +233,173 @@ html, body {
 .close svg { width: 100%; height: 100%; fill: currentColor; }
 .close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 
-/* Spotify row (send current song / paste a link) and the drop target. */
-.spotify-row {
+/* Bottom row: Spotify logo, lyrics, status, menu. */
+.bottom-row {
   display: flex;
+  align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
-.chip {
-  min-width: 0;
-  padding: 4px 10px;
-  border: 1px solid rgba(30, 215, 96, 0.35);
-  border-radius: 999px;
-  background: rgba(30, 215, 96, 0.1);
-  color: var(--text-primary);
-  font: 500 0.72rem var(--font-family);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.bottom-row .status { flex: 1; }
+
+.icon-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--ctrl-radius);
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
-.chip:first-child { flex: 1 1 auto; }
-.chip.ghost { flex: 0 0 auto; border-color: var(--border-light); background: transparent; color: var(--text-secondary); }
-.chip:hover:not(:disabled) { border-color: rgba(30, 215, 96, 0.6); }
-.chip:disabled { opacity: 0.5; cursor: default; }
+.icon-btn svg { width: 100%; height: 100%; fill: currentColor; }
+.icon-btn:hover:not(:disabled) { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+.icon-btn:disabled { opacity: 0.4; cursor: default; }
+.icon-btn[aria-pressed="true"] { color: var(--accent-light); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* The Spotify logo: green when there's a song to queue, grey otherwise. */
+.spotify { padding: 2px; }
+.spotify:disabled { opacity: 1; }
+.spotify .sp-disc { fill: #6b7076; transition: fill 0.2s; }
+.spotify .sp-waves { fill: none; stroke: #121212; stroke-width: 1.7; stroke-linecap: round; }
+.spotify.playable .sp-disc { fill: var(--spotify-green); }
+.spotify.playable:hover { background: rgba(30, 215, 96, 0.14); }
+
+/* Layout: the drawer sits above the player, or below it when the window grew downward. */
+.shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.shell.down { flex-direction: column-reverse; }
+.shell > .mini { flex: 0 0 auto; height: 170px; }
+.shell > .drawer { flex: 1 1 auto; min-height: 0; }
+
+.drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-card) calc(var(--card-alpha) * 100%), transparent);
+  border: 1px solid color-mix(in srgb, var(--border-light) calc(var(--card-alpha) * 100%), transparent);
+}
+
+.drawer[hidden], .drawer-panel[hidden], .settings[hidden], .setting[hidden] { display: none; }
+
+.drawer-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-row { display: flex; gap: 6px; align-items: center; }
+
+.search-box {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-light);
+  border-radius: calc(var(--radius) * 0.5);
+  background: color-mix(in srgb, var(--bg-elevated) calc(60% + var(--card-alpha) * 40%), transparent);
+  color: var(--text-primary);
+  font: 500 0.8rem var(--font-family);
+  outline: none;
+}
+
+.search-box::placeholder { color: var(--text-tertiary); }
+.search-box:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+.results {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-hover) transparent;
+}
+
+.result {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: calc(var(--radius) * 0.35);
+  background: transparent;
+  color: var(--text-primary);
+  font: 500 0.78rem var(--font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+.result:hover, .result:focus-visible { background: color-mix(in srgb, var(--accent) 16%, transparent); outline: none; }
+.result .r-title { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.result .r-artist { flex: 0 1 40%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-secondary); font-size: 0.72rem; }
+.result .r-time { flex: 0 0 auto; color: var(--text-tertiary); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.result.link .r-title { color: var(--accent-light); }
+
+.results .note {
+  padding: 6px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.low-alpha .result, .low-alpha .results .note, .low-alpha .setting { text-shadow: var(--legibility-shadow); }
+/* Dim greys disappear over a busy wallpaper once the card is see-through. */
+.low-alpha .result .r-artist,
+.low-alpha .result .r-time,
+.low-alpha .results .note,
+.low-alpha .setting > span:first-child,
+.low-alpha .setting-value { color: var(--text-primary); }
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
+
+.setting > span:first-child { flex: 0 0 auto; min-width: 118px; color: var(--text-secondary); }
+.setting input[type="range"] { flex: 1; accent-color: var(--accent); }
+.setting-value { flex: 0 0 36px; text-align: right; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+.setting select {
+  flex: 1;
+  height: 26px;
+  border: 1px solid var(--border-light);
+  border-radius: calc(var(--radius) * 0.35);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: 500 0.78rem var(--font-family);
+}
+
+.switch { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .drop-hint {
   position: absolute;

@@ -402,11 +402,6 @@ pub async fn mini_play_link(app: AppHandle, text: String) -> Result<String, Stri
     .await
 }
 
-#[tauri::command]
-pub async fn mini_play_spotify_clipboard(app: AppHandle) -> Result<String, String> {
-    blocking(move || spotify::play_clipboard(&app)).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

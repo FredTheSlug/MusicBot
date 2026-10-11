@@ -84,3 +84,39 @@ test('applyOpacity sets the card alpha and flags low values', () => {
   applyOpacity(root, 0.9);
   assert.ok(!root.classList.values.has('low-alpha'));
 });
+
+const { spotifyView, isLink, formatDuration, latestOnly } = require('./view.js');
+
+test('spotifyView states', () => {
+  assert.deepEqual(spotifyView({ available: true, now: { title: 'Toxic', artist: 'slayr', playing: true } }),
+    { playable: true, tooltip: 'Queue “Toxic – slayr” on the bot' });
+  assert.equal(spotifyView({ available: true, now: { title: 'Toxic', artist: '', playing: true } }).tooltip, 'Queue “Toxic” on the bot');
+  assert.deepEqual(spotifyView({ available: true, now: { title: 'Toxic', artist: 'slayr', playing: false } }),
+    { playable: false, tooltip: "Spotify isn't playing" });
+  assert.deepEqual(spotifyView({ available: true, now: null }), { playable: false, tooltip: "Spotify isn't open" });
+  assert.deepEqual(spotifyView(null), { playable: false, tooltip: "Spotify isn't open" });
+});
+
+test('isLink', () => {
+  assert.equal(isLink('https://youtu.be/x'), true);
+  assert.equal(isLink('  spotify:album:1 '), true);
+  assert.equal(isLink('watch https://x.y now'), true);
+  assert.equal(isLink('httpx'), false);
+  assert.equal(isLink('daft punk'), false);
+  assert.equal(isLink(''), false);
+});
+
+test('formatDuration', () => {
+  assert.equal(formatDuration(61000, false), '1:01');
+  assert.equal(formatDuration(3723000, false), '1:02:03');
+  assert.equal(formatDuration(0, false), '0:00');
+  assert.equal(formatDuration(5000, true), 'LIVE');
+});
+
+test('latestOnly', () => {
+  const seq = latestOnly();
+  const a = seq.next();
+  const b = seq.next();
+  assert.equal(seq.isLatest(a), false);
+  assert.equal(seq.isLatest(b), true);
+});

@@ -49,7 +49,44 @@
     root.classList.toggle('low-alpha', value < LOW_ALPHA);
   }
 
-  var api = { view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity };
+  /** The Spotify logo button: green (playable) only when Spotify is playing something to queue. */
+  function spotifyView(status) {
+    var now = status && status.available ? status.now : null;
+    if (!now) return { playable: false, tooltip: "Spotify isn't open" };
+    if (!now.playing) return { playable: false, tooltip: "Spotify isn't playing" };
+    var song = now.title + (now.artist ? ' – ' + now.artist : '');
+    return { playable: true, tooltip: 'Queue “' + song + '” on the bot' };
+  }
+
+  /** True when the search box holds a link to play rather than words to search for. */
+  function isLink(text) {
+    var t = String(text || '').trim();
+    return /^spotify:/i.test(t) || /(^|\s)https?:\/\/\S/i.test(t);
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  /** m:ss (h:mm:ss from an hour), or LIVE for streams. */
+  function formatDuration(ms, isStream) {
+    if (isStream) return 'LIVE';
+    var total = Math.max(0, Math.floor((ms || 0) / 1000));
+    var h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
+    return h > 0 ? h + ':' + pad2(m) + ':' + pad2(sec) : m + ':' + pad2(sec);
+  }
+
+  /** Numbers requests so a slow, older answer can be ignored once a newer request exists. */
+  function latestOnly() {
+    var last = 0;
+    return {
+      next: function () { return ++last; },
+      isLatest: function (n) { return n === last; }
+    };
+  }
+
+  var api = {
+    view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
+    spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksMiniView = api;
 })(typeof window !== 'undefined' ? window : this);

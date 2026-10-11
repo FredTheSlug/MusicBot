@@ -280,7 +280,6 @@ fn main() {
             mini_player::mini_spotify_now,
             mini_player::mini_send_spotify,
             mini_player::mini_play_spotify_text,
-            mini_player::mini_play_spotify_clipboard,
             mini_player::mini_search,
             mini_player::mini_lyrics,
             mini_player::mini_play_link,

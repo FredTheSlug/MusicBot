@@ -11,7 +11,6 @@ fn main() {
             "mini_spotify_now",
             "mini_send_spotify",
             "mini_play_spotify_text",
-            "mini_play_spotify_clipboard",
             "mini_search",
             "mini_lyrics",
             "mini_play_link",
