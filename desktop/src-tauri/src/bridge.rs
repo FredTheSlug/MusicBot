@@ -29,6 +29,7 @@ pub enum BotCommand {
     PlaySpotifyLink(String),
     ToggleShuffle,
     CycleRepeat,
+    ToggleAutoplay,
     /// Milliseconds from the start of the song.
     Seek(u64),
     /// Queue edits name the song too, so the page can refuse if the queue moved underneath.

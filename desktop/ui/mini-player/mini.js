@@ -244,6 +244,7 @@
   el('menuBtn').addEventListener('click', function () { setPanel(panel === 'menu' ? 'none' : 'menu'); });
   el('lyricsBtn').addEventListener('click', function () { setPanel(panel === 'lyrics' ? 'none' : 'lyrics'); });
   el('queueBtn').addEventListener('click', function () { setPanel(panel === 'queue' ? 'none' : 'queue'); });
+  el('autoplayBtn').addEventListener('click', function () { send({ type: 'ToggleAutoplay' }); });
 
   // ---- Up next: the queue, with move-to-top and remove ----
   function queueAction(label, glyph, onClick) {
@@ -271,8 +272,11 @@
     var total = (s && s.queueLength) || 0;
     el('queueCount').textContent = total ? total + (total === 1 ? ' song' : ' songs') : '';
     var rows = view(ui).live && view(ui).signedIn ? MV.queueRows(s) : [];
+    var autoplay = s && typeof s.autoplay === 'boolean' ? s.autoplay : null;
+    el('autoplayBtn').hidden = autoplay === null;
+    el('autoplayBtn').setAttribute('aria-pressed', String(!!autoplay));
     if (!rows.length) {
-      list.appendChild(note('Nothing queued'));
+      list.appendChild(note(autoplay ? 'Nothing queued — autoplay will pick a related song' : 'Nothing queued'));
       return;
     }
     rows.forEach(function (row) {

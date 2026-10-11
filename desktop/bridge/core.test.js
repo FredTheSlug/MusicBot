@@ -157,3 +157,12 @@ test('queue edits check the song', () => {
   assert.equal(queueEditError(queue, 5, 'b'), 'The queue changed — try again');
   assert.equal(queueEditError(null, 0, 'a'), 'The queue changed — try again');
 });
+
+test('autoplay flag maps and toggles', () => {
+  const base = { connected: true, signedIn: true, guild: { id: '9', name: 'CK' }, queue: null };
+  assert.equal(toBotState(Object.assign({}, base, { nowPlaying: { autoplay: true } })).autoplay, true);
+  assert.equal(toBotState(Object.assign({}, base, { nowPlaying: { autoplay: false } })).autoplay, false);
+  assert.equal(toBotState(Object.assign({}, base, { nowPlaying: {} })).autoplay, null, 'an older bot without the setting');
+  assert.equal(toBotState(Object.assign({}, base, { signedIn: false, nowPlaying: { autoplay: true } })).autoplay, null);
+  assert.deepEqual(commandToRequest('9', { type: 'ToggleAutoplay' }, {}), { method: 'POST', path: '/api/guild/9/autoplay', body: null });
+});

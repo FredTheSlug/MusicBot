@@ -87,7 +87,9 @@
       shuffle: signedIn && !!np.shuffleMode,
       repeat: signedIn && REPEAT_MODES.indexOf(np.repeatMode) >= 0 ? np.repeatMode : 'OFF',
       upNext: signedIn ? toUpNext(snap.queue) : [],
-      queueLength: signedIn ? queueLength(snap.queue) : 0
+      queueLength: signedIn ? queueLength(snap.queue) : 0,
+      // null when the bot doesn't have the setting (older bot): the app hides the switch.
+      autoplay: signedIn && typeof np.autoplay === 'boolean' ? np.autoplay : null
     };
   }
 
@@ -161,6 +163,7 @@
       case 'Lyrics': return fetchRequest(lyricsPath(base, command.value));
       case 'ToggleShuffle': return request(base + 'shuffle', null);
       case 'CycleRepeat': return request(base + 'repeat', null);
+      case 'ToggleAutoplay': return request(base + 'autoplay', null);
       case 'Seek':
         return typeof command.value === 'number' && command.value >= 0
           ? request(base + 'seek', { position: Math.floor(command.value) })

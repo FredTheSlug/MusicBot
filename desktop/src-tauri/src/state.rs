@@ -93,6 +93,8 @@ pub struct BotState {
     /// The next songs (at most 20); `queue_length` counts them all.
     pub up_next: Vec<QueueItem>,
     pub queue_length: u32,
+    /// The server's autoplay setting; None when the bot doesn't have it.
+    pub autoplay: Option<bool>,
 }
 
 impl BotState {
@@ -252,6 +254,9 @@ mod tests {
         assert_eq!(s.repeat, RepeatMode::Off);
         assert!(s.up_next.is_empty());
         assert_eq!(s.queue_length, 0);
+        assert_eq!(s.autoplay, None);
+        let on: BotState = serde_json::from_str(r#"{"autoplay":true}"#).unwrap();
+        assert_eq!(on.autoplay, Some(true));
     }
 
     #[test]
