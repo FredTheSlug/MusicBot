@@ -2029,6 +2029,10 @@
 
         .logout-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent); }
 
+        /* "Get the app": a link styled like the header buttons; shown only in Windows desktop browsers. */
+        .get-app-btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; }
+        .get-app-btn[hidden] { display: none !important; }
+
         @media (max-width: 900px) {
             .main-layout {
                 padding: 16px max(12px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
@@ -4700,6 +4704,9 @@
                     <option value="revival">Revival ✦</option>
                 </select>
             </div>
+            <a class="logout-btn get-app-btn" id="getAppBtn" hidden
+               href="https://github.com/FredTheSlug/MusicBot/releases/download/desktop-updates/CloutKingsMusicBot-Setup.exe"
+               title="Windows app: mini-player, media keys, lyrics, send your Spotify song. It isn't code-signed yet, so on first run choose More info, then Run anyway.">&#11015; Get the app</a>
             <div class="panels-menu-wrap" id="panelsMenuWrap">
                 <button type="button" class="logout-btn" id="panelsMenuBtn" title="Show or hide panels">Panels</button>
                 <div class="panels-menu" id="panelsMenu" hidden></div>
@@ -4964,6 +4971,15 @@
             } catch (e) {}
             var sel = document.getElementById('themeSelect');
             if (sel && sel.value !== themeId) sel.value = themeId;
+        }
+
+        /** Offers the Windows desktop app; hidden on other systems and inside the app itself. */
+        function initGetAppButton() {
+            var btn = document.getElementById('getAppBtn');
+            if (!btn) return;
+            var insideApp = typeof window.__CKS_ORIGIN !== 'undefined';
+            var windowsDesktop = /Windows NT/.test(navigator.userAgent);
+            btn.hidden = insideApp || !windowsDesktop;
         }
 
         function initTheme() {
@@ -6018,6 +6034,7 @@
         }
 
         initTheme();
+        initGetAppButton();
         initPaneLayout();
 
         var colResizeDebounce = null;
