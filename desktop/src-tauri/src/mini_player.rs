@@ -18,6 +18,8 @@ use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Physical
 pub const LABEL: &str = "mini-player";
 const WIDTH: f64 = 360.0;
 const HEIGHT: f64 = 170.0;
+/// The slim bar of compact mode.
+const COMPACT_HEIGHT: f64 = 64.0;
 const MARGIN: i32 = 12;
 /// Height added above (or below) the player while the menu or lyrics are open.
 const EXTRA_HEIGHT: f64 = 250.0;
@@ -65,9 +67,25 @@ pub fn collapsed_origin(window: (i32, i32), offset: f64, scale: f64) -> (i32, i3
     (window.0, window.1 + (offset * scale).round() as i32)
 }
 
+pub fn closed_height(compact: bool) -> f64 {
+    if compact { COMPACT_HEIGHT } else { HEIGHT }
+}
+
 /// The closed player's size in physical px on a monitor with this scale factor.
-pub fn closed_size(scale: f64) -> (u32, u32) {
-    ((WIDTH * scale).round() as u32, (HEIGHT * scale).round() as u32)
+pub fn closed_size(scale: f64, compact: bool) -> (u32, u32) {
+    ((WIDTH * scale).round() as u32, (closed_height(compact) * scale).round() as u32)
+}
+
+/// Where the player goes when its height changes (compact ↔ full): the bottom edge stays put,
+/// so a player parked above the taskbar stays there, and it never leaves the monitor.
+pub fn resized_origin(origin: (i32, i32), old_h: u32, new_h: u32, monitor: Rect) -> (i32, i32) {
+    let y = origin.1 + old_h as i32 - new_h as i32;
+    let lowest = monitor.y + monitor.h as i32 - new_h as i32;
+    (origin.0, y.min(lowest).max(monitor.y))
+}
+
+fn is_compact(app: &AppHandle) -> bool {
+    app.state::<AppState>().settings.lock().unwrap().mini_player_compact
 }
 
 /// What the mini-player UI renders. `position_at_ms` lets it advance the progress bar locally.
@@ -84,6 +102,7 @@ pub struct UiState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MiniPrefs {
+    pub compact: bool,
     pub opacity: f64,
     pub match_panel: bool,
     pub theme: String,
@@ -117,9 +136,10 @@ pub fn resolve_position(saved: (Option<i32>, Option<i32>), monitors: &[Rect], si
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    let height = closed_height(is_compact(app));
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("mini-player/index.html".into()))
         .title("Clout Kings Mini-player")
-        .inner_size(WIDTH, HEIGHT)
+        .inner_size(WIDTH, height)
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
@@ -252,7 +272,7 @@ fn expand(app: &AppHandle) -> Result<Direction, String> {
         .or_else(|| window.primary_monitor().ok().flatten())
         .ok_or("No monitor found")?;
     // From the fixed logical size, not outer_size(), so a window mis-sized by a DPI change heals.
-    let (w, h) = closed_size(scale);
+    let (w, h) = closed_size(scale, is_compact(app));
     let collapsed = Rect { x: position.x, y: position.y, w, h };
     let extra = (EXTRA_HEIGHT * scale).round() as u32;
     let (rect, direction) = expanded_rect(collapsed, extra, work_area(&monitor));
@@ -270,7 +290,7 @@ pub fn collapse(app: &AppHandle) {
     let Ok(current) = window.outer_position() else { return };
     let scale = window.scale_factor().unwrap_or(1.0);
     let (x, y) = collapsed_origin((current.x, current.y), open.offset, scale);
-    let _ = window.set_size(LogicalSize::new(WIDTH, HEIGHT));
+    let _ = window.set_size(LogicalSize::new(WIDTH, closed_height(is_compact(app))));
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = app.emit_to(LABEL, "panel-reset", ());
 }
@@ -389,12 +409,41 @@ pub fn mini_get_prefs(app: AppHandle) -> MiniPrefs {
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap();
     MiniPrefs {
+        compact: settings.mini_player_compact,
         opacity: settings.opacity(),
         match_panel: settings.mini_player_match_panel,
         theme: settings.mini_player_theme.clone(),
         effective: theme::effective(&settings),
         hide_in_fullscreen: settings.hide_in_fullscreen,
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompactChanged {
+    pub compact: bool,
+}
+
+/// Switches between the full player and the slim bar, keeping the bottom edge in place.
+#[tauri::command]
+pub fn mini_set_compact(app: AppHandle, on: bool) -> Result<(), String> {
+    collapse(&app);
+    update_settings(&app, |s| s.mini_player_compact = on);
+    let window = app.get_webview_window(LABEL).ok_or("The mini-player isn't open")?;
+    let position = window.outer_position().map_err(|e| e.to_string())?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .ok_or("No monitor found")?;
+    let (_, old_h) = closed_size(scale, !on);
+    let (_, new_h) = closed_size(scale, on);
+    let (x, y) = resized_origin((position.x, position.y), old_h, new_h, work_area(&monitor));
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+    let _ = window.set_size(LogicalSize::new(WIDTH, closed_height(on)));
+    let _ = app.emit_to(LABEL, "compact-changed", CompactChanged { compact: on });
+    Ok(())
 }
 
 #[tauri::command]
@@ -553,9 +602,23 @@ mod tests {
 
     #[test]
     fn closed_size_follows_the_monitor_scale() {
-        assert_eq!(closed_size(1.0), (360, 170));
-        assert_eq!(closed_size(1.5), (540, 255));
-        assert_eq!(closed_size(1.25), (450, 213));
+        assert_eq!(closed_size(1.0, false), (360, 170));
+        assert_eq!(closed_size(1.5, false), (540, 255));
+        assert_eq!(closed_size(1.25, false), (450, 213));
+    }
+
+    #[test]
+    fn compact_sizes() {
+        assert_eq!(closed_size(1.0, true), (360, 64));
+        assert_eq!(closed_size(1.5, true), (540, 96));
+    }
+
+    #[test]
+    fn resize_keeps_bottom_edge() {
+        assert_eq!(resized_origin((100, 858), 170, 64, SCREEN), (100, 964));
+        assert_eq!(resized_origin((100, 964), 64, 170, SCREEN), (100, 858));
+        // Growing back near the top of the screen stays on it.
+        assert_eq!(resized_origin((100, 40), 64, 170, SCREEN), (100, 0));
     }
 
     const SIZE: (u32, u32) = (360, 140);

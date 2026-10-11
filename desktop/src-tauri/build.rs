@@ -28,6 +28,7 @@ fn main() {
             "mini_get_hotkeys",
             "mini_set_hotkeys_enabled",
             "mini_set_hotkey",
+            "mini_set_compact",
         ])),
     )
     .expect("failed to run tauri-build");

@@ -42,6 +42,10 @@
             <select id="themeSelect" aria-label="Mini-player theme"></select>
           </label>
           <label class="setting">
+            <span>Compact mode</span>
+            <input type="checkbox" id="compactOn" class="switch">
+          </label>
+          <label class="setting">
             <span>Hide in fullscreen</span>
             <input type="checkbox" id="hideFullscreen" class="switch" checked>
           </label>
@@ -130,6 +134,9 @@
         </div>
       </section>
 
+      <button type="button" class="compact-toggle" id="compactBtn" title="Compact mode" aria-label="Compact mode">
+        <svg viewBox="0 0 24 24" id="compactIcon"><path d="M4 14h16v2H4z"/></svg>
+      </button>
       <button type="button" class="close" id="close" title="Hide mini-player" aria-label="Hide mini-player">
         <svg viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z"/></svg>
       </button>

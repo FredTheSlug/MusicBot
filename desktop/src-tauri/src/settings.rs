@@ -38,6 +38,8 @@ pub struct Settings {
     /// Hide the mini-player while a fullscreen game, video or presentation runs.
     pub hide_in_fullscreen: bool,
     pub hotkeys: Hotkeys,
+    /// The mini-player as a slim bar instead of the full card.
+    pub mini_player_compact: bool,
 }
 
 impl Default for Settings {
@@ -55,6 +57,7 @@ impl Default for Settings {
             panel_theme: None,
             hide_in_fullscreen: true,
             hotkeys: Hotkeys::default(),
+            mini_player_compact: false,
         }
     }
 }
@@ -117,6 +120,7 @@ mod tests {
         assert_eq!(s.mini_player_theme, "nebula");
         assert_eq!(s.panel_theme, None);
         assert!(s.hide_in_fullscreen);
+        assert!(!s.mini_player_compact);
         assert_eq!(Settings { mini_player_opacity: 0.01, ..Settings::default() }.opacity(), 0.15);
         assert_eq!(Settings { mini_player_opacity: 7.0, ..Settings::default() }.opacity(), 1.0);
         assert_eq!(Settings { mini_player_opacity: f64::NAN, ..Settings::default() }.opacity(), 1.0);

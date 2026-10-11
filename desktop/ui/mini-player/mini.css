@@ -117,6 +117,8 @@ html, body {
 }
 
 .title {
+  /* Clear of the compact toggle and close button in the top-right corner. */
+  margin-right: 24px;
   font-family: var(--title-font);
   font-style: var(--title-style);
   font-weight: var(--title-weight);
@@ -262,6 +264,62 @@ html, body {
 }
 
 .close svg { width: 100%; height: 100%; fill: currentColor; }
+
+.compact-toggle {
+  position: absolute;
+  top: 6px;
+  right: 28px;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.compact-toggle svg { width: 100%; height: 100%; fill: currentColor; }
+.compact-toggle:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+
+/* Compact mode: one slim bar — art, title/artist, play/pause, skip, menu — with a thin progress
+   line along the bottom edge. The same elements, rearranged on a grid. */
+html.compact .shell > .mini { height: 64px; }
+html.compact .mini { gap: 10px; padding: 8px 52px 8px 10px; }
+html.compact .disc { flex-basis: 44px; width: 44px; height: 44px; }
+
+html.compact .info {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "title controls menu" "meta controls menu";
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 1px;
+  padding-right: 0;
+}
+
+html.compact .title { grid-area: title; font-size: 0.86rem; margin-right: 0; }
+html.compact .meta { grid-area: meta; font-size: 0.7rem; min-height: 0; }
+html.compact .controls { grid-area: controls; gap: 4px; }
+html.compact .bottom-row { display: contents; }
+html.compact #menuBtn { grid-area: menu; }
+html.compact #restart, html.compact .ctrl.mode, html.compact .volume, html.compact .open-panel,
+html.compact #spotifyBtn, html.compact #lyricsBtn, html.compact #queueBtn, html.compact .sleep-badge { display: none; }
+
+/* A message takes the artist line's place for a moment. */
+html.compact .status { grid-area: meta; display: none; }
+html.compact .status:not(:empty) { display: block; }
+html.compact .info:has(.status:not(:empty)) .meta { visibility: hidden; }
+
+html.compact .seek { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: 0; }
+html.compact .seek .progress { height: 3px; border-radius: 0; }
+html.compact .seek:not(.off):hover .progress, html.compact .seek.dragging .progress { height: 5px; }
+
+html.compact[data-theme="revival"] .disc { flex-basis: 48px; width: 48px; height: 48px; }
+html.compact[data-theme="revival"] .disc::before,
+html.compact[data-theme="revival"] .art { inset: 12px; width: 24px; height: 24px; }
+html.compact[data-theme="revival"] .spindle { width: 4px; height: 4px; margin: -2px 0 0 -2px; }
 .close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 
 /* Bottom row: Spotify logo, lyrics, status, menu. */

@@ -15,6 +15,22 @@
   var volumeDragging = false;
 
   var MV = window.__cksMiniView;
+  var COMPACT_ICON = '<path d="M4 14h16v2H4z"/>';
+  var FULL_ICON = '<path d="M4 4h16v16H4zm2 2v12h12V6z"/>';
+  var compact = false;
+
+  function showCompact(on) {
+    compact = !!on;
+    document.documentElement.classList.toggle('compact', compact);
+    el('compactIcon').innerHTML = compact ? FULL_ICON : COMPACT_ICON;
+    el('compactBtn').title = compact ? 'Full size' : 'Compact mode';
+    el('compactBtn').setAttribute('aria-label', el('compactBtn').title);
+    el('compactOn').checked = compact;
+  }
+
+  function setCompact(on) {
+    invoke('mini_set_compact', { on: on }).catch(function (e) { showStatus(String(e)); });
+  }
   var view = MV.view;
   var appliedThemeVars = [];
 
@@ -598,8 +614,13 @@
     el('themeSelect').value = prefs.theme;
     el('themeRow').hidden = prefs.matchPanel;
     el('hideFullscreen').checked = prefs.hideInFullscreen;
+    el('compactOn').checked = prefs.compact;
     invoke('mini_get_hotkeys').then(showHotkeys);
   }
+
+  el('compactBtn').addEventListener('click', function () { setCompact(!compact); });
+  el('compactOn').addEventListener('change', function () { setCompact(el('compactOn').checked); });
+  listen('compact-changed', function (e) { showCompact(e.payload.compact); });
 
   el('hideFullscreen').addEventListener('change', function () {
     invoke('mini_set_hide_in_fullscreen', { on: el('hideFullscreen').checked });
@@ -622,6 +643,7 @@
   el('themeSelect').addEventListener('change', saveTheme);
 
   invoke('mini_get_prefs').then(function (prefs) {
+    showCompact(prefs.compact);
     MV.applyOpacity(document.documentElement, prefs.opacity);
     showTheme(prefs.effective);
     showPrefs(prefs);

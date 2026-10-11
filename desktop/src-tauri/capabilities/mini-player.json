@@ -29,6 +29,7 @@
     "allow-mini-set-hide-in-fullscreen",
     "allow-mini-get-hotkeys",
     "allow-mini-set-hotkeys-enabled",
-    "allow-mini-set-hotkey"
+    "allow-mini-set-hotkey",
+    "allow-mini-set-compact"
   ]
 }

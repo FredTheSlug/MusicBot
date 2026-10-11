@@ -290,7 +290,7 @@ html[data-theme="sumi"] {
 /* Sumi: ink wash, a brush stroke under the title and a red seal. */
 html[data-theme="sumi"] .mini::before { background: radial-gradient(ellipse 55% 120% at 0% 50%, rgba(242, 235, 227, 0.06), transparent 70%); }
 html[data-theme="sumi"] .mini::after {
-  inset: 10px 34px auto auto;
+  inset: auto 12px 12px auto;
   width: 13px;
   height: 13px;
   border-radius: 2px;
