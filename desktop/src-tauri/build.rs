@@ -18,6 +18,7 @@ fn main() {
             "mini_get_prefs",
             "mini_set_opacity",
             "mini_set_theme",
+            "mini_set_panel",
         ])),
     )
     .expect("failed to run tauri-build");

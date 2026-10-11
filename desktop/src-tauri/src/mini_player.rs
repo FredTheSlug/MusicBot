@@ -11,12 +11,14 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 pub const LABEL: &str = "mini-player";
 const WIDTH: f64 = 360.0;
 const HEIGHT: f64 = 170.0;
 const MARGIN: i32 = 12;
+/// Height added above (or below) the player while the menu or lyrics are open.
+const EXTRA_HEIGHT: f64 = 250.0;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 const LYRICS_TIMEOUT: Duration = Duration::from_secs(15);
@@ -33,6 +35,31 @@ impl Rect {
     fn contains(&self, x: i32, y: i32) -> bool {
         x >= self.x && y >= self.y && x < self.x + self.w as i32 && y < self.y + self.h as i32
     }
+}
+
+/// Which way the window grew to make room for the menu or lyrics.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    Up,
+    Down,
+}
+
+/// The open window: grown upward when the space above fits, else downward, kept on the monitor.
+pub fn expanded_rect(collapsed: Rect, extra: u32, monitor: Rect) -> (Rect, Direction) {
+    let h = collapsed.h + extra;
+    if collapsed.y - extra as i32 >= monitor.y {
+        return (Rect { y: collapsed.y - extra as i32, h, ..collapsed }, Direction::Up);
+    }
+    let bottom = monitor.y + monitor.h as i32;
+    let y = collapsed.y.min(bottom - h as i32).max(monitor.y);
+    (Rect { y, h, ..collapsed }, Direction::Down)
+}
+
+/// Where the closed player sits, given the open window's position and how far the player was
+/// pushed (`offset` = closed y − open y): this is what gets saved, never the open window's spot.
+pub fn collapsed_origin(window: (i32, i32), offset: i32) -> (i32, i32) {
+    (window.0, window.1 + offset)
 }
 
 /// What the mini-player UI renders. `position_at_ms` lets it advance the progress bar locally.
@@ -88,6 +115,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
+        .transparent(true)
+        .shadow(false)
         .visible(false)
         .disable_drag_drop_handler()
         .build()?;
@@ -101,7 +130,7 @@ pub fn is_visible(app: &AppHandle) -> bool {
 pub fn toggle(app: &AppHandle) {
     let Some(window) = app.get_webview_window(LABEL) else { return };
     if is_visible(app) {
-        let _ = window.hide();
+        hide(app);
         return;
     }
     let monitors: Vec<Rect> = window
@@ -177,12 +206,72 @@ pub fn on_panel_theme(app: &AppHandle, raw: PanelTheme) {
     emit_theme(app);
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Open {
+    direction: Direction,
+    offset: i32,
+    collapsed: Rect,
+}
+
+/// Set while the menu or lyrics are open.
+static OPEN: Mutex<Option<Open>> = Mutex::new(None);
+
+fn work_area(monitor: &tauri::Monitor) -> Rect {
+    let area = monitor.work_area();
+    Rect { x: area.position.x, y: area.position.y, w: area.size.width, h: area.size.height }
+}
+
+fn expand(app: &AppHandle) -> Result<Direction, String> {
+    if let Some(open) = *OPEN.lock().unwrap() {
+        return Ok(open.direction);
+    }
+    let window = app.get_webview_window(LABEL).ok_or("The mini-player isn't open")?;
+    let position = window.outer_position().map_err(|e| e.to_string())?;
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .ok_or("No monitor found")?;
+    let collapsed = Rect { x: position.x, y: position.y, w: size.width, h: size.height };
+    let extra = (EXTRA_HEIGHT * scale).round() as u32;
+    let (rect, direction) = expanded_rect(collapsed, extra, work_area(&monitor));
+    // Recorded before moving so the Moved event saves the closed spot.
+    *OPEN.lock().unwrap() = Some(Open { direction, offset: collapsed.y - rect.y, collapsed });
+    let _ = window.set_position(PhysicalPosition::new(rect.x, rect.y));
+    let _ = window.set_size(PhysicalSize::new(rect.w, rect.h));
+    Ok(direction)
+}
+
+/// Closes the menu/lyrics space; the UI hears `panel-reset` so it can drop its panel too.
+pub fn collapse(app: &AppHandle) {
+    let Some(open) = OPEN.lock().unwrap().take() else { return };
+    let Some(window) = app.get_webview_window(LABEL) else { return };
+    let current = window.outer_position().map(|p| (p.x, p.y)).unwrap_or((open.collapsed.x, open.collapsed.y));
+    let (x, y) = collapsed_origin(current, open.offset);
+    let _ = window.set_size(PhysicalSize::new(open.collapsed.w, open.collapsed.h));
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+    let _ = app.emit_to(LABEL, "panel-reset", ());
+}
+
+/// Hides the mini-player; it always comes back closed.
+pub fn hide(app: &AppHandle) {
+    collapse(app);
+    if let Some(window) = app.get_webview_window(LABEL) {
+        let _ = window.hide();
+    }
+}
+
 static LAST_MOVE: Mutex<Option<(i32, i32, Instant)>> = Mutex::new(None);
 static SAVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Remembers where the user dragged the mini-player; writes settings at most once a second.
 pub fn on_moved(app: &AppHandle, position: PhysicalPosition<i32>) {
-    *LAST_MOVE.lock().unwrap() = Some((position.x, position.y, Instant::now()));
+    let offset = OPEN.lock().unwrap().map_or(0, |open| open.offset);
+    let (x, y) = collapsed_origin((position.x, position.y), offset);
+    *LAST_MOVE.lock().unwrap() = Some((x, y, Instant::now()));
     if SAVER_RUNNING.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -223,8 +312,19 @@ pub fn mini_open_panel(app: AppHandle) {
 
 #[tauri::command]
 pub fn mini_hide(app: AppHandle) {
-    if let Some(window) = app.get_webview_window(LABEL) {
-        let _ = window.hide();
+    hide(&app);
+}
+
+/// `panel` is "menu" or "lyrics" (grow; returns which way) or "none" (shrink back).
+#[tauri::command]
+pub fn mini_set_panel(app: AppHandle, panel: String) -> Result<Option<Direction>, String> {
+    match panel.as_str() {
+        "none" => {
+            collapse(&app);
+            Ok(None)
+        }
+        "menu" | "lyrics" => expand(&app).map(Some),
+        _ => Err(format!("Unknown panel: {panel}")),
     }
 }
 
@@ -310,6 +410,40 @@ pub async fn mini_play_spotify_clipboard(app: AppHandle) -> Result<String, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SCREEN: Rect = Rect { x: 0, y: 0, w: 1920, h: 1040 };
+
+    #[test]
+    fn grows_up_when_room_above() {
+        let closed = Rect { x: 1548, y: 858, w: 360, h: 170 };
+        assert_eq!(expanded_rect(closed, 250, SCREEN), (Rect { x: 1548, y: 608, w: 360, h: 420 }, Direction::Up));
+    }
+
+    #[test]
+    fn grows_down_at_top_edge() {
+        let closed = Rect { x: 100, y: 20, w: 360, h: 170 };
+        assert_eq!(expanded_rect(closed, 250, SCREEN), (Rect { x: 100, y: 20, w: 360, h: 420 }, Direction::Down));
+    }
+
+    #[test]
+    fn grows_down_on_monitor_above_primary() {
+        let above = Rect { x: -1920, y: -1080, w: 1920, h: 1040 };
+        let closed = Rect { x: -400, y: -1070, w: 360, h: 170 };
+        assert_eq!(expanded_rect(closed, 250, above), (Rect { x: -400, y: -1070, w: 360, h: 420 }, Direction::Down));
+    }
+
+    #[test]
+    fn clamps_when_neither_fits() {
+        let short = Rect { x: 0, y: 0, w: 1280, h: 400 };
+        let closed = Rect { x: 0, y: 100, w: 360, h: 170 };
+        assert_eq!(expanded_rect(closed, 250, short), (Rect { x: 0, y: 0, w: 360, h: 420 }, Direction::Down));
+    }
+
+    #[test]
+    fn saved_position_is_the_closed_one() {
+        assert_eq!(collapsed_origin((1548, 608), 250), (1548, 858));
+        assert_eq!(collapsed_origin((5, 5), 0), (5, 5));
+    }
 
     const SIZE: (u32, u32) = (360, 140);
 

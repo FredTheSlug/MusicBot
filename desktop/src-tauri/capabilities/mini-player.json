@@ -19,6 +19,7 @@
     "allow-mini-play-link",
     "allow-mini-get-prefs",
     "allow-mini-set-opacity",
-    "allow-mini-set-theme"
+    "allow-mini-set-theme",
+    "allow-mini-set-panel"
   ]
 }

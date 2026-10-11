@@ -259,7 +259,11 @@ fn main() {
             match event {
                 WindowEvent::CloseRequested { api, .. } if hides_on_close(window.label()) => {
                     api.prevent_close();
-                    let _ = window.hide();
+                    if window.label() == mini_player::LABEL {
+                        mini_player::hide(window.app_handle());
+                    } else {
+                        let _ = window.hide();
+                    }
                 }
                 WindowEvent::Moved(position) if window.label() == mini_player::LABEL => {
                     mini_player::on_moved(window.app_handle(), *position);
@@ -282,7 +286,8 @@ fn main() {
             mini_player::mini_play_link,
             mini_player::mini_get_prefs,
             mini_player::mini_set_opacity,
-            mini_player::mini_set_theme
+            mini_player::mini_set_theme,
+            mini_player::mini_set_panel
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");
