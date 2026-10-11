@@ -16,9 +16,12 @@
 package com.jagrosh.jmusicbot;
 
 import com.jagrosh.jmusicbot.audio.Autoplay;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -48,5 +51,25 @@ public class AutoplayTest
         assertEquals(-1, Autoplay.pick(Arrays.asList("cur", "a"), new HashSet<>(Arrays.asList("a")), "cur"));
         assertEquals(-1, Autoplay.pick(Collections.emptyList(), Collections.emptySet(), "x"));
         assertEquals(1, Autoplay.pick(Arrays.asList(null, "b"), Collections.emptySet(), "x"));
+    }
+
+    @Test
+    public void continuesOnlyAfterAFinishedOrSkippedSong()
+    {
+        assertTrue(Autoplay.continuesAfter(AudioTrackEndReason.FINISHED));
+        assertTrue("a skip of the last song", Autoplay.continuesAfter(AudioTrackEndReason.STOPPED));
+        assertFalse("a failed load must not chain into another pick", Autoplay.continuesAfter(AudioTrackEndReason.LOAD_FAILED));
+        assertFalse(Autoplay.continuesAfter(AudioTrackEndReason.REPLACED));
+        assertFalse(Autoplay.continuesAfter(AudioTrackEndReason.CLEANUP));
+    }
+
+    @Test
+    public void stopDuringTheLoadCancelsThePick()
+    {
+        AtomicInteger stops = new AtomicInteger();
+        BooleanSupplier wanted = Autoplay.stillWanted(stops);
+        assertTrue(wanted.getAsBoolean());
+        stops.incrementAndGet();
+        assertFalse(wanted.getAsBoolean());
     }
 }

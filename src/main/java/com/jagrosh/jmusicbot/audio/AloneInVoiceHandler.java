@@ -87,7 +87,8 @@ public class AloneInVoiceHandler
             aloneSince.put(guild.getIdLong(), Instant.now());
     }
 
-    private boolean isAlone(Guild guild)
+    /** No one (other than bots and deafened members) is listening in the bot's voice channel. */
+    public static boolean isAlone(Guild guild)
     {
         if(guild.getAudioManager().getConnectedChannel() == null) return false;
         return guild.getAudioManager().getConnectedChannel().getMembers().stream()

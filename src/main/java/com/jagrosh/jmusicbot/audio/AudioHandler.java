@@ -33,6 +33,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import com.jagrosh.jmusicbot.settings.Settings;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
 import java.nio.ByteBuffer;
@@ -66,6 +68,8 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     private final long guildId;
     /** True while stopAndClear() stops the track, so that stop never turns into autoplay. */
     private volatile boolean stopping = false;
+    /** Counts stops, so a stop while autoplay is still loading cancels its pick. */
+    private final AtomicInteger stops = new AtomicInteger();
     
     private AudioFrame lastFrame;
     private AbstractQueue<QueuedTrack> queue;
@@ -124,6 +128,7 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     {
         queue.clear();
         defaultQueue.clear();
+        stops.incrementAndGet();
         stopping = true;
         try
         {
@@ -252,21 +257,30 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
      */
     private boolean startAutoplay(AudioTrack ended, AudioTrackEndReason reason, RepeatMode repeatMode)
     {
-        if(stopping || repeatMode != RepeatMode.OFF || !(reason.mayStartNext || reason == AudioTrackEndReason.STOPPED))
+        if(stopping || repeatMode != RepeatMode.OFF || !Autoplay.continuesAfter(reason))
             return false;
         Settings settings = manager.getBot().getSettingsManager().getSettings(guildId);
         Guild guild = manager.getBot().getJDA().getGuildById(guildId);
         if(settings == null || !settings.getAutoplay() || guild == null)
             return false;
+        // Nobody listening: don't stream radio to an empty channel.
+        if(AloneInVoiceHandler.isAlone(guild))
+            return false;
+        BooleanSupplier wanted = Autoplay.stillWanted(stops);
         Set<String> recent = new HashSet<>();
         for(QueuedTrack played : history)
             recent.add(played.getTrack().getIdentifier());
         Autoplay.queueRelated(manager, guild, ended, recent,
-                next -> addTrack(new QueuedTrack(next, Autoplay.METADATA)),
+                next ->
+                {
+                    if(wanted.getAsBoolean())
+                        addTrack(new QueuedTrack(next, Autoplay.METADATA));
+                },
                 () ->
                 {
-                    // Something else may have started meanwhile (someone queued a song).
-                    if(audioPlayer.getPlayingTrack() == null && queue.isEmpty())
+                    // Something else may have started meanwhile (someone queued a song), or a stop
+                    // already ended playback.
+                    if(wanted.getAsBoolean() && audioPlayer.getPlayingTrack() == null && queue.isEmpty())
                     {
                         endPlayback();
                         broadcastWeb("player");

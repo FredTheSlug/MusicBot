@@ -19,9 +19,12 @@ import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import net.dv8tion.jda.api.entities.Guild;
@@ -47,6 +50,22 @@ public final class Autoplay
     public static boolean isYoutubeId(String id)
     {
         return id != null && YOUTUBE_ID.matcher(id).matches();
+    }
+
+    /**
+     * Autoplay continues after a song that finished or was skipped. Never after a failed load:
+     * when YouTube playback is broken, each pick would fail and chain into the next one forever.
+     */
+    public static boolean continuesAfter(AudioTrackEndReason reason)
+    {
+        return reason == AudioTrackEndReason.FINISHED || reason == AudioTrackEndReason.STOPPED;
+    }
+
+    /** True until {@code stops} changes: a stop while the related song loads cancels the pick. */
+    public static BooleanSupplier stillWanted(AtomicInteger stops)
+    {
+        int seen = stops.get();
+        return () -> stops.get() == seen;
     }
 
     /** YouTube's endless "mix" playlist that starts from this video. */
