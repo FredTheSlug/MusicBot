@@ -130,7 +130,16 @@
     });
   }
 
+  /** "Stops in 14 min" / "Stops after this song" / "" for the sleep timer's state. */
+  function sleepLabel(info, nowMs) {
+    if (!info) return '';
+    if (info.mode === 'end') return 'Stops after this song';
+    if (info.mode === 'timer' && info.endsAtMs) return 'Stops in ' + Math.max(1, Math.ceil((info.endsAtMs - nowMs) / 60000)) + ' min';
+    return '';
+  }
+
   var api = {
+    sleepLabel: sleepLabel,
     repeatView: repeatView, seekPosition: seekPosition, queueRows: queueRows,
     lyricsButtonEnabled: lyricsButtonEnabled,
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,

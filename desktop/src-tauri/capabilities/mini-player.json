@@ -23,6 +23,8 @@
     "allow-mini-history",
     "allow-mini-frequent",
     "allow-mini-playlists",
-    "allow-mini-play-playlist"
+    "allow-mini-play-playlist",
+    "allow-mini-set-sleep",
+    "allow-mini-get-sleep"
   ]
 }

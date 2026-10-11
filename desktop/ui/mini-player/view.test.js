@@ -177,3 +177,13 @@ test('queueRows', () => {
   ]);
   assert.deepEqual(queueRows(null), []);
 });
+
+const { sleepLabel } = require('./view.js');
+
+test('sleepLabel', () => {
+  assert.equal(sleepLabel({ mode: 'timer', endsAtMs: 1000 + 14 * 60000 }, 1000), 'Stops in 14 min');
+  assert.equal(sleepLabel({ mode: 'timer', endsAtMs: 1000 + 30000 }, 1000), 'Stops in 1 min');
+  assert.equal(sleepLabel({ mode: 'end', endsAtMs: null }, 1000), 'Stops after this song');
+  assert.equal(sleepLabel({ mode: 'off', endsAtMs: null }, 1000), '');
+  assert.equal(sleepLabel(null, 1000), '');
+});

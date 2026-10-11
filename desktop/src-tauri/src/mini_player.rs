@@ -4,6 +4,7 @@ use crate::bridge::{self, BotCommand};
 use crate::lookup::{self, Lyrics, PlaylistInfo, SearchResult};
 use crate::spotify::{self, SpotifyStatus};
 use crate::settings::Settings;
+use crate::sleep::{self, SleepInfo};
 use crate::state::BotState;
 use crate::theme::{self, PanelTheme};
 use crate::{settings, show_main, AppState};
@@ -188,6 +189,14 @@ pub fn emit_notice(app: &AppHandle, level: &str, message: &str) {
     let _ = app.emit_to(LABEL, "notice", Notice { level: level.into(), message: message.into() });
 }
 
+fn sleep_info(app: &AppHandle) -> SleepInfo {
+    sleep::info(&app.state::<AppState>().sleep.lock().unwrap(), Instant::now(), epoch_ms())
+}
+
+pub fn emit_sleep(app: &AppHandle) {
+    let _ = app.emit_to(LABEL, "sleep-changed", sleep_info(app));
+}
+
 pub fn emit_theme(app: &AppHandle) {
     let effective = theme::effective(&app.state::<AppState>().settings.lock().unwrap());
     let _ = app.emit_to(LABEL, "theme-changed", effective);
@@ -356,6 +365,21 @@ pub async fn mini_send_spotify(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn mini_play_spotify_text(app: AppHandle, text: String) -> Result<String, String> {
     blocking(move || spotify::play_link_text(&app, &text)).await
+}
+
+/// `choice`: "off", "15", "30", "60" (minutes) or "end" (the song playing now).
+#[tauri::command]
+pub fn mini_set_sleep(app: AppHandle, choice: String) -> Result<SleepInfo, String> {
+    let playing = sleep::playing_key(&app);
+    let mode = sleep::parse_choice(&choice, Instant::now(), playing.as_deref()).ok_or("Unknown sleep timer choice")?;
+    *app.state::<AppState>().sleep.lock().unwrap() = mode;
+    emit_sleep(&app);
+    Ok(sleep_info(&app))
+}
+
+#[tauri::command]
+pub fn mini_get_sleep(app: AppHandle) -> SleepInfo {
+    sleep_info(&app)
 }
 
 #[tauri::command]

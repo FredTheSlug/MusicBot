@@ -22,6 +22,8 @@ fn main() {
             "mini_frequent",
             "mini_playlists",
             "mini_play_playlist",
+            "mini_set_sleep",
+            "mini_get_sleep",
         ])),
     )
     .expect("failed to run tauri-build");

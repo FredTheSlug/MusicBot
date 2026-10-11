@@ -84,6 +84,7 @@
     var pct = t && t.durationMs > 0 ? Math.max(0, Math.min(100, (currentPosition() / t.durationMs) * 100)) : 0;
     if (!seeking) el('progressFill').style.width = pct + '%';
     followLyrics();
+    showSleep();
   }
 
   function showStatus(message) {
@@ -487,6 +488,31 @@
   });
 
   el('settingsBtn').addEventListener('click', function () { showSettings(el('settings').hidden); });
+
+  // ---- Sleep timer ----
+  var sleepInfo = null;
+
+  function showSleep() {
+    var label = MV.sleepLabel(sleepInfo, Date.now());
+    el('sleepBadge').hidden = !label;
+    el('sleepBadge').title = label;
+  }
+
+  function setSleepInfo(info) {
+    sleepInfo = info;
+    el('sleepSelect').value = info && info.mode === 'timer' ? el('sleepSelect').value : info && info.mode === 'end' ? 'end' : 'off';
+    showSleep();
+  }
+
+  el('sleepSelect').addEventListener('change', function () {
+    invoke('mini_set_sleep', { choice: el('sleepSelect').value }).then(function (info) {
+      setSleepInfo(info);
+      var label = MV.sleepLabel(info, Date.now());
+      showStatus(label || 'Sleep timer off');
+    }).catch(function (e) { showStatus(String(e)); });
+  });
+  listen('sleep-changed', function (e) { setSleepInfo(e.payload); });
+  invoke('mini_get_sleep').then(setSleepInfo);
 
   // ---- Menu: mini-player settings ----
   MV.THEMES.forEach(function (t) {

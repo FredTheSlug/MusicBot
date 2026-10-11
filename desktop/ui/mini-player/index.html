@@ -41,6 +41,16 @@
             <span>Theme</span>
             <select id="themeSelect" aria-label="Mini-player theme"></select>
           </label>
+          <label class="setting">
+            <span>Sleep timer</span>
+            <select id="sleepSelect" aria-label="Sleep timer">
+              <option value="off">Off</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="end">End of this song</option>
+            </select>
+          </label>
         </div>
       </div>
       <div class="drawer-panel lyrics" id="lyricsPanel" hidden>
@@ -103,6 +113,7 @@
           <button type="button" id="queueBtn" class="icon-btn" title="Up next" aria-label="Up next" aria-pressed="false">
             <svg viewBox="0 0 24 24"><path d="M3 6h12v2H3zm0 5h12v2H3zm0 5h8v2H3zm14-5v6.2A3 3 0 1 0 19 20v-7h3v-2z"/></svg>
           </button>
+          <span class="sleep-badge" id="sleepBadge" hidden>☾</span>
           <div class="status" id="status" role="status" aria-live="polite"></div>
           <button type="button" id="menuBtn" class="icon-btn" title="Search and settings" aria-label="Search and settings" aria-pressed="false">
             <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zM4 11h16v2H4zM4 16h16v2H4z"/></svg>

@@ -7,6 +7,7 @@ mod media_keys;
 mod mini_player;
 mod notify;
 mod settings;
+mod sleep;
 mod spotify;
 mod state;
 mod theme;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub media: Mutex<Option<media_keys::MediaKeys>>,
     /// Last Spotify status seen by the ticker.
     pub spotify: Mutex<spotify::SpotifyStatus>,
+    /// Sleep timer for this session.
+    pub sleep: Mutex<sleep::SleepMode>,
 }
 
 /// Fans state changes out to the tray, mini-player, media keys and notifier.
@@ -231,6 +234,7 @@ fn main() {
                 pending: Mutex::new(HashMap::new()),
                 media: Mutex::new(None),
                 spotify: Mutex::new(spotify::SpotifyStatus::default()),
+                sleep: Mutex::new(sleep::SleepMode::Off),
             });
             // The remote panel page may call exactly one command: bridge_report.
             app.add_capability(
@@ -251,6 +255,7 @@ fn main() {
             tray::build(app.handle())?;
             mini_player::create(app.handle())?;
             spawn_ticker(app.handle().clone());
+            sleep::spawn_worker(app.handle().clone());
             updates::check_for_updates(app.handle(), false);
             Ok(())
         })
@@ -290,7 +295,9 @@ fn main() {
             mini_player::mini_history,
             mini_player::mini_frequent,
             mini_player::mini_playlists,
-            mini_player::mini_play_playlist
+            mini_player::mini_play_playlist,
+            mini_player::mini_set_sleep,
+            mini_player::mini_get_sleep
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");
