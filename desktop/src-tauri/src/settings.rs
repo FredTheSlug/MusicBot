@@ -1,6 +1,7 @@
 //! User settings, stored as JSON in the app config dir. Missing fields take defaults;
 //! an unreadable file is replaced with defaults.
 
+use crate::hotkeys::Hotkeys;
 use crate::theme::PanelTheme;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -36,6 +37,7 @@ pub struct Settings {
     pub panel_theme: Option<PanelTheme>,
     /// Hide the mini-player while a fullscreen game, video or presentation runs.
     pub hide_in_fullscreen: bool,
+    pub hotkeys: Hotkeys,
 }
 
 impl Default for Settings {
@@ -52,6 +54,7 @@ impl Default for Settings {
             mini_player_theme: "nebula".to_string(),
             panel_theme: None,
             hide_in_fullscreen: true,
+            hotkeys: Hotkeys::default(),
         }
     }
 }

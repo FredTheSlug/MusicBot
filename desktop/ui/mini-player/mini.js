@@ -489,6 +489,74 @@
 
   el('settingsBtn').addEventListener('click', function () { showSettings(el('settings').hidden); });
 
+  // ---- Global hotkeys ----
+  var HOTKEY_LABELS = [
+    ['playPause', 'Play/pause'], ['skip', 'Skip'], ['restart', 'Restart song'],
+    ['sendSpotify', 'Send my Spotify song'], ['toggleMiniPlayer', 'Show/hide mini-player']
+  ];
+  var recording = null;
+
+  function showHotkeys(hk) {
+    el('hotkeysOn').checked = hk.enabled;
+    var list = el('hotkeyList');
+    list.hidden = !hk.enabled;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    HOTKEY_LABELS.forEach(function (pair) {
+      var row = document.createElement('div');
+      row.className = 'hotkey';
+      var label = document.createElement('span');
+      label.textContent = pair[1];
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = hk.bindings[pair[0]] || '';
+      var failed = hk.failed.indexOf(pair[0]) >= 0;
+      button.classList.toggle('failed', failed);
+      button.title = failed ? 'Another app is using this combination — click to choose another' : 'Click, then press a new combination (Esc cancels)';
+      button.addEventListener('click', function () { startRecording(pair[0], button); });
+      row.appendChild(label);
+      row.appendChild(button);
+      list.appendChild(row);
+    });
+  }
+
+  function startRecording(action, button) {
+    if (recording) recording.button.classList.remove('recording');
+    recording = { action: action, button: button, previous: button.textContent };
+    button.classList.add('recording');
+    button.textContent = 'Press keys…';
+  }
+
+  function stopRecording(text) {
+    if (!recording) return;
+    recording.button.classList.remove('recording');
+    recording.button.textContent = text;
+    recording = null;
+  }
+
+  // Capture before anything else (Escape would otherwise close the menu).
+  document.addEventListener('keydown', function (e) {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.key === 'Escape') { stopRecording(recording.previous); return; }
+    var accel = MV.accelFromEvent(e);
+    if (!accel) return;
+    var action = recording.action;
+    var previous = recording.previous;
+    stopRecording(accel);
+    invoke('mini_set_hotkey', { action: action, accel: accel }).then(showHotkeys).catch(function (err) {
+      showStatus(String(err));
+      invoke('mini_get_hotkeys').then(showHotkeys, function () { stopRecording(previous); });
+    });
+  }, true);
+
+  el('hotkeysOn').addEventListener('change', function () {
+    invoke('mini_set_hotkeys_enabled', { on: el('hotkeysOn').checked }).then(function (hk) {
+      showHotkeys(hk);
+      if (hk.enabled && hk.failed.length) showStatus('Some hotkeys are taken by other apps');
+    });
+  });
+
   // ---- Sleep timer ----
   var sleepInfo = null;
 
@@ -530,6 +598,7 @@
     el('themeSelect').value = prefs.theme;
     el('themeRow').hidden = prefs.matchPanel;
     el('hideFullscreen').checked = prefs.hideInFullscreen;
+    invoke('mini_get_hotkeys').then(showHotkeys);
   }
 
   el('hideFullscreen').addEventListener('change', function () {

@@ -3,6 +3,7 @@
 
 mod bridge;
 mod fullscreen;
+mod hotkeys;
 mod lookup;
 mod media_keys;
 mod mini_player;
@@ -220,6 +221,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(hotkeys::on_shortcut).build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .setup(|app| {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
@@ -258,6 +260,7 @@ fn main() {
             spawn_ticker(app.handle().clone());
             sleep::spawn_worker(app.handle().clone());
             fullscreen::spawn_worker(app.handle().clone());
+            hotkeys::apply(app.handle());
             updates::check_for_updates(app.handle(), false);
             Ok(())
         })
@@ -300,7 +303,10 @@ fn main() {
             mini_player::mini_play_playlist,
             mini_player::mini_set_sleep,
             mini_player::mini_get_sleep,
-            mini_player::mini_set_hide_in_fullscreen
+            mini_player::mini_set_hide_in_fullscreen,
+            mini_player::mini_get_hotkeys,
+            mini_player::mini_set_hotkeys_enabled,
+            mini_player::mini_set_hotkey
         ])
         .run(tauri::generate_context!())
         .expect("error while running the app");

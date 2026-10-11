@@ -25,6 +25,9 @@ fn main() {
             "mini_set_sleep",
             "mini_get_sleep",
             "mini_set_hide_in_fullscreen",
+            "mini_get_hotkeys",
+            "mini_set_hotkeys_enabled",
+            "mini_set_hotkey",
         ])),
     )
     .expect("failed to run tauri-build");

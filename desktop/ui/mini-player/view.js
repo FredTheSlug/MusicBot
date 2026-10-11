@@ -138,7 +138,36 @@
     return '';
   }
 
+  var KEY_NAMES = {
+    Space: 'Space', Enter: 'Enter', Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert', Home: 'Home',
+    End: 'End', PageUp: 'PageUp', PageDown: 'PageDown', ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up',
+    ArrowDown: 'Down', Comma: 'Comma', Period: 'Period', Slash: 'Slash', Semicolon: 'Semicolon', Quote: 'Quote',
+    BracketLeft: 'BracketLeft', BracketRight: 'BracketRight', Backslash: 'Backslash', Minus: 'Minus',
+    Equal: 'Equal', Backquote: 'Backquote', Pause: 'Pause', ScrollLock: 'ScrollLock'
+  };
+
+  /**
+   * The combination a keydown records, as the app's hotkey parser reads it ("Ctrl+Alt+P"), or null
+   * for a lone modifier, Escape (cancels) or a plain key without Ctrl/Alt/Shift (except F-keys).
+   */
+  function accelFromEvent(e) {
+    var code = (e && e.code) || '';
+    var key = /^Key[A-Z]$/.test(code) ? code.slice(3)
+      : /^Digit[0-9]$/.test(code) ? code.slice(5)
+      : /^(F([1-9]|1[0-9]|2[0-4])|Numpad[0-9])$/.test(code) ? code
+      : KEY_NAMES[code];
+    if (!key) return null;
+    var mods = [];
+    if (e.ctrlKey) mods.push('Ctrl');
+    if (e.altKey) mods.push('Alt');
+    if (e.shiftKey) mods.push('Shift');
+    if (e.metaKey) mods.push('Super');
+    if (!mods.length && !/^F\d+$/.test(key)) return null;
+    return mods.concat([key]).join('+');
+  }
+
   var api = {
+    accelFromEvent: accelFromEvent,
     sleepLabel: sleepLabel,
     repeatView: repeatView, seekPosition: seekPosition, queueRows: queueRows,
     lyricsButtonEnabled: lyricsButtonEnabled,

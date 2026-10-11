@@ -413,6 +413,27 @@ html, body {
   scrollbar-color: var(--bg-hover) transparent;
 }
 
+.hotkeys { display: flex; flex-direction: column; gap: 4px; padding-left: 8px; }
+.hotkeys[hidden] { display: none; }
+.hotkey { display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: var(--text-secondary); }
+.hotkey > span { flex: 1; min-width: 0; }
+
+.hotkey button {
+  flex: 0 0 auto;
+  min-width: 104px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: calc(var(--radius) * 0.35);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: 500 0.72rem var(--font-family);
+  cursor: pointer;
+}
+
+.hotkey button.recording { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+.hotkey button.failed { border-color: #f87171; color: #fca5a5; }
+.low-alpha .hotkey { color: var(--text-primary); text-shadow: var(--legibility-shadow); }
+
 .sleep-badge { flex: 0 0 auto; color: var(--accent-light); font-size: 0.8rem; cursor: default; }
 .sleep-badge[hidden] { display: none; }
 

@@ -3,6 +3,7 @@
 use crate::bridge::{self, BotCommand};
 use crate::lookup::{self, Lyrics, PlaylistInfo, SearchResult};
 use crate::spotify::{self, SpotifyStatus};
+use crate::hotkeys;
 use crate::settings::Settings;
 use crate::sleep::{self, SleepInfo};
 use crate::state::BotState;
@@ -394,6 +395,34 @@ pub fn mini_get_prefs(app: AppHandle) -> MiniPrefs {
         effective: theme::effective(&settings),
         hide_in_fullscreen: settings.hide_in_fullscreen,
     }
+}
+
+#[tauri::command]
+pub fn mini_get_hotkeys(app: AppHandle) -> hotkeys::HotkeysView {
+    hotkeys::view(&app)
+}
+
+#[tauri::command]
+pub fn mini_set_hotkeys_enabled(app: AppHandle, on: bool) -> hotkeys::HotkeysView {
+    update_settings(&app, |s| s.hotkeys.enabled = on);
+    hotkeys::apply(&app);
+    hotkeys::view(&app)
+}
+
+/// Saves a new combination for `action`; one Windows refuses (another app owns it) is put back.
+#[tauri::command]
+pub fn mini_set_hotkey(app: AppHandle, action: hotkeys::HotkeyAction, accel: String) -> Result<hotkeys::HotkeysView, String> {
+    let current = app.state::<AppState>().settings.lock().unwrap().hotkeys.clone();
+    let accel = hotkeys::check_binding(&current, action, &accel)?;
+    update_settings(&app, |s| {
+        s.hotkeys.bindings.insert(action, accel.clone());
+    });
+    if hotkeys::apply(&app).contains(&action) {
+        update_settings(&app, |s| s.hotkeys = current);
+        hotkeys::apply(&app);
+        return Err(format!("{accel} is taken by another app"));
+    }
+    Ok(hotkeys::view(&app))
 }
 
 #[tauri::command]

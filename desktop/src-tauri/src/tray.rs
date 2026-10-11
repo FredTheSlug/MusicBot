@@ -213,7 +213,7 @@ fn toggle_setting(app: &AppHandle, id: &str) {
 }
 
 /// Spotify actions block (media sessions, waiting for the bot), so they run on a worker thread.
-fn run_spotify_action(app: &AppHandle, action: fn(&AppHandle) -> Result<String, String>) {
+pub(crate) fn run_spotify_action(app: &AppHandle, action: fn(&AppHandle) -> Result<String, String>) {
     let app = app.clone();
     std::thread::spawn(move || match action(&app) {
         Ok(message) => crate::dispatch_notice(&app, "info", &message),

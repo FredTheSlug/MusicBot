@@ -187,3 +187,16 @@ test('sleepLabel', () => {
   assert.equal(sleepLabel({ mode: 'off', endsAtMs: null }, 1000), '');
   assert.equal(sleepLabel(null, 1000), '');
 });
+
+const { accelFromEvent } = require('./view.js');
+
+test('accelFromEvent', () => {
+  assert.equal(accelFromEvent({ ctrlKey: true, altKey: true, code: 'KeyP' }), 'Ctrl+Alt+P');
+  assert.equal(accelFromEvent({ shiftKey: true, code: 'ArrowRight' }), 'Shift+Right');
+  assert.equal(accelFromEvent({ ctrlKey: true, code: 'Digit1' }), 'Ctrl+1');
+  assert.equal(accelFromEvent({ altKey: true, code: 'Numpad5' }), 'Alt+Numpad5');
+  assert.equal(accelFromEvent({ code: 'F9' }), 'F9');
+  assert.equal(accelFromEvent({ code: 'KeyP' }), null, 'a plain letter would swallow typing');
+  assert.equal(accelFromEvent({ ctrlKey: true, code: 'ControlLeft' }), null, 'modifier only');
+  assert.equal(accelFromEvent({ ctrlKey: true, code: 'Escape' }), null, 'Escape cancels recording');
+});

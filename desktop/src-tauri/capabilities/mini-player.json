@@ -26,6 +26,9 @@
     "allow-mini-play-playlist",
     "allow-mini-set-sleep",
     "allow-mini-get-sleep",
-    "allow-mini-set-hide-in-fullscreen"
+    "allow-mini-set-hide-in-fullscreen",
+    "allow-mini-get-hotkeys",
+    "allow-mini-set-hotkeys-enabled",
+    "allow-mini-set-hotkey"
   ]
 }
