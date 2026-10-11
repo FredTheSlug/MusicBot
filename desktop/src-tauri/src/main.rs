@@ -29,7 +29,7 @@ pub struct AppState {
     pub settings_path: PathBuf,
     pub store: Mutex<StateStore>,
     /// Commands awaiting a `Result` report from the page, by id.
-    pub pending: Mutex<HashMap<u64, Sender<Result<(), String>>>>,
+    pub pending: Mutex<HashMap<u64, Sender<Result<Option<serde_json::Value>, String>>>>,
     /// None when media controls failed to start; the app works without them.
     pub media: Mutex<Option<media_keys::MediaKeys>>,
     /// Last Spotify status seen by the ticker.

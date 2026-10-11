@@ -128,7 +128,9 @@
 
   /** Executes an app command against the panel API and reports whether the bot accepted it. */
   function run(id, cmd) {
-    function result(ok, message) { report({ type: 'result', id: id, ok: ok, message: message || null }); }
+    function result(ok, message, data) {
+      report({ type: 'result', id: id, ok: ok, message: message || null, data: data === undefined ? null : data });
+    }
     if (!guildId) { result(false, 'Pick a server in the panel first'); return; }
     var req = core.commandToRequest(guildId, cmd, core.toBotState(snap));
     if (!req) { result(true); return; }
@@ -143,6 +145,12 @@
         var body = null;
         try { body = JSON.parse(text); } catch (e) { /* not JSON */ }
         var message = body && (body.error || body.message);
+        // Fetches hand the bot's answer back as data; a 200 lyrics answer may carry its own "error".
+        if (req.method === 'GET') {
+          if (resp.ok && body !== null) result(true, null, body);
+          else result(false, (body && body.error) || ('HTTP ' + resp.status));
+          return;
+        }
         // /play answers 200 with this message when it can't join voice.
         var noVoice = typeof message === 'string' && /no voice channel/i.test(message);
         if (resp.ok && !(body && body.error) && !noVoice) result(true);

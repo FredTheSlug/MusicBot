@@ -95,3 +95,10 @@ test('load errors count only shortly after this app asked to play', () => {
   assert.equal(isOwnLoadError(5000 + 30000, 5000), true, 'Spotify playlists can take a while to resolve');
   assert.equal(isOwnLoadError(5000 + 30001, 5000), false, 'too long after our request');
 });
+
+test('fetch commands map to GET endpoints', () => {
+  assert.deepEqual(commandToRequest('9', { type: 'Search', value: '  Ke$ha & "Tik" Tok ' }, {}),
+    { method: 'GET', path: '/api/guild/9/search?q=Ke%24ha%20%26%20%22Tik%22%20Tok', body: null });
+  assert.equal(commandToRequest('9', { type: 'Search', value: '   ' }, {}), null);
+  assert.deepEqual(commandToRequest('9', { type: 'Lyrics' }, {}), { method: 'GET', path: '/api/guild/9/lyrics', body: null });
+});

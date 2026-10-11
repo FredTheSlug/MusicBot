@@ -83,6 +83,7 @@
   }
 
   function request(path, body) { return { method: 'POST', path: path, body: body }; }
+  function fetchRequest(path) { return { method: 'GET', path: path, body: null }; }
 
   /** command = {type, value?} (Rust BotCommand) → panel API request, or null when there's nothing to do. */
   function commandToRequest(guildId, command, state) {
@@ -99,6 +100,11 @@
         return typeof command.value === 'string' && command.value.trim()
           ? request(base + 'play', { query: command.value.trim() })
           : null;
+      case 'Search':
+        return typeof command.value === 'string' && command.value.trim()
+          ? fetchRequest(base + 'search?q=' + encodeURIComponent(command.value.trim()))
+          : null;
+      case 'Lyrics': return fetchRequest(base + 'lyrics');
       default: return null;
     }
   }

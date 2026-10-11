@@ -26,6 +26,9 @@ pub enum BotCommand {
     SetVolume(u8),
     PlayQuery(String),
     PlaySpotifyLink(String),
+    /// Fetches: the page answers with the bot's JSON as the result's `data`.
+    Search(String),
+    Lyrics,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,7 +36,13 @@ pub enum BotCommand {
 pub enum BridgeReport {
     State { state: BotState },
     Notice { level: String, message: String },
-    Result { id: u64, ok: bool, message: Option<String> },
+    Result {
+        id: u64,
+        ok: bool,
+        message: Option<String>,
+        #[serde(default)]
+        data: Option<serde_json::Value>,
+    },
 }
 
 /// Runs in every page load of the main window; does nothing unless the page is the bot's site.
@@ -77,6 +86,15 @@ pub fn send_command(app: &AppHandle, cmd: BotCommand) -> Result<u64, String> {
 /// Sends a command and waits for the page to report whether the bot accepted it.
 /// Blocks the calling thread: call it from async commands or worker threads, never the main thread.
 pub fn send_command_await(app: &AppHandle, cmd: BotCommand, timeout: Duration) -> Result<(), String> {
+    send_and_wait(app, cmd, timeout).map(|_| ())
+}
+
+/// Like `send_command_await`, for fetch commands: returns the bot's answer.
+pub fn send_command_fetch(app: &AppHandle, cmd: BotCommand, timeout: Duration) -> Result<serde_json::Value, String> {
+    send_and_wait(app, cmd, timeout)?.ok_or_else(|| "The bot sent no data".to_string())
+}
+
+fn send_and_wait(app: &AppHandle, cmd: BotCommand, timeout: Duration) -> Result<Option<serde_json::Value>, String> {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let (tx, rx) = mpsc::channel();
     let state = app.state::<AppState>();
@@ -105,9 +123,9 @@ pub async fn bridge_report(app: AppHandle, report: BridgeReport) {
             dispatch(&app, changes);
         }
         BridgeReport::Notice { level, message } => dispatch_notice(&app, &level, &message),
-        BridgeReport::Result { id, ok, message } => {
+        BridgeReport::Result { id, ok, message, data } => {
             if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
-                let outcome = if ok { Ok(()) } else { Err(message.unwrap_or_else(|| "The bot rejected the request".into())) };
+                let outcome = if ok { Ok(data) } else { Err(message.unwrap_or_else(|| "The bot rejected the request".into())) };
                 let _ = tx.send(outcome);
             }
         }
@@ -147,6 +165,27 @@ mod tests {
         assert!(matches!(n, BridgeReport::Notice { ref message, .. } if message == "No results"));
         let r: BridgeReport = serde_json::from_str(r#"{"type":"result","id":3,"ok":false,"message":"No voice channel available"}"#).unwrap();
         assert!(matches!(r, BridgeReport::Result { id: 3, ok: false, .. }));
+    }
+
+    #[test]
+    fn result_report_carries_data() {
+        let r: BridgeReport =
+            serde_json::from_str(r#"{"type":"result","id":4,"ok":true,"message":null,"data":[{"title":"x"}]}"#).unwrap();
+        let BridgeReport::Result { id: 4, ok: true, data: Some(data), .. } = r else { panic!("expected result with data") };
+        assert_eq!(data, serde_json::json!([{ "title": "x" }]));
+        let r: BridgeReport = serde_json::from_str(r#"{"type":"result","id":5,"ok":true,"message":null}"#).unwrap();
+        assert!(matches!(r, BridgeReport::Result { id: 5, data: None, .. }));
+    }
+
+    #[test]
+    fn search_command_round_trips() {
+        let cmd = BotCommand::Search("a \"b\"
+".into());
+        let js = command_js(1, &cmd);
+        let prefix = "window.__cksBridge && window.__cksBridge.run(1, ";
+        let back: BotCommand = serde_json::from_str(&js[prefix.len()..js.len() - 2]).unwrap();
+        assert_eq!(back, cmd);
+        assert_eq!(serde_json::to_string(&BotCommand::Lyrics).unwrap(), r#"{"type":"Lyrics"}"#);
     }
 
     #[test]
