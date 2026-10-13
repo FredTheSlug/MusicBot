@@ -78,11 +78,11 @@ public class PlaylistStore
     private static final Duration RETENTION = Duration.ofDays(7);
     /** A trash file name: {@code <epochMillis>-<name>}, plus {@code -2}, {@code -3}… when that name was taken. */
     private static final Pattern TRASH_STAMP = Pattern.compile("(\\d{1,15})-(.+)");
-    private static final String TAKEN = "A playlist with that name already exists";
-    private static final String NOT_FOUND = "Playlist not found";
+    static final String TAKEN = "A playlist with that name already exists";
+    static final String NOT_FOUND = "Playlist not found";
     private static final String FOLDER_NOT_FOUND = "Folder not found";
     private static final String DELETED_NOT_FOUND = "Deleted playlist not found";
-    private static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
+    static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
     private static final String FULL = "Playlist is full";
     private static final String SONG_NOT_FOUND = "Song not found";
     private static final Comparator<String> TEXT_ORDER =
@@ -836,7 +836,7 @@ public class PlaylistStore
     }
 
     /** {@code name + suffix}, with the name cut short (never in the middle of a character) if the result would pass the byte limit. */
-    private static String withSuffix(String name, String suffix)
+    static String withSuffix(String name, String suffix)
     {
         int room = MAX_NAME_BYTES - suffix.getBytes(StandardCharsets.UTF_8).length;
         StringBuilder kept = new StringBuilder();
