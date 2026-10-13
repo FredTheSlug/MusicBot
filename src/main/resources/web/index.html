@@ -1266,6 +1266,7 @@
 
         .playlist-actions {
             display: flex;
+            flex-wrap: wrap;
             gap: 8px;
         }
 
@@ -1599,7 +1600,7 @@
             color: var(--text-secondary);
         }
 
-        .pl-drawer {
+        .pl-drawer, .pl-addsongs {
             margin-top: 12px;
             padding: 10px 12px;
             border-radius: var(--radius-select);
@@ -1837,6 +1838,33 @@
         }
 
         .pl-toast-action:hover, .pl-toast-action:focus-visible { background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12); outline: none; }
+
+        /* Adding songs: the inline search under the playlist header, the "New from link" form, import progress */
+        .pl-add-body { margin-top: 8px; }
+        .pl-add-msg { padding: 14px 6px; text-align: center; font-size: 0.82rem; color: var(--text-tertiary); overflow-wrap: anywhere; }
+
+        .pl-add-results {
+            list-style: none;
+            max-height: min(46vh, 380px);
+            overflow-y: auto;
+        }
+
+        .pl-add-results::-webkit-scrollbar { width: 6px; }
+        .pl-add-results::-webkit-scrollbar-track { background: transparent; }
+        .pl-add-results::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+        .pl-addsongs .pl-song:hover { background: var(--bg-hover); }
+        .pl-add-go { flex-shrink: 0; white-space: nowrap; }
+        .btn-sm.pl-add-go.done { color: var(--success); }
+
+        .pl-add-card { padding: 6px 2px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+        .pl-add-card-note { font-size: 0.78rem; color: var(--text-tertiary); overflow-wrap: anywhere; }
+
+        .pl-add-go[aria-busy="true"] { opacity: 0.6; cursor: progress; }
+        .pl-input-wide { flex: 1 1 100%; }
+
+        .pl-import { margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); }
+        .pl-import-line { overflow-wrap: anywhere; }
 
         .folder-item {
             display: flex;
@@ -5260,12 +5288,14 @@
                     <div class="playlist-actions" id="plActions">
                         <button class="btn-sm" onclick="showNewPlaylistDialog()">New Playlist</button>
                         <button class="btn-sm" onclick="showNewFolderDialog()">New Folder</button>
+                        <button class="btn-sm" onclick="plOpenLinkForm()" title="Make a playlist from a YouTube, SoundCloud or Spotify playlist or album link">New from link</button>
                         <button class="btn-sm" onclick="showSaveQueueDialog()">Save Queue</button>
                         <button class="btn-sm" onclick="plRefreshAll()">Refresh</button>
                     </div>
                 </div>
                 <div id="plMigration" class="pl-banner" role="status" hidden></div>
                 <div id="plTreeView">
+                    <div id="plLinkRow" class="pl-drawer" role="region" aria-label="New playlist from a link" hidden></div>
                     <div id="playlistDialogRow" style="display:none" class="playlist-input-row">
                         <input type="text" id="playlistDialogInput" placeholder="" maxlength="100" />
                         <button class="btn-sm" id="playlistDialogOk">Create</button>
@@ -8246,6 +8276,7 @@
         const plMigrationBanner = document.getElementById('plMigration');
         const plDeletedBox = document.getElementById('plDeleted');
         const plToastBox = document.getElementById('plToasts');
+        const plLinkBox = document.getElementById('plLinkRow');
 
         var PL_SONG_DND_TYPE = 'application/x-jmusicbot-playlist-song';
         var PL_COLLATE = { sensitivity: 'base', numeric: true };
@@ -8254,6 +8285,11 @@
         var PL_MIGRATION_POLL_MS = 5000;
         var PL_QUEUE_SAVE_MAX = 2000;
         var PL_TOAST_MAX = 3;
+        var PL_SEARCH_MIN = 2;
+        var PL_SEARCH_DELAY_MS = 500;
+        var PL_LINK_DELAY_MS = 900;
+        var PL_IMPORT_QUIET_MS = 120000;  // an import silent this long is shown as "still going" and stops locking the forms
+        var PL_IMPORT_TOAST_MS = 10000;
 
         var plTree = null;            // {playlists, folders, deleted} as last loaded; null until the first answer
         var plTreeSig = '';           // the loaded tree as text: an unchanged tree is not drawn again
@@ -8273,6 +8309,10 @@
         var plMigrationTimer = null;
         var plMigrationActive = false;
         var plMigrationSeq = 0;
+        var plImport = null;          // the import this panel started and is following, by its jobId; null when none
+        var plImportStarting = false; // the request that starts an import is on its way
+        var plImportEarly = Object.create(null);  // progress that arrived before the answer naming its job: jobId -> message
+        var plLinkForm = null;        // the "New from link" form, built the first time it is opened
 
         // ---- small helpers --------------------------------------------------------------------------------------
 
@@ -8818,6 +8858,7 @@
         function plOpenDialog(kind, parent) {
             plDialog = { kind: kind, parent: parent || '', busy: false };
             playlistSaveRow.style.display = 'none';
+            plCloseLinkForm();
             var what = kind === 'folder' ? (parent ? 'Subfolder name' : 'Folder name') : 'Playlist name';
             playlistDialogInput.placeholder = what + (parent ? ' in ' + parent : '') + '…';
             playlistDialogInput.value = '';
@@ -8931,6 +8972,7 @@
 
         function showSaveQueueDialog() {
             hidePlaylistDialog();
+            plCloseLinkForm();
             playlistSaveInput.value = '';
             plFillFolderSelect(playlistSaveFolder, '', 'Top level');
             playlistSaveRow.style.display = 'flex';
@@ -9098,7 +9140,7 @@
                 name: name, folder: folder || '', version: 0, latestSeen: 0, seq: 0,
                 loaded: false, error: '', legacy: false, shuffle: false, createdBy: '', songs: [],
                 rowBySong: new Map(), retrying: new Set(), removing: new Set(),
-                dragSong: null, dropGap: -1, moving: false, deferred: false, structureOps: 0, els: null
+                dragSong: null, dropGap: -1, moving: false, deferred: false, structureOps: 0, add: null, els: null
             };
             plPage = page;
             plBuildPage(page);
@@ -9197,6 +9239,7 @@
             }
 
             h.note.hidden = !page.legacy;
+            if (page.legacy && page.add) plCloseAddSongs(page, false);
             h.addBtn.hidden = !page.loaded || page.legacy;
             h.menuBtn.hidden = !page.loaded || page.legacy;
             h.playBtn.disabled = h.shuffleBtn.disabled = !page.loaded || count === 0;
@@ -9778,10 +9821,574 @@
             function () { plDeletePlaylist(page.name, page.folder, page); }, page.els.menuBtn);
         }
 
-        // Task 10b fills this in: the inline "Add songs" area (search box, results with an Add button, pasted links to
-        // import) opens in page.els.addSongs, under the header. Until then the button only says so.
+        // ---- adding songs: the inline search, pasted links, importing a playlist link ------------------------------
+        // page.add is the open "Add songs" area under the header (null while it is closed). Search results stay in JS
+        // (add.entries) and are drawn with textContent; nothing from a search or a link reaches markup. Every answer is
+        // checked against the area and the request number it was asked for, so a late answer to an older query is dropped.
+
+        var PL_ADD_HINT = 'Search YouTube and SoundCloud, or paste the link of a playlist or album to import its songs.';
+
+        // The button opens the area, and closes it again.
         function plOpenAddSongs(page) {
-            plToast('Adding songs from this page is coming soon', {});
+            if (!page.loaded || page.legacy) return;
+            if (page.add) {
+                plCloseAddSongs(page, true);
+                return;
+            }
+            var box = page.els.addSongs;
+            box.textContent = '';
+            box.setAttribute('role', 'region');
+            box.setAttribute('aria-label', 'Add songs');
+            var add = {
+                seq: 0, timer: null, view: 'hint', text: '', retry: null, entries: [], link: null,
+                input: null, body: null, progress: null, importBtn: null, importLabel: ''
+            };
+            var form = plEl('form', 'pl-form');
+            form.setAttribute('role', 'search');
+            var input = plEl('input', 'pl-input');
+            input.type = 'text';
+            input.maxLength = 500;
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+            input.placeholder = 'Search or paste a link…';
+            input.setAttribute('aria-label', 'Search for songs to add, or paste the link of a playlist to import');
+            var go = plEl('button', 'btn-sm pl-primary', 'Search');
+            go.type = 'submit';
+            var close = plBtn('Close', '', function () { plCloseAddSongs(page, true); });
+            form.appendChild(input);
+            form.appendChild(go);
+            form.appendChild(close);
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                plAddSubmit(page);
+            });
+            input.addEventListener('input', function (e) { plAddTyped(page, e); });
+            box.onkeydown = function (e) {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    plCloseAddSongs(page, true);
+                }
+            };
+            add.input = input;
+            add.progress = plEl('div', 'pl-import');
+            add.progress.hidden = true;
+            add.body = plEl('div', 'pl-add-body');
+            box.appendChild(form);
+            box.appendChild(add.progress);
+            box.appendChild(add.body);
+            box.hidden = false;
+            page.add = add;
+            page.els.addBtn.setAttribute('aria-expanded', 'true');
+            plAddRender(page);
+            input.focus();
+        }
+
+        function plCloseAddSongs(page, restoreFocus) {
+            var add = page.add;
+            if (!add) return;
+            if (add.timer) clearTimeout(add.timer);
+            page.add = null;
+            var box = page.els.addSongs;
+            box.hidden = true;
+            box.textContent = '';
+            box.onkeydown = null;
+            page.els.addBtn.setAttribute('aria-expanded', 'false');
+            if (restoreFocus && page.els.addBtn.isConnected) page.els.addBtn.focus({ preventScroll: true });
+        }
+
+        // Typing: a few letters are searched after a short pause; whatever was asked before no longer counts. A pasted
+        // link is checked at once, one that is typed only after a longer pause (not at every half-written address).
+        function plAddTyped(page, e) {
+            var add = page.add;
+            if (!add) return;
+            if (add.timer) clearTimeout(add.timer);
+            add.timer = null;
+            add.seq++;
+            var q = add.input.value.trim();
+            if (plIsWebLink(q)) {
+                if (e && /^insertFrom(Paste|Drop)/.test(e.inputType || '')) plAddLookup(page, q);
+                else add.timer = setTimeout(function () { plAddLookup(page, q); }, PL_LINK_DELAY_MS);
+            } else if (q.length >= PL_SEARCH_MIN) {
+                add.timer = setTimeout(function () { plAddSearch(page, q); }, PL_SEARCH_DELAY_MS);
+            }
+            // an answer that was on its way is dropped now: do not leave its spinner behind
+            if (!add.timer && (!q || add.view === 'busy')) plAddShow(page, 'hint');
+        }
+
+        function plAddSubmit(page) {
+            var add = page.add;
+            if (!add) return;
+            if (add.timer) clearTimeout(add.timer);
+            add.timer = null;
+            add.seq++;
+            var q = add.input.value.trim();
+            if (!q) {
+                plAddShow(page, 'hint');
+                add.input.focus();
+            } else if (plIsWebLink(q)) {
+                plAddLookup(page, q);
+            } else if (q.length < PL_SEARCH_MIN) {
+                plAddShow(page, 'hint', 'Type at least ' + PL_SEARCH_MIN + ' letters to search');
+            } else {
+                plAddSearch(page, q);
+            }
+        }
+
+        // True while this area is still open on the page that is showing, and nothing newer was asked since `seq`.
+        function plAddCurrent(page, add, seq) {
+            return plPage === page && page.add === add && add.seq === seq;
+        }
+
+        // raw: a track as the search and resolve endpoints answer it. withSource: say where it comes from (search only).
+        function plAddEntry(raw, withSource) {
+            var song = plSongFromTrack(raw);
+            if (!song) return null;
+            var source = withSource && typeof raw.source === 'string' ? raw.source.toLowerCase() : '';
+            return {
+                song: song,
+                live: raw.isStream === true,
+                source: source === 'soundcloud' ? 'SoundCloud' : source === 'youtube' ? 'YouTube' : '',
+                added: 0,
+                busy: false
+            };
+        }
+
+        async function plAddSearch(page, query) {
+            var add = page.add;
+            if (!add || plPage !== page) return;
+            var seq = ++add.seq;
+            if (!currentGuild) {
+                plAddShow(page, 'hint', 'Pick a server first — the search needs one');
+                return;
+            }
+            plAddShow(page, 'busy', 'Searching…');
+            var entries = null;
+            var failure = 'Search failed';
+            try {
+                var res = await plApi('GET', '/api/guild/' + encodeURIComponent(currentGuild) + '/search?q=' + encodeURIComponent(query));
+                if (!plAddCurrent(page, add, seq)) return;
+                if (res.ok && Array.isArray(res.data)) {
+                    entries = res.data.map(function (raw) { return plAddEntry(raw, true); }).filter(Boolean);
+                }
+            } catch (e) {
+                if (!plAddCurrent(page, add, seq)) return;
+                if (e && e.message === 'unauthorized') {
+                    plAddShow(page, 'hint');
+                    return;
+                }
+                failure = "Couldn't reach the server";
+            }
+            if (!entries) {
+                plAddShow(page, 'error', failure, function () { plAddSearch(page, query); });
+            } else if (!entries.length) {
+                plAddShow(page, 'hint', 'No results for “' + plShort(query) + '”');
+            } else {
+                add.entries = entries;
+                plAddShow(page, 'results');
+            }
+        }
+
+        // A pasted http(s) link. The panel's resolve endpoint says whether it is one song (shown as a normal result with
+        // Add) or a playlist or album (an Import button with the song count). It cannot read every link the import can
+        // (Spotify, for one), and it names no title; when it cannot tell, the import is still offered.
+        async function plAddLookup(page, url) {
+            var add = page.add;
+            if (!add || plPage !== page) return;
+            var seq = ++add.seq;
+            var link = { url: url, count: 0, sample: '' };
+            if (currentGuild) {
+                plAddShow(page, 'busy', 'Checking the link…');
+                try {
+                    var res = await plApi('POST', '/api/guild/' + encodeURIComponent(currentGuild) + '/resolve-playlist-url', { url: url });
+                    if (!plAddCurrent(page, add, seq)) return;
+                    var tracks = res.ok && Array.isArray(res.data.tracks) ? res.data.tracks : [];
+                    if (res.data.kind === 'track' && tracks.length) {
+                        var one = plAddEntry(tracks[0], false);
+                        if (one) {
+                            add.entries = [one];
+                            plAddShow(page, 'results');
+                            return;
+                        }
+                    } else if (res.data.kind === 'playlist' && tracks.length) {
+                        link.count = Math.max(tracks.length, Math.round(Number(res.data.totalAvailable)) || 0);
+                        var first = tracks[0] || {};
+                        var title = typeof first.title === 'string' ? first.title.trim() : '';
+                        var artist = typeof first.author === 'string' ? first.author.trim() : '';
+                        if (title) link.sample = '“' + plShort(title) + '”' + (artist ? ' — ' + plShort(artist) : '');
+                    }
+                } catch (e) {
+                    if (!plAddCurrent(page, add, seq)) return;
+                    if (e && e.message === 'unauthorized') {
+                        plAddShow(page, 'hint');
+                        return;
+                    }
+                }
+            }
+            add.link = link;
+            plAddShow(page, 'link');
+        }
+
+        // view: hint (text, or the usual hint), busy (spinner and text), error (text and a retry), results, link.
+        function plAddShow(page, view, text, retry) {
+            var add = page.add;
+            if (!add) return;
+            add.view = view;
+            add.text = text || '';
+            add.retry = retry || null;
+            plAddRender(page);
+        }
+
+        function plAddRender(page) {
+            var add = page.add;
+            var body = add.body;
+            body.textContent = '';
+            add.importBtn = null;
+            if (add.view === 'busy') {
+                var wait = plEl('div', 'pl-add-msg');
+                wait.appendChild(plEl('span', 'loading-spinner'));
+                wait.appendChild(document.createTextNode(add.text));
+                body.appendChild(wait);
+            } else if (add.view === 'error') {
+                var failed = plEl('div', 'pl-add-msg', add.text);
+                if (add.retry) {
+                    var again = plBtn('Try again', '', function () { add.retry(); });
+                    again.style.marginTop = '8px';
+                    failed.appendChild(document.createElement('br'));
+                    failed.appendChild(again);
+                }
+                body.appendChild(failed);
+            } else if (add.view === 'results') {
+                var list = plEl('ul', 'pl-add-results');
+                list.setAttribute('aria-label', 'Songs found');
+                add.entries.forEach(function (entry) { list.appendChild(plAddRow(page, entry)); });
+                body.appendChild(list);
+            } else if (add.view === 'link') {
+                body.appendChild(plAddLinkCard(page, add.link));
+            } else {
+                body.appendChild(plEl('div', 'pl-add-msg', add.text || PL_ADD_HINT));
+            }
+            plRenderImport();
+        }
+
+        // One found song: title, artist, length, and an Add button that says "Added ✓" afterwards (and again, with a
+        // count, when the same song is added once more: copies are allowed).
+        function plAddRow(page, entry) {
+            var song = entry.song;
+            var title = song.title || song.uri;
+            var li = plEl('li', 'pl-song');
+            var info = plEl('div', 'pl-song-info');
+            info.appendChild(plEl('div', 'pl-song-title', title));
+            var length = entry.live ? 'LIVE' : song.durationMs > 0 ? formatTime(song.durationMs) : '';
+            var by = [song.author, entry.source].filter(Boolean).join(' · ');
+            if (by || length) {
+                var sub = plEl('div', 'pl-song-artist', by);
+                if (length) sub.appendChild(plEl('span', 'pl-song-len-inline', (by ? ' · ' : '') + length));
+                info.appendChild(sub);
+            }
+            li.appendChild(info);
+            if (length) li.appendChild(plEl('span', 'pl-song-len', length));
+
+            // aria-busy instead of disabled: a disabled button would drop the keyboard focus
+            var btn = plEl('button', 'btn-sm pl-add-go');
+            btn.type = 'button';
+            var paint = function () {
+                btn.textContent = entry.busy ? 'Adding…' : entry.added > 1 ? 'Added ✓ ×' + entry.added : entry.added ? 'Added ✓' : 'Add';
+                btn.classList.toggle('done', entry.added > 0 && !entry.busy);
+                btn.setAttribute('aria-busy', entry.busy ? 'true' : 'false');
+                btn.title = entry.added ? 'Add another copy' : 'Add to “' + page.name + '”';
+                btn.setAttribute('aria-label', (entry.added ? 'Added — add another copy of “' : 'Add “') + plShort(title) + '”');
+            };
+            btn.addEventListener('click', function () { plAddSong(page, entry, paint); });
+            paint();
+            li.appendChild(btn);
+            return li;
+        }
+
+        async function plAddSong(page, entry, paint) {
+            if (entry.busy) return;
+            entry.busy = true;
+            paint();
+            try {
+                var res = await plApi('POST', '/api/playlists/songs/add', { name: page.name, folder: page.folder, songs: [entry.song] });
+                if (res.ok) {
+                    entry.added++;
+                    plNoteOwnChange(page, res.data.version);
+                    // The new song appears on the page (and in the tree's count) with one read, however many Adds came
+                    plScheduleRefresh({ tree: true, page: true, force: true });
+                } else {
+                    plToast(plErrorText(res, "Couldn't add that song"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                entry.busy = false;
+                paint();
+            }
+        }
+
+        function plAddLinkCard(page, link) {
+            var add = page.add;
+            var card = plEl('div', 'pl-add-card');
+            var label = link.count > 0
+                ? 'Import ' + link.count + ' ' + pluralUnit(link.count, 'song', 'songs') + ' from this link'
+                : 'Import songs from this link';
+            var btn = plBtn(label, 'pl-primary', function () { plImportIntoPage(page, link.url); });
+            add.importBtn = btn;
+            add.importLabel = label;
+            card.appendChild(btn);
+            card.appendChild(plEl('div', 'pl-add-card-note', link.sample
+                ? 'Starts with ' + link.sample
+                : "Couldn't preview this link — the import will say if it can't read it"));
+            card.appendChild(plEl('div', 'pl-add-card-note', 'The songs are added to the end of “' + page.name + '” as they load.'));
+            return card;
+        }
+
+        async function plImportIntoPage(page, link) {
+            var started = await plStartImport({ kind: 'into', link: link, into: page.name, folder: page.folder, page: page });
+            var add = page.add;
+            if (started && add && plImport) {
+                // the link is being imported: do not leave its button there to be pressed twice
+                add.seq++;
+                add.input.value = '';
+                plAddShow(page, 'hint');
+            }
+        }
+
+        // ---- "New from link": a new playlist made from a playlist or album link -----------------------------------
+
+        function plBuildLinkForm() {
+            var form = plEl('form', 'pl-form');
+            var link = plEl('input', 'pl-input pl-input-wide');
+            link.type = 'text';
+            link.maxLength = 2000;
+            link.autocomplete = 'off';
+            link.spellcheck = false;
+            link.inputMode = 'url';
+            link.placeholder = 'Paste a playlist or album link';
+            link.setAttribute('aria-label', 'Link of a YouTube, SoundCloud or Spotify playlist or album');
+            var name = plEl('input', 'pl-input pl-input-wide');
+            name.type = 'text';
+            name.maxLength = 100;
+            name.autocomplete = 'off';
+            name.placeholder = 'Name (defaults to the album/playlist title)';
+            name.setAttribute('aria-label', 'Name of the new playlist');
+            var folder = plEl('select', 'playlist-move-select');
+            folder.setAttribute('aria-label', 'Folder');
+            var go = plEl('button', 'btn-sm pl-primary', 'Import');
+            go.type = 'submit';
+            var cancel = plBtn('Cancel', '', plCloseLinkForm);
+            var progress = plEl('div', 'pl-import pl-input-wide');
+            progress.hidden = true;
+            form.appendChild(link);
+            form.appendChild(name);
+            form.appendChild(folder);
+            form.appendChild(go);
+            form.appendChild(cancel);
+            form.appendChild(progress);
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                plSubmitLink();
+            });
+            form.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    plCloseLinkForm();
+                }
+            });
+            plLinkBox.appendChild(form);
+            plLinkForm = { link: link, name: name, folder: folder, go: go, progress: progress };
+        }
+
+        function plOpenLinkForm() {
+            hidePlaylistDialog();
+            hideSaveDialog();
+            if (!plLinkForm) plBuildLinkForm();
+            plFillFolderSelect(plLinkForm.folder, plLinkForm.folder.value, 'Top level');
+            plLinkBox.hidden = false;
+            plRenderImport();
+            plLinkForm.link.focus();
+        }
+
+        // Hides the form; what was typed is kept only while its import is still running.
+        function plCloseLinkForm() {
+            var f = plLinkForm;
+            if (!f || plLinkBox.hidden) return;
+            plLinkBox.hidden = true;
+            if (!plImportBusy()) plClearLinkForm();
+        }
+
+        function plClearLinkForm() {
+            if (!plLinkForm) return;
+            plLinkForm.link.value = '';
+            plLinkForm.name.value = '';
+        }
+
+        async function plSubmitLink() {
+            var f = plLinkForm;
+            if (!f || plImportBusy()) return;
+            var link = f.link.value.trim();
+            if (!link) {
+                f.link.focus();
+                return;
+            }
+            await plStartImport({ kind: 'new', link: link, name: f.name.value.trim(), folder: f.folder.value || '' });
+        }
+
+        // ---- following an import: the answer names its job, WebSocket "playlist-import" messages report on it ------
+        // Only messages with this panel's own jobId count here; another person's import still reloads the page
+        // (plOnImportMessage) but never touches this progress line.
+
+        // True while a start is on its way or an import this panel follows is still reporting.
+        function plImportBusy() {
+            return plImportStarting || (!!plImport && !plImport.quiet);
+        }
+
+        // opts: {kind: 'into' | 'new', link, folder, into?, name?, page?}. Resolves true when the server started the job.
+        async function plStartImport(opts) {
+            if (plImportBusy()) return false;
+            plImportStarting = true;
+            plImportEarly = Object.create(null);
+            plRenderImport();
+            var started = false;
+            try {
+                var body = { link: opts.link, folder: opts.folder };
+                if (opts.into) body.into = opts.into;
+                else if (opts.name) body.name = opts.name;
+                var res = await plApi('POST', '/api/playlists/import', body);
+                if (res.ok && typeof res.data.jobId === 'string' && res.data.jobId) {
+                    if (plImport) clearTimeout(plImport.timer); // an import that went quiet and was replaced
+                    plImport = {
+                        jobId: res.data.jobId, kind: opts.kind, page: opts.page || null, folder: opts.folder,
+                        done: 0, total: 0, failed: 0, quiet: false, timer: null
+                    };
+                    plWatchImport();
+                    started = true;
+                    // The job can report before this answer is read: take up what it said meanwhile
+                    var early = plImportEarly[plImport.jobId];
+                    if (early) plTrackImport(early);
+                } else {
+                    plToast(plErrorText(res, "Couldn't start the import"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                plImportStarting = false;
+                plImportEarly = Object.create(null);
+                plRenderImport();
+            }
+            return started;
+        }
+
+        function plTrackImport(d) {
+            var id = typeof d.jobId === 'string' ? d.jobId : '';
+            if (!id) return;
+            var imp = plImport;
+            if (!imp || imp.jobId !== id) {
+                if (plImportStarting) plImportEarly[id] = d; // it may be the job whose id is still on its way
+                return;
+            }
+            imp.done = Math.max(0, Math.round(Number(d.done)) || 0);
+            imp.total = Math.max(imp.done, Math.round(Number(d.total)) || 0);
+            imp.failed = Math.max(0, Math.round(Number(d.failedCount)) || 0);
+            imp.quiet = false;
+            if (d.finished === true) {
+                plFinishImport(imp, d);
+            } else {
+                plWatchImport();
+                plRenderImport();
+            }
+        }
+
+        // If the reports stop (a lost WebSocket, say), the forms must not stay locked for good.
+        function plWatchImport() {
+            var imp = plImport;
+            if (!imp) return;
+            clearTimeout(imp.timer);
+            imp.timer = setTimeout(function () {
+                if (plImport !== imp) return;
+                imp.quiet = true;
+                plRenderImport();
+            }, PL_IMPORT_QUIET_MS);
+        }
+
+        function plFinishImport(imp, d) {
+            clearTimeout(imp.timer);
+            plImport = null;
+            var name = typeof d.playlist === 'string' ? d.playlist : '';
+            var folder = typeof d.folder === 'string' ? d.folder : imp.folder;
+            var error = typeof d.error === 'string' ? d.error.trim() : '';
+            if (error.length > 200) error = error.slice(0, 199) + '…';
+            var count = imp.done;
+            var made = imp.kind === 'new' && !!name && count > 0;
+            if (made) {
+                plLinkBox.hidden = true; // done, whether or not the form was still open
+                plClearLinkForm();
+            }
+            plRenderImport();
+            if (!name || count === 0) {
+                // nothing was made or added: the form stays as it was, ready for another try
+                plToast(error || 'Nothing was imported', { error: true });
+                return;
+            }
+            var songs = count + ' ' + pluralUnit(count, 'song', 'songs');
+            var text = (imp.kind === 'new' ? 'Created “' + name + '” with ' + songs : 'Added ' + songs + ' to “' + name + '”')
+                + (imp.failed > 0 ? ' (' + imp.failed + " couldn't be loaded)" : '')
+                + (error ? ' — ' + error : '');
+            var opts = { error: !!error, ms: PL_IMPORT_TOAST_MS };
+            plRevealFolder(folder);
+            var showing = !!plPage && plPage.name === name && plPage.folder === folder;
+            if (made && !plPage) {
+                plLoadPaneTree(); // asked before the page opens, so the tree cannot be older than the playlist
+                plOpenPage(name, folder);
+            } else if (!showing) {
+                opts.actionLabel = 'Open';
+                opts.onAction = function () {
+                    plLoadPaneTree();
+                    plOpenPage(name, folder);
+                };
+            }
+            plToast(text, opts);
+        }
+
+        // Draws a progress line (or hides the slot when imp is null): "Importing… 12/150 · 2 couldn't be loaded".
+        function plFillImportSlot(slot, imp) {
+            slot.textContent = '';
+            slot.hidden = !imp;
+            if (!imp) return;
+            var line = plEl('div', 'pl-import-line');
+            if (!imp.quiet) line.appendChild(plEl('span', 'loading-spinner'));
+            var text = imp.quiet ? 'Still importing in the background…' : 'Importing…';
+            if (imp.total > 0) text += ' ' + imp.done + '/' + imp.total;
+            if (imp.failed > 0) text += ' · ' + imp.failed + " couldn't be loaded";
+            line.appendChild(document.createTextNode(text));
+            slot.appendChild(line);
+            if (imp.total > 0) {
+                var bar = plEl('div', 'pl-banner-bar');
+                var fill = document.createElement('i');
+                fill.style.width = Math.min(100, Math.round(imp.done / imp.total * 100)) + '%';
+                bar.appendChild(fill);
+                slot.appendChild(bar);
+            }
+        }
+
+        // Brings every place that shows or starts an import in line with plImport.
+        function plRenderImport() {
+            var busy = plImportBusy();
+            var imp = plImport;
+            var page = plPage;
+            if (page && page.add) {
+                var add = page.add;
+                plFillImportSlot(add.progress, imp && imp.kind === 'into' && imp.page === page ? imp : null);
+                if (add.importBtn) {
+                    add.importBtn.disabled = busy;
+                    add.importBtn.textContent = busy ? 'Importing…' : add.importLabel;
+                }
+            }
+            var f = plLinkForm;
+            if (f) {
+                plFillImportSlot(f.progress, imp && imp.kind === 'new' ? imp : null);
+                f.link.disabled = f.name.disabled = f.folder.disabled = f.go.disabled = busy;
+            }
         }
 
         // ---- live refresh: WebSocket "playlists" and "playlist-import" messages -----------------------------------
@@ -9828,6 +10435,7 @@
         // it fills the playlist that is open.
         function plOnImportMessage(d) {
             if (!d || typeof d !== 'object') return;
+            plTrackImport(d);
             var finished = d.finished === true;
             var forOpenPage = typeof d.playlist === 'string' && plIsOpenPage(d.playlist, d.folder);
             if (!finished && !forOpenPage) return;
