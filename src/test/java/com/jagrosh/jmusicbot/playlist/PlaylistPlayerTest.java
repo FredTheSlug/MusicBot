@@ -259,6 +259,93 @@ public class PlaylistPlayerTest
     }
 
     @Test
+    public void aBareNamePrefersThePlaylistAtTheTopLevel() throws Exception
+    {
+        PlaylistStore store = store();
+        store.create("Mix", "", null);
+        store.create("Mix", "Rock", null);
+        store.create("Mix", "Jazz", null);
+        store.create("Mix", "Rock/Sub", null);
+
+        // the top level has no folder to type, so the bare name means it
+        assertEquals("Mix", found(store, "Mix"));
+        assertEquals(1, store.findAll("Mix").size());
+        assertEquals("/Mix is the top level too", "Mix", found(store, "/Mix"));
+        // the others are reached by their folder, as before
+        assertEquals("Rock/Mix", found(store, "Rock/Mix"));
+        assertEquals("Jazz/Mix", found(store, "Jazz/Mix"));
+        assertEquals("Rock/Sub/Mix", found(store, "Rock/Sub/Mix"));
+
+        // an unconverted .txt at the top level counts the same way
+        Path root = tmp.getRoot().toPath().resolve("Playlists");
+        Files.write(root.resolve("Old.txt"), "ytsearch:one\r\n".getBytes(StandardCharsets.UTF_8));
+        Files.createDirectories(root.resolve("Rock"));
+        Files.write(root.resolve("Rock").resolve("Old.txt"), "ytsearch:two\r\n".getBytes(StandardCharsets.UTF_8));
+        Entry old = store.find("Old").get();
+        assertEquals("", old.getFolder());
+        assertTrue(old.isLegacy());
+        assertEquals("Rock/Old", found(store, "Rock/Old"));
+    }
+
+    @Test
+    public void aBareNameStillNeedsItsFolderWhenNoneIsAtTheTopLevel() throws Exception
+    {
+        PlaylistStore store = store();
+        store.create("Mix", "Rock", null);
+        store.create("Mix", "Jazz", null);
+        store.create("Top", "", null);
+
+        assertNull("two folders, none at the top level", found(store, "Mix"));
+        assertEquals(2, store.findAll("Mix").size());
+        // the Discord reply for that case asks for Folder/Name
+        assertEquals(Arrays.asList("Jazz/Mix", "Rock/Mix"), paths(store.findAll("Mix")));
+
+        // a loose match is no better off: the top level only wins an exact match
+        store.create("Solo", "", null);
+        store.create("solo", "Rock", null);
+        assertEquals("Solo", found(store, "Solo"));
+        assertEquals("solo", "Rock/solo", found(store, "solo"));
+        assertNull("SOLO fits both loosely", found(store, "SOLO"));
+    }
+
+    private static List<String> paths(List<Entry> entries)
+    {
+        List<String> paths = new ArrayList<>();
+        for(Entry each : entries)
+            paths.add(each.getPath());
+        Collections.sort(paths);
+        return paths;
+    }
+
+    @Test
+    public void findGivesBackEveryPlaylistOfTheTreeByItsPath() throws Exception
+    {
+        PlaylistStore store = store();
+        store.create("Mix", "", null);
+        store.create("Mix", "Rock", null);
+        store.create("Mix", "Pop", null);
+        store.create("Mix", "Rock/Sub", null);
+        store.create("Solo", "Rock", null);
+        store.create("Top", "", null);
+        store.create("Beta", "A", null);
+        store.create("beta", "B", null);
+        Path root = tmp.getRoot().toPath().resolve("Playlists");
+        Files.write(root.resolve("Old.txt"), "ytsearch:one\r\n".getBytes(StandardCharsets.UTF_8));
+        Files.write(root.resolve("Rock").resolve("Old.txt"), "ytsearch:two\r\n".getBytes(StandardCharsets.UTF_8));
+
+        List<Entry> tree = store.tree();
+        assertEquals(10, tree.size());
+        for(Entry each : tree)
+        {
+            Optional<Entry> back = store.find(each.getPath());
+            assertTrue(each.getPath(), back.isPresent());
+            assertEquals(each.getFolder(), back.get().getFolder());
+            assertEquals(each.getName(), back.get().getName());
+            assertEquals(each.isLegacy(), back.get().isLegacy());
+        }
+    }
+
+    @Test
     public void findIgnoresCaseOnlyWhenNothingMatchesExactly() throws Exception
     {
         PlaylistStore store = store();

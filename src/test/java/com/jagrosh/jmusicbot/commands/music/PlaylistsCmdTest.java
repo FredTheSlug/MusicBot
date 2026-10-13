@@ -15,15 +15,36 @@
  */
 package com.jagrosh.jmusicbot.commands.music;
 
+import com.jagrosh.jmusicbot.playlist.PlaylistStore;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import static org.junit.Assert.*;
 
 /** The playlist list a Discord reply shows. */
 public class PlaylistsCmdTest
 {
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
+
+    @Test
+    public void aNameInTwoFoldersAsksForTheFolderAndAnythingElseIsNotFound() throws Exception
+    {
+        PlaylistStore store = new PlaylistStore(tmp.getRoot().toPath().resolve("Playlists"), Clock.systemUTC());
+        store.create("Mix", "Rock", null);
+        store.create("Mix", "Jazz", null);
+        assertEquals("More than one playlist is called `Mix` — use `Folder/Name`", PlaylistsCmd.missingMessage(store, "Mix"));
+        assertEquals("I could not find playlist `Nope`", PlaylistsCmd.missingMessage(store, "Nope"));
+        assertEquals("I could not find playlist `Rock/Nope`", PlaylistsCmd.missingMessage(store, "Rock/Nope"));
+        // the same name at the top level is the one a bare name means: no question to ask
+        store.create("Mix", "", null);
+        assertTrue(store.find("Mix").isPresent());
+    }
+
     private static final String HEADER = "Available playlists:\n";
     private static final String FOOTER = "\nType `!play playlist <name>` to play a playlist";
 

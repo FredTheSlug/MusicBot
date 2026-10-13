@@ -134,10 +134,12 @@ public class PlaylistStore
 
     /**
      * The playlists that text typed by a person could mean. {@code Folder/Name} (any depth: the part after
-     * the last {@code /} is the name, the rest the folder) is that playlist; a bare name is every playlist
-     * with that name, in any folder or at the top level. Playlists that match exactly are returned if there
-     * are any; only when none does, the ones that differ in upper or lower case. More than one result
-     * means the text is ambiguous. Empty for text that names nothing, including text that is no usable name.
+     * the last {@code /} is the name, the rest the folder) is that playlist. A bare name is the playlist of
+     * that name at the top level, which has no folder to type, if there is one; otherwise every playlist with
+     * that name, in any folder. Playlists that match exactly are returned if there are any; only when none
+     * does, the ones that differ in upper or lower case. More than one result means the text is ambiguous.
+     * Empty for text that names nothing, including text that is no usable name. So {@code find(entry.getPath())}
+     * is always {@code entry}.
      */
     public List<Entry> findAll(String nameOrPath)
     {
@@ -150,6 +152,12 @@ public class PlaylistStore
         if(name.isEmpty())
             return Collections.emptyList();
         List<Entry> entries = tree();
+        if(folder == null)
+        {
+            List<Entry> topLevel = matching(entries, "", name, false); // the one playlist whose path is just its name
+            if(!topLevel.isEmpty())
+                return topLevel;
+        }
         List<Entry> exact = matching(entries, folder, name, false);
         return exact.isEmpty() ? matching(entries, folder, name, true) : exact;
     }
