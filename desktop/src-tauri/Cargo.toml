@@ -1,6 +1,6 @@
 [package]
 name = "cloutkings-desktop"
-version = "0.3.0"
+version = "0.3.1"
 description = "Clout Kings Music Bot desktop companion"
 edition = "2021"
 
