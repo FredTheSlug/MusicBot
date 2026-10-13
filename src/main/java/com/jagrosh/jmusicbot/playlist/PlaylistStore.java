@@ -25,6 +25,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.NotDirectoryException;
@@ -69,7 +70,9 @@ public class PlaylistStore
     private static final String JSON = ".json";
     private static final String TXT = ".txt";
     private static final String DELETED_DIR = ".deleted";
-    private static final String[] RESERVED = {DELETED_DIR, ".legacy-txt"};
+    private static final String LEGACY_DIR = ".legacy-txt";
+    private static final String[] RESERVED = {DELETED_DIR, LEGACY_DIR};
+    private static final char BYTE_ORDER_MARK = 0xFEFF;
     private static final int MAX_NAME_BYTES = 200;
     private static final int MOVE_ATTEMPTS = 6;
     /** How long a deleted playlist can be restored. */
@@ -301,6 +304,135 @@ public class PlaylistStore
             }
         }
         return purged;
+    }
+
+    /**
+     * The old {@code .txt} playlists that have no {@code .json} yet, sorted by folder then name, with their
+     * lines read from disk (whole, unlike the cut view of {@link #get}). A file that can't be read, or whose
+     * name or folder the store does not allow, is skipped (and logged).
+     */
+    List<Legacy> legacyEntries()
+    {
+        List<Path> dirs = new ArrayList<>();
+        collectDirs(root, dirs);
+        List<Legacy> found = new ArrayList<>();
+        for(Path dir : dirs)
+        {
+            String folder = folderOf(dir);
+            for(Path txt : txtFiles(children(dir), false))
+            {
+                try
+                {
+                    pathFor(baseName(txt, TXT), folder); // a name the store would refuse can't be converted
+                    Legacy legacy = readLegacyFile(txt, folder);
+                    if(legacy != null)
+                        found.add(legacy);
+                }
+                catch(IllegalArgumentException | UncheckedIOException e)
+                {
+                    LOG.warn("Skipping old playlist file {}: {}", txt, e.getMessage());
+                }
+            }
+        }
+        found.sort(Comparator.comparing(Legacy::getFolder, TEXT_ORDER).thenComparing(Legacy::getName, TEXT_ORDER));
+        return found;
+    }
+
+    /**
+     * Moves every {@code .txt} that has a {@code .json} beside it to {@code .legacy-txt/<folder>/}. That
+     * happens when the process stopped after a converted playlist was written and before its {@code .txt}
+     * moved; left in place, it would come back as the playlist once the {@code .json} was deleted. Returns
+     * how many were moved; one that can't be moved is logged and left.
+     */
+    int moveLeftoverTxts()
+    {
+        List<Path> dirs = new ArrayList<>();
+        collectDirs(root, dirs);
+        int moved = 0;
+        for(Path dir : dirs)
+        {
+            String folder = folderOf(dir);
+            for(Path txt : txtFiles(children(dir), true))
+            {
+                try
+                {
+                    Path json = pathFor(baseName(txt, TXT), folder);
+                    synchronized(lockFor(json))
+                    {
+                        if(Files.isRegularFile(json) && Files.isRegularFile(txt))
+                        {
+                            moveToLegacyFolder(txt, folder);
+                            moved++;
+                        }
+                    }
+                }
+                catch(IllegalArgumentException | UncheckedIOException e)
+                {
+                    LOG.warn("Could not move aside old playlist file {}: {}", txt, e.getMessage());
+                }
+            }
+        }
+        return moved;
+    }
+
+    /**
+     * Saves a playlist converted from its {@code .txt} and only then moves the {@code .txt} to
+     * {@code .legacy-txt/<folder>/}, all under the playlist's lock. The file is named after the playlist and
+     * stamped as version 1 and updated now. A {@code .json} that already exists is not touched (the
+     * {@code .txt} is just moved away). Returns true when this call wrote the {@code .json}; false when it
+     * did not, including when the {@code .txt} is no longer there.
+     */
+    boolean writeConverted(String name, String folder, PlaylistFile converted)
+    {
+        Path json = pathFor(name, folder);
+        Path txt = txtOf(json);
+        synchronized(lockFor(json))
+        {
+            if(!Files.isRegularFile(txt))
+                return false;
+            boolean written = !Files.exists(json);
+            if(written)
+            {
+                converted.setVersion(0); // saved as 1
+                save(json, converted, clock.instant());
+            }
+            moveToLegacyFolder(txt, folder == null ? "" : folder); // only now that the .json is on disk
+            return written;
+        }
+    }
+
+    /**
+     * Moves the {@code .txt} into {@code .legacy-txt/<folder>/}, as {@code <name>-2.txt}, {@code -3}… when
+     * that name is taken: an earlier copy is never overwritten. The folder is one the caller has already checked.
+     */
+    private void moveToLegacyFolder(Path txt, String folder)
+    {
+        Path dir = root.resolve(LEGACY_DIR);
+        if(!folder.isEmpty())
+            for(String segment : folder.split("/", -1))
+                dir = child(dir, segment);
+        String name = baseName(txt, TXT);
+        try
+        {
+            Files.createDirectories(dir);
+            for(int n = 1; ; n++)
+            {
+                Path target = child(dir, (n == 1 ? name : name + "-" + n) + TXT);
+                try
+                {
+                    Files.move(txt, target); // refuses to replace an existing file
+                    return;
+                }
+                catch(FileAlreadyExistsException taken)
+                {
+                    // try the next number
+                }
+            }
+        }
+        catch(IOException e)
+        {
+            throw new UncheckedIOException("Could not move " + txt.getFileName() + " to " + LEGACY_DIR, e);
+        }
     }
 
     /** The {@code .json} file of a playlist; throws {@link IllegalArgumentException} when the name or folder is not allowed. */
@@ -806,39 +938,18 @@ public class PlaylistStore
     /** The old line format as {@code PlaylistLoader} reads it, except that the list is not shuffled. */
     private Optional<PlaylistFile> readLegacy(Path txt)
     {
-        String text;
-        Instant modified;
-        try
-        {
-            text = new String(Files.readAllBytes(txt), StandardCharsets.UTF_8);
-            modified = Files.getLastModifiedTime(txt).toInstant();
-        }
-        catch(NoSuchFileException e)
-        {
+        Legacy legacy = readLegacyFile(txt, ""); // the view has no use for the folder
+        if(legacy == null)
             return Optional.empty();
-        }
-        catch(IOException e)
-        {
-            throw new UncheckedIOException("Could not read playlist " + txt.getFileName(), e);
-        }
         PlaylistFile view = new PlaylistFile();
-        view.setName(baseName(txt, TXT));
+        view.setName(legacy.getName());
         view.setLegacy(true);
-        view.setCreatedAt(modified);
-        view.setUpdatedAt(modified);
+        view.setCreatedAt(legacy.getModified());
+        view.setUpdatedAt(legacy.getModified());
+        view.setShuffle(legacy.isShuffle());
         Set<String> ids = new HashSet<>();
-        for(String raw : text.split("\r\n|\r|\n"))
+        for(String line : legacy.getLines())
         {
-            String line = raw.trim();
-            if(line.isEmpty())
-                continue;
-            if(line.startsWith("#") || line.startsWith("//"))
-            {
-                String squeezed = line.replaceAll("\\s+", "");
-                if(squeezed.equalsIgnoreCase("#shuffle") || squeezed.equalsIgnoreCase("//shuffle"))
-                    view.setShuffle(true);
-                continue;
-            }
             Song song = new Song();
             String id;
             do
@@ -853,6 +964,58 @@ public class PlaylistStore
             view.getSongs().add(song);
         }
         return Optional.of(view);
+    }
+
+    /** The old {@code .txt} read from disk, whole lines and all; null when the file is gone. */
+    private static Legacy readLegacyFile(Path txt, String folder)
+    {
+        String text;
+        Instant modified;
+        try
+        {
+            text = new String(Files.readAllBytes(txt), StandardCharsets.UTF_8);
+            modified = Files.getLastModifiedTime(txt).toInstant();
+        }
+        catch(NoSuchFileException e)
+        {
+            return null;
+        }
+        catch(IOException e)
+        {
+            throw new UncheckedIOException("Could not read playlist " + txt.getFileName(), e);
+        }
+        List<String> lines = new ArrayList<>();
+        boolean shuffle = parseLegacyLines(text, lines);
+        return new Legacy(baseName(txt, TXT), folder, modified, lines, shuffle);
+    }
+
+    /**
+     * Reads the old line format as {@code PlaylistLoader} does: every song line, trimmed, is added to
+     * {@code lines}; blank lines and comments ({@code #}, {@code //}) are skipped. Returns true when a
+     * {@code #shuffle} or {@code //shuffle} line is present. A byte order mark at the start is ignored.
+     */
+    private static boolean parseLegacyLines(String text, List<String> lines)
+    {
+        boolean shuffle = false;
+        boolean first = true;
+        for(String raw : text.split("\r\n|\r|\n"))
+        {
+            String line = raw.trim();
+            if(first && !line.isEmpty() && line.charAt(0) == BYTE_ORDER_MARK)
+                line = line.substring(1).trim();
+            first = false;
+            if(line.isEmpty())
+                continue;
+            if(line.startsWith("#") || line.startsWith("//"))
+            {
+                String squeezed = line.replaceAll("\\s+", "");
+                if(squeezed.equalsIgnoreCase("#shuffle") || squeezed.equalsIgnoreCase("//shuffle"))
+                    shuffle = true;
+                continue;
+            }
+            lines.add(line);
+        }
+        return shuffle;
     }
 
     private void collectEntries(Path dir, String folder, List<Entry> entries)
@@ -889,14 +1052,24 @@ public class PlaylistStore
     /** True when one of the files is an old {@code .txt} playlist that has no {@code .json} yet. */
     private static boolean holdsLegacy(List<Path> children)
     {
+        return !txtFiles(children, false).isEmpty();
+    }
+
+    /**
+     * The old {@code .txt} playlists among the files: those with no {@code .json} of the same name
+     * ({@code withJson} false, still to be converted) or with one beside them (true, left over).
+     */
+    private static List<Path> txtFiles(List<Path> children, boolean withJson)
+    {
         Set<String> jsonNames = new HashSet<>();
         for(Path child : children)
             if(isPlaylistFile(child, JSON))
                 jsonNames.add(baseName(child, JSON));
+        List<Path> found = new ArrayList<>();
         for(Path child : children)
-            if(isPlaylistFile(child, TXT) && !jsonNames.contains(baseName(child, TXT)))
-                return true;
-        return false;
+            if(isPlaylistFile(child, TXT) && jsonNames.contains(baseName(child, TXT)) == withJson)
+                found.add(child);
+        return found;
     }
 
     /** A regular file named {@code <something><extension>}. */
@@ -1173,6 +1346,54 @@ public class PlaylistStore
         public int getDaysLeft()
         {
             return daysLeft;
+        }
+    }
+
+    /** An old {@code .txt} playlist as the converter reads it: the lines as written on disk, not the cut view of {@link #get}. */
+    static final class Legacy
+    {
+        private final String name;
+        private final String folder;
+        private final Instant modified;
+        private final List<String> lines;
+        private final boolean shuffle;
+
+        Legacy(String name, String folder, Instant modified, List<String> lines, boolean shuffle)
+        {
+            this.name = name;
+            this.folder = folder;
+            this.modified = modified;
+            this.lines = Collections.unmodifiableList(new ArrayList<>(lines));
+            this.shuffle = shuffle;
+        }
+
+        String getName()
+        {
+            return name;
+        }
+
+        /** The folder path, {@code ""} for the top level. */
+        String getFolder()
+        {
+            return folder;
+        }
+
+        /** When the file was last written. */
+        Instant getModified()
+        {
+            return modified;
+        }
+
+        /** The song lines, trimmed, in file order: no blanks, no comments. */
+        List<String> getLines()
+        {
+            return lines;
+        }
+
+        /** True when the file has a {@code #shuffle} (or {@code //shuffle}) line. */
+        boolean isShuffle()
+        {
+            return shuffle;
         }
     }
 
