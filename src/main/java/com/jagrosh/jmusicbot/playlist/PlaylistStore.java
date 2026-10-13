@@ -30,6 +30,7 @@ import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -66,6 +67,9 @@ public class PlaylistStore
     private static final String TAKEN = "A playlist with that name already exists";
     private static final String NOT_FOUND = "Playlist not found";
     private static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
+    private static final String FULL = "Playlist is full";
+    private static final String SONG_NOT_FOUND = "Song not found";
+    private static final SecureRandom RANDOM = new SecureRandom();
     private static final Comparator<String> TEXT_ORDER =
             String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.<String>naturalOrder());
     private static final Comparator<Entry> ENTRY_ORDER =
@@ -175,6 +179,97 @@ public class PlaylistStore
     }
 
     /**
+     * Adds copies of {@code songs} at {@code index} (clamped to the list; null = the end). Each copy gets a
+     * new id, {@code addedBy = by} (may be null) and {@code addedAt = now}. All or nothing: a batch that
+     * would take the playlist past {@link PlaylistFile#MAX_SONGS} adds nothing and is refused.
+     */
+    public PlaylistFile addSongs(String name, String folder, List<Song> songs, Integer index, Person by)
+    {
+        if(songs == null || songs.isEmpty())
+            throw new IllegalArgumentException("No songs to add");
+        return update(name, folder, file ->
+        {
+            List<Song> list = file.getSongs();
+            if(list.size() + songs.size() > PlaylistFile.MAX_SONGS)
+                throw new IllegalStateException(FULL);
+            Set<String> ids = new HashSet<>();
+            for(Song existing : list)
+                ids.add(existing.getId());
+            Instant now = clock.instant();
+            List<Song> added = new ArrayList<>(songs.size());
+            for(Song source : songs)
+            {
+                String id;
+                do
+                {
+                    id = PlaylistFile.newSongId(RANDOM);
+                }
+                while(!ids.add(id));
+                Song copy = new Song();
+                copy.setId(id);
+                copy.setUri(source.getUri());
+                copy.setTitle(source.getTitle());
+                copy.setAuthor(source.getAuthor());
+                copy.setDurationMs(source.getDurationMs());
+                copy.setArtworkUrl(source.getArtworkUrl());
+                copy.setUnresolved(source.isUnresolved());
+                copy.setAddedBy(by);
+                copy.setAddedAt(now);
+                added.add(copy);
+            }
+            list.addAll(index == null ? list.size() : Math.max(0, Math.min(index, list.size())), added);
+        });
+    }
+
+    /** Takes the song out of the playlist; the result holds it and its place, so an Undo can add it back there. */
+    public Removed removeSong(String name, String folder, String songId)
+    {
+        Song[] song = new Song[1];
+        int[] index = new int[1];
+        PlaylistFile file = update(name, folder, f ->
+        {
+            index[0] = indexOfSong(f, songId);
+            song[0] = f.getSongs().remove(index[0]);
+        });
+        return new Removed(song[0], index[0], file);
+    }
+
+    /** Moves the song so that it ends up at {@code toIndex} (clamped to the list). */
+    public PlaylistFile moveSong(String name, String folder, String songId, int toIndex)
+    {
+        return update(name, folder, f ->
+        {
+            List<Song> list = f.getSongs();
+            Song song = list.remove(indexOfSong(f, songId));
+            list.add(Math.max(0, Math.min(toIndex, list.size())), song);
+        });
+    }
+
+    /** Turns the playlist's shuffle flag on or off. */
+    public PlaylistFile setShuffle(String name, String folder, boolean on)
+    {
+        return update(name, folder, f -> f.setShuffle(on));
+    }
+
+    /**
+     * Fills in an entry that could not be loaded earlier: takes {@code uri, title, author, durationMs,
+     * artworkUrl, unresolved} from {@code resolved}; the entry keeps its id, {@code addedBy} and {@code addedAt}.
+     */
+    public PlaylistFile replaceSong(String name, String folder, String songId, Song resolved)
+    {
+        return update(name, folder, f ->
+        {
+            Song entry = f.getSongs().get(indexOfSong(f, songId));
+            entry.setUri(resolved.getUri());
+            entry.setTitle(resolved.getTitle());
+            entry.setAuthor(resolved.getAuthor());
+            entry.setDurationMs(resolved.getDurationMs());
+            entry.setArtworkUrl(resolved.getArtworkUrl());
+            entry.setUnresolved(resolved.isUnresolved());
+        });
+    }
+
+    /**
      * Locks the playlist, reads its current JSON, lets {@code change} edit it, then bumps
      * {@code version} and {@code updatedAt} and writes it. Nothing is written when {@code change} throws.
      * Throws {@link NoSuchElementException} for an unknown playlist and {@link IllegalStateException}
@@ -263,6 +358,16 @@ public class PlaylistStore
         if(!Files.exists(json) && Files.isRegularFile(txtOf(json)))
             throw new IllegalStateException(UPGRADING);
         throw new NoSuchElementException(NOT_FOUND);
+    }
+
+    /** Where the song with this id is in the list; {@link NoSuchElementException} when there is none. */
+    private static int indexOfSong(PlaylistFile file, String songId)
+    {
+        List<Song> songs = file.getSongs();
+        for(int i = 0; i < songs.size(); i++)
+            if(songs.get(i).getId().equals(songId))
+                return i;
+        throw new NoSuchElementException(SONG_NOT_FOUND);
     }
 
     /** Bumps {@code version}, stamps {@code updatedAt} with {@code now}, names the file after its path and writes it. */
@@ -607,6 +712,38 @@ public class PlaylistStore
         public boolean isLegacy()
         {
             return legacy;
+        }
+    }
+
+    /** What {@link #removeSong} took out: the song, the index it had and the playlist after the removal. */
+    public static final class Removed
+    {
+        private final Song song;
+        private final int index;
+        private final PlaylistFile playlist;
+
+        Removed(Song song, int index, PlaylistFile playlist)
+        {
+            this.song = song;
+            this.index = index;
+            this.playlist = playlist;
+        }
+
+        public Song getSong()
+        {
+            return song;
+        }
+
+        /** Where the song was; adding it back at this index restores the order. */
+        public int getIndex()
+        {
+            return index;
+        }
+
+        /** The playlist as saved after the removal (its new version included). */
+        public PlaylistFile getPlaylist()
+        {
+            return playlist;
         }
     }
 }
