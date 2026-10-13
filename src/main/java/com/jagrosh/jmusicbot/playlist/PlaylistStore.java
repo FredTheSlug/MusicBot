@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryIteratorException;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -32,6 +33,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,12 +41,16 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +59,8 @@ import org.slf4j.LoggerFactory;
  * (format 2) and, until they are converted, the old {@code <name>.txt} playlists, which are only
  * readable. Each change runs under a per-playlist lock and is written atomically; reads take no
  * lock. The file name is a playlist's identity, folders are {@code /}-separated relative paths
- * ({@code ""} is the top level).
+ * ({@code ""} is the top level). Deleting moves a playlist to {@code Playlists/.deleted/}, where it
+ * stays for 7 days and can be restored.
  */
 public class PlaylistStore
 {
@@ -61,11 +68,18 @@ public class PlaylistStore
 
     private static final String JSON = ".json";
     private static final String TXT = ".txt";
-    private static final String[] RESERVED = {".deleted", ".legacy-txt"};
+    private static final String DELETED_DIR = ".deleted";
+    private static final String[] RESERVED = {DELETED_DIR, ".legacy-txt"};
     private static final int MAX_NAME_BYTES = 200;
     private static final int MOVE_ATTEMPTS = 6;
+    /** How long a deleted playlist can be restored. */
+    private static final Duration RETENTION = Duration.ofDays(7);
+    /** A trash file name: {@code <epochMillis>-<name>}, plus {@code -2}, {@code -3}… when that name was taken. */
+    private static final Pattern TRASH_STAMP = Pattern.compile("(\\d{1,15})-(.+)");
     private static final String TAKEN = "A playlist with that name already exists";
     private static final String NOT_FOUND = "Playlist not found";
+    private static final String FOLDER_NOT_FOUND = "Folder not found";
+    private static final String DELETED_NOT_FOUND = "Deleted playlist not found";
     private static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
     private static final String FULL = "Playlist is full";
     private static final String SONG_NOT_FOUND = "Song not found";
@@ -74,6 +88,9 @@ public class PlaylistStore
             String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.<String>naturalOrder());
     private static final Comparator<Entry> ENTRY_ORDER =
             Comparator.comparing(Entry::getFolder, TEXT_ORDER).thenComparing(Entry::getName, TEXT_ORDER);
+    private static final Comparator<Deleted> NEWEST_FIRST =
+            Comparator.comparing(Deleted::getDeletedAt, Comparator.<Instant>reverseOrder())
+                    .thenComparing(Deleted::getId, Comparator.<String>reverseOrder());
 
     private final Path root;
     private final Clock clock;
@@ -169,6 +186,121 @@ public class PlaylistStore
         {
             throw new UncheckedIOException("Could not create folder " + path, e);
         }
+    }
+
+    /**
+     * Moves a playlist to the Deleted folder as {@code .deleted/<epochMillis>-<name>.json}, stamped with who
+     * deleted it ({@code by} may be null), when and from which folder. The playlist stays restorable for
+     * 7 days. An unconverted {@code .txt} is refused, as every change is.
+     */
+    public Deleted delete(String name, String folder, Person by)
+    {
+        Path json = pathFor(name, folder);
+        synchronized(lockFor(json))
+        {
+            return sendToDeleted(json, current(json), folder == null ? "" : folder, by);
+        }
+    }
+
+    /**
+     * Sends every playlist in the folder and its subfolders to the Deleted folder (each remembers its own
+     * folder), then removes the folders that are left empty. Playlists the store can't read, and the folders
+     * holding them, stay where they are. Returns how many playlists were moved. The top level can't be
+     * deleted; a folder holding an unconverted {@code .txt} anywhere in it is refused before anything moves.
+     */
+    public int deleteFolder(String path, Person by)
+    {
+        if(path == null || path.isEmpty())
+            throw new IllegalArgumentException("The top-level folder can't be deleted");
+        Path dir = folderPath(path);
+        if(!Files.isDirectory(dir))
+            throw new NoSuchElementException(FOLDER_NOT_FOUND);
+        List<Path> dirs = new ArrayList<>();
+        collectDirs(dir, dirs);
+        for(Path each : dirs)
+            if(holdsLegacy(children(each)))
+                throw new IllegalStateException(UPGRADING);
+        int moved = 0;
+        for(Path each : dirs)
+        {
+            String folder = folderOf(each);
+            for(Path child : children(each))
+                if(isPlaylistFile(child, JSON) && deleteFile(child, folder, by))
+                    moved++;
+        }
+        for(int i = dirs.size() - 1; i >= 0; i--) // subfolders before the folders holding them
+            removeIfEmpty(dirs.get(i));
+        return moved;
+    }
+
+    /** What is in the Deleted folder, newest first. Files that can't be read are skipped (and logged). */
+    public List<Deleted> deleted()
+    {
+        Instant now = clock.instant();
+        List<Deleted> entries = new ArrayList<>();
+        for(Path trash : trashFiles())
+        {
+            PlaylistFile file = readTrash(trash).orElse(null);
+            if(file == null)
+                continue;
+            Instant deletedAt = deletionTime(trash, file);
+            if(deletedAt == null)
+                LOG.warn("Skipping deleted playlist file {}: no deletion time", trash);
+            else
+                entries.add(deletedEntry(trash, file, deletedAt, now));
+        }
+        entries.sort(NEWEST_FIRST);
+        return entries;
+    }
+
+    /**
+     * Puts a deleted playlist back in the folder it came from (made again when missing; the top level when
+     * that folder is no longer usable). A name taken there, by a {@code .json} or a {@code .txt}, gets
+     * {@code (restored)}, then {@code (restored 2)}… added. Throws {@link IllegalArgumentException} for an
+     * id that is not the name of a file in the Deleted folder and {@link NoSuchElementException} when there
+     * is no such file (or it can't be read).
+     */
+    public PlaylistFile restore(String deletedId)
+    {
+        Path trash = trashFile(deletedId);
+        while(true)
+        {
+            PlaylistFile file = readTrash(trash).orElseThrow(() -> new NoSuchElementException(DELETED_NOT_FOUND));
+            Path target = restoreTarget(trash, file);
+            PlaylistFile restored = restoreInto(trash, target, file);
+            if(restored != null)
+                return restored;
+            // the name was taken while this waited for the locks: look for the next free one
+        }
+    }
+
+    /**
+     * Deletes the entries of the Deleted folder that are more than 7 days old, by the store's clock, and
+     * returns how many went. A file that can't be read counts from the time in its name; with neither it stays.
+     */
+    public int purgeExpired()
+    {
+        Instant limit = clock.instant().minus(RETENTION);
+        int purged = 0;
+        for(Path trash : trashFiles())
+        {
+            synchronized(lockFor(trash)) // a restore of this file is either done or not started
+            {
+                Instant deletedAt = deletionTime(trash, readTrash(trash).orElse(null));
+                if(deletedAt == null || !deletedAt.isBefore(limit))
+                    continue;
+                try
+                {
+                    if(Files.deleteIfExists(trash))
+                        purged++;
+                }
+                catch(IOException e)
+                {
+                    LOG.warn("Could not purge deleted playlist file {}: {}", trash, e.getMessage());
+                }
+            }
+        }
+        return purged;
     }
 
     /** The {@code .json} file of a playlist; throws {@link IllegalArgumentException} when the name or folder is not allowed. */
@@ -383,36 +515,237 @@ public class PlaylistStore
     /** Moves the playlist's file to {@code target} (a new name, folder or both) under both paths' locks. */
     private PlaylistFile relocate(Path source, Path target)
     {
-        Object first = lockFor(source);
-        Object second = lockFor(target);
-        if(source.toString().compareTo(target.toString()) > 0)
+        return underBothLocks(source, target, () ->
         {
-            // one fixed order, so two opposite renames cannot wait for each other
-            Object swap = first;
-            first = second;
-            second = swap;
-        }
-        synchronized(first)
-        {
-            synchronized(second)
+            PlaylistFile file = current(source);
+            if(Files.exists(target) || Files.exists(txtOf(target)))
+                throw new IllegalStateException(TAKEN);
+            // the new file first: a failure part way leaves the playlist where it was, never lost
+            save(target, file, clock.instant());
+            try
             {
-                PlaylistFile file = current(source);
-                if(Files.exists(target) || Files.exists(txtOf(target)))
-                    throw new IllegalStateException(TAKEN);
-                // the new file first: a failure part way leaves the playlist where it was, never lost
-                save(target, file, clock.instant());
-                try
-                {
-                    Files.delete(source);
-                }
-                catch(IOException e)
-                {
-                    deleteQuietly(target);
-                    throw new UncheckedIOException("Could not remove the old playlist file " + source.getFileName(), e);
-                }
-                return file;
+                Files.delete(source);
+            }
+            catch(IOException e)
+            {
+                deleteQuietly(target);
+                throw new UncheckedIOException("Could not remove the old playlist file " + source.getFileName(), e);
+            }
+            return file;
+        });
+    }
+
+    /**
+     * Stamps the playlist as deleted and moves it to the Deleted folder. Call with the playlist's lock held.
+     * The trash file is written first and the original removed after, so a failure never loses the playlist.
+     */
+    private Deleted sendToDeleted(Path json, PlaylistFile file, String folder, Person by)
+    {
+        Instant now = clock.instant();
+        file.setDeletedBy(by);
+        file.setDeletedAt(now);
+        file.setOriginalFolder(folder);
+        Path trash;
+        synchronized(lockFor(trashDir())) // picks and fills the name in one step; never held while waiting for another lock
+        {
+            trash = freeTrashPath(now, baseName(json, JSON));
+            write(trash, file);
+        }
+        try
+        {
+            Files.delete(json);
+        }
+        catch(IOException e)
+        {
+            deleteQuietly(trash);
+            throw new UncheckedIOException("Could not remove the old playlist file " + json.getFileName(), e);
+        }
+        return deletedEntry(trash, file, now, now);
+    }
+
+    /** Sends one playlist of a folder to the Deleted folder; false (and left alone) when it can't be read. */
+    private boolean deleteFile(Path json, String folder, Person by)
+    {
+        synchronized(lockFor(json))
+        {
+            PlaylistFile file;
+            try
+            {
+                file = current(json);
+            }
+            catch(NoSuchElementException e)
+            {
+                return false; // corrupt, or removed since the folder was listed
+            }
+            sendToDeleted(json, file, folder, by);
+            return true;
+        }
+    }
+
+    /** {@code .deleted/<epochMillis>-<name>.json}, or the same with {@code -2}, {@code -3}… when that file exists. */
+    private Path freeTrashPath(Instant at, String name)
+    {
+        String stem = at.toEpochMilli() + "-" + name;
+        Path trash = child(trashDir(), stem + JSON);
+        for(int n = 2; Files.exists(trash); n++)
+            trash = child(trashDir(), stem + "-" + n + JSON);
+        return trash;
+    }
+
+    /** The entry of the Deleted folder for this file, with its days left as of {@code now}. */
+    private static Deleted deletedEntry(Path trash, PlaylistFile file, Instant deletedAt, Instant now)
+    {
+        String folder = file.getOriginalFolder() == null ? "" : file.getOriginalFolder();
+        return new Deleted(trash.getFileName().toString(), trashedName(trash, file), folder, file.getDeletedBy(),
+                deletedAt, daysLeft(deletedAt, now));
+    }
+
+    /** Whole days left before the purge, rounded up; 0 once the 7 days are over. */
+    private static int daysLeft(Instant deletedAt, Instant now)
+    {
+        Duration left = Duration.between(now.minus(RETENTION), deletedAt);
+        if(left.compareTo(RETENTION) > 0)
+            left = RETENTION; // stamped in the future (the clock was set back)
+        if(left.isNegative() || left.isZero())
+            return 0;
+        long days = left.toDays();
+        return (int) (left.equals(Duration.ofDays(days)) ? days : days + 1);
+    }
+
+    /** The playlist's own name: from the file, else from the file name without its time stamp. */
+    private static String trashedName(Path trash, PlaylistFile file)
+    {
+        if(file.getName() != null)
+            return file.getName();
+        String stem = baseName(trash, JSON);
+        Matcher stamped = TRASH_STAMP.matcher(stem);
+        return stamped.matches() ? stamped.group(2) : stem;
+    }
+
+    /** When the playlist was deleted: from its file, else from the time in the file name; null when neither has one. */
+    private static Instant deletionTime(Path trash, PlaylistFile file)
+    {
+        if(file != null && file.getDeletedAt() != null)
+            return file.getDeletedAt();
+        Matcher stamped = TRASH_STAMP.matcher(baseName(trash, JSON));
+        return stamped.matches() ? Instant.ofEpochMilli(Long.parseLong(stamped.group(1))) : null;
+    }
+
+    /** The file of a deleted playlist, from an id the caller supplied: only a plain {@code .json} file name qualifies. */
+    private Path trashFile(String id)
+    {
+        if(id == null || id.isEmpty())
+            throw new IllegalArgumentException("Deleted playlist id is required");
+        if(id.indexOf('/') >= 0 || id.indexOf('\\') >= 0 || id.indexOf('\0') >= 0)
+            throw new IllegalArgumentException("Invalid deleted playlist id");
+        if(!id.endsWith(JSON) || id.length() == JSON.length())
+            throw new IllegalArgumentException("Invalid deleted playlist id");
+        Path trash = child(trashDir(), id); // exactly a file directly inside .deleted
+        if(!Files.isRegularFile(trash))
+            throw new NoSuchElementException(DELETED_NOT_FOUND);
+        return trash;
+    }
+
+    /** Where a deleted playlist goes back to: its folder and name, or the first free {@code Name (restored)} variant. */
+    private Path restoreTarget(Path trash, PlaylistFile file)
+    {
+        String name = trashedName(trash, file);
+        checkSegment(name, "Playlist name");
+        Path dir;
+        try
+        {
+            dir = folderPath(file.getOriginalFolder());
+        }
+        catch(IllegalArgumentException e)
+        {
+            dir = root; // the folder is not usable any more
+        }
+        for(int n = 0; ; n++)
+        {
+            String candidate = n == 0 ? name : withSuffix(name, n == 1 ? " (restored)" : " (restored " + n + ")");
+            Path json = child(dir, candidate + JSON);
+            if(!Files.exists(json) && !Files.exists(txtOf(json)))
+                return json;
+        }
+    }
+
+    /** {@code name + suffix}, with the name cut short (never in the middle of a character) if the result would pass the byte limit. */
+    private static String withSuffix(String name, String suffix)
+    {
+        int room = MAX_NAME_BYTES - suffix.getBytes(StandardCharsets.UTF_8).length;
+        StringBuilder kept = new StringBuilder();
+        int bytes = 0;
+        for(int i = 0; i < name.length(); )
+        {
+            int codePoint = name.codePointAt(i);
+            String character = new String(Character.toChars(codePoint));
+            bytes += character.getBytes(StandardCharsets.UTF_8).length;
+            if(bytes > room)
+                break;
+            kept.append(character);
+            i += character.length();
+        }
+        return kept + suffix;
+    }
+
+    /**
+     * Writes the trash file's playlist to {@code target} (cleared of its deleted fields) and removes the trash
+     * file, holding the locks of both. Null when {@code target} was taken in the meantime, so the caller picks again.
+     */
+    private PlaylistFile restoreInto(Path trash, Path target, PlaylistFile planned)
+    {
+        return underBothLocks(trash, target, () ->
+        {
+            // read again under the lock: a racing restore may have removed it, and the name may even have been reused
+            PlaylistFile file = readTrash(trash).orElseThrow(() -> new NoSuchElementException(DELETED_NOT_FOUND));
+            if(!trashedName(trash, file).equals(trashedName(trash, planned))
+                    || !Objects.equals(file.getOriginalFolder(), planned.getOriginalFolder())
+                    || Files.exists(target) || Files.exists(txtOf(target)))
+                return null;
+            file.setDeletedBy(null);
+            file.setDeletedAt(null);
+            file.setOriginalFolder(null);
+            save(target, file, clock.instant());
+            try
+            {
+                Files.delete(trash);
+            }
+            catch(IOException e)
+            {
+                deleteQuietly(target);
+                throw new UncheckedIOException("Could not remove the deleted playlist file " + trash.getFileName(), e);
+            }
+            return file;
+        });
+    }
+
+    /** Runs {@code action} holding the locks of both paths, always taken in the same order so no two callers can wait for each other. */
+    private <T> T underBothLocks(Path a, Path b, Supplier<T> action)
+    {
+        Path lower = a.compareTo(b) <= 0 ? a : b;
+        Path higher = lower == a ? b : a;
+        synchronized(lockFor(lower))
+        {
+            synchronized(lockFor(higher))
+            {
+                return action.get();
             }
         }
+    }
+
+    private Path trashDir()
+    {
+        return root.resolve(DELETED_DIR);
+    }
+
+    /** The playlist files of the Deleted folder (none when it does not exist). */
+    private List<Path> trashFiles()
+    {
+        List<Path> files = new ArrayList<>();
+        for(Path child : children(trashDir()))
+            if(isPlaylistFile(child, JSON))
+                files.add(child);
+        return files;
     }
 
     private Object lockFor(Path json)
@@ -421,6 +754,28 @@ public class PlaylistStore
     }
 
     private Optional<PlaylistFile> readJson(Path json)
+    {
+        Optional<PlaylistFile> file = readParsed(json);
+        file.ifPresent(parsed -> parsed.setName(baseName(json, JSON)));
+        return file;
+    }
+
+    /** A file of the Deleted folder: unlike {@link #readJson} it keeps the name written in the file, and never throws for an I/O failure. */
+    private Optional<PlaylistFile> readTrash(Path trash)
+    {
+        try
+        {
+            return readParsed(trash);
+        }
+        catch(UncheckedIOException e)
+        {
+            LOG.warn("Skipping deleted playlist file {}: {}", trash, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** The playlist parsed from the file, with the name written in it; empty when missing or not a playlist file. */
+    private Optional<PlaylistFile> readParsed(Path json)
     {
         if(!Files.isRegularFile(json))
             return Optional.empty();
@@ -439,9 +794,7 @@ public class PlaylistStore
         }
         try
         {
-            PlaylistFile file = PlaylistFile.fromJson(text);
-            file.setName(baseName(json, JSON));
-            return Optional.of(file);
+            return Optional.of(PlaylistFile.fromJson(text));
         }
         catch(IllegalArgumentException e)
         {
@@ -508,8 +861,7 @@ public class PlaylistStore
         Set<String> jsonNames = new HashSet<>();
         for(Path child : children)
         {
-            String fileName = child.getFileName().toString();
-            if(!fileName.endsWith(JSON) || fileName.length() == JSON.length() || !Files.isRegularFile(child))
+            if(!isPlaylistFile(child, JSON))
                 continue;
             String name = baseName(child, JSON);
             jsonNames.add(name); // even a corrupt file holds its name: JSON wins over a .txt
@@ -517,14 +869,67 @@ public class PlaylistStore
         }
         for(Path child : children)
         {
-            String fileName = child.getFileName().toString();
-            if(!fileName.endsWith(TXT) || fileName.length() == TXT.length() || !Files.isRegularFile(child))
+            if(!isPlaylistFile(child, TXT))
                 continue;
             if(!jsonNames.contains(baseName(child, TXT)))
                 readLegacy(child).ifPresent(view -> entries.add(entryOf(view, folder)));
         }
         for(Path sub : subfolders(children))
             collectEntries(sub, joinFolder(folder, sub.getFileName().toString()), entries);
+    }
+
+    /** {@code dir} and every folder below it, each folder before the ones inside it. */
+    private void collectDirs(Path dir, List<Path> dirs)
+    {
+        dirs.add(dir);
+        for(Path sub : subfolders(children(dir)))
+            collectDirs(sub, dirs);
+    }
+
+    /** True when one of the files is an old {@code .txt} playlist that has no {@code .json} yet. */
+    private static boolean holdsLegacy(List<Path> children)
+    {
+        Set<String> jsonNames = new HashSet<>();
+        for(Path child : children)
+            if(isPlaylistFile(child, JSON))
+                jsonNames.add(baseName(child, JSON));
+        for(Path child : children)
+            if(isPlaylistFile(child, TXT) && !jsonNames.contains(baseName(child, TXT)))
+                return true;
+        return false;
+    }
+
+    /** A regular file named {@code <something><extension>}. */
+    private static boolean isPlaylistFile(Path child, String extension)
+    {
+        String fileName = child.getFileName().toString();
+        return fileName.endsWith(extension) && fileName.length() > extension.length() && Files.isRegularFile(child);
+    }
+
+    /** The folder path ({@code a/b}) of a directory below the root. */
+    private String folderOf(Path dir)
+    {
+        List<String> names = new ArrayList<>();
+        for(Path part : root.relativize(dir))
+            names.add(part.toString());
+        return String.join("/", names);
+    }
+
+    /** Removes the directory unless something is still in it. */
+    private void removeIfEmpty(Path dir)
+    {
+        try
+        {
+            Files.delete(dir);
+        }
+        catch(DirectoryNotEmptyException e)
+        {
+            // it holds a file the store does not handle (or one that was just added): that stays
+        }
+        catch(IOException e)
+        {
+            throw new UncheckedIOException("Could not remove folder " + folderOf(dir), e);
+        }
     }
 
     private void collectFolders(Path dir, String folder, List<String> folders)
@@ -712,6 +1117,62 @@ public class PlaylistStore
         public boolean isLegacy()
         {
             return legacy;
+        }
+    }
+
+    /** One entry of the Deleted folder, as {@link #deleted()} lists it. */
+    public static final class Deleted
+    {
+        private final String id;
+        private final String name;
+        private final String originalFolder;
+        private final Person deletedBy;
+        private final Instant deletedAt;
+        private final int daysLeft;
+
+        Deleted(String id, String name, String originalFolder, Person deletedBy, Instant deletedAt, int daysLeft)
+        {
+            this.id = id;
+            this.name = name;
+            this.originalFolder = originalFolder;
+            this.deletedBy = deletedBy;
+            this.deletedAt = deletedAt;
+            this.daysLeft = daysLeft;
+        }
+
+        /** The file name inside {@code .deleted/}; what {@link #restore} takes. */
+        public String getId()
+        {
+            return id;
+        }
+
+        /** The playlist's name from before it was deleted. */
+        public String getName()
+        {
+            return name;
+        }
+
+        /** The folder it was deleted from, {@code ""} for the top level. */
+        public String getOriginalFolder()
+        {
+            return originalFolder;
+        }
+
+        /** Null when unknown. */
+        public Person getDeletedBy()
+        {
+            return deletedBy;
+        }
+
+        public Instant getDeletedAt()
+        {
+            return deletedAt;
+        }
+
+        /** Whole days left before the purge, rounded up; 0 once the 7 days are over. */
+        public int getDaysLeft()
+        {
+            return daysLeft;
         }
     }
 

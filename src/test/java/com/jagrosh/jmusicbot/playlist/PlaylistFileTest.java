@@ -253,4 +253,49 @@ public class PlaylistFileTest
         assertFalse(PlaylistFile.fromJson(file.toJson()).isLegacy());
         assertFalse(PlaylistFile.fromJson("{\"format\":2,\"legacy\":true}").isLegacy());
     }
+
+    @Test
+    public void deletedFieldsRoundTrip()
+    {
+        PlaylistFile file = new PlaylistFile();
+        file.setName("Gone");
+        file.setDeletedBy(new PlaylistFile.Person("42", "snoop"));
+        file.setDeletedAt(Instant.parse("2026-10-13T19:00:00Z"));
+        file.setOriginalFolder("Rock/Metal");
+
+        JSONObject raw = new JSONObject(file.toJson());
+        assertEquals("snoop", raw.getJSONObject("deletedBy").getString("name"));
+        assertEquals("42", raw.getJSONObject("deletedBy").getString("id"));
+        assertEquals("2026-10-13T19:00:00Z", raw.getString("deletedAt"));
+        assertEquals("Rock/Metal", raw.getString("originalFolder"));
+
+        PlaylistFile back = PlaylistFile.fromJson(file.toJson());
+        assertEquals("42", back.getDeletedBy().getId());
+        assertEquals("snoop", back.getDeletedBy().getName());
+        assertEquals(Instant.parse("2026-10-13T19:00:00Z"), back.getDeletedAt());
+        assertEquals("Rock/Metal", back.getOriginalFolder());
+
+        // the top level is a real value, not "missing"
+        file.setOriginalFolder("");
+        assertEquals("", PlaylistFile.fromJson(file.toJson()).getOriginalFolder());
+    }
+
+    @Test
+    public void deletedFieldsAreAbsentWhenNull()
+    {
+        PlaylistFile file = new PlaylistFile();
+        file.setName("Alive");
+        JSONObject raw = new JSONObject(file.toJson());
+        assertFalse(raw.has("deletedBy"));
+        assertFalse(raw.has("deletedAt"));
+        assertFalse(raw.has("originalFolder"));
+
+        PlaylistFile back = PlaylistFile.fromJson(file.toJson());
+        assertNull(back.getDeletedBy());
+        assertNull(back.getDeletedAt());
+        assertNull(back.getOriginalFolder());
+
+        file.setOriginalFolder(repeat('f', 400));
+        assertEquals("the folder is cut like every text field", 300, file.getOriginalFolder().length());
+    }
 }

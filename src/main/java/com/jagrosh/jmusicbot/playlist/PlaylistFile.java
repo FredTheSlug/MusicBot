@@ -54,6 +54,9 @@ public class PlaylistFile
     private boolean shuffle;
     private final List<Song> songs = new ArrayList<>();
     private boolean legacy;
+    private Person deletedBy;
+    private Instant deletedAt;
+    private String originalFolder;
 
     public String getName()
     {
@@ -132,6 +135,39 @@ public class PlaylistFile
         this.legacy = legacy;
     }
 
+    /** Who deleted the playlist; only set on a file in the Deleted folder, and may be null there. */
+    public Person getDeletedBy()
+    {
+        return deletedBy;
+    }
+
+    public void setDeletedBy(Person deletedBy)
+    {
+        this.deletedBy = deletedBy;
+    }
+
+    /** When the playlist was deleted; only set on a file in the Deleted folder. */
+    public Instant getDeletedAt()
+    {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt)
+    {
+        this.deletedAt = deletedAt;
+    }
+
+    /** The folder the playlist was deleted from ({@code ""} = top level); only set on a file in the Deleted folder. */
+    public String getOriginalFolder()
+    {
+        return originalFolder;
+    }
+
+    public void setOriginalFolder(String originalFolder)
+    {
+        this.originalFolder = cut(originalFolder);
+    }
+
     /** Parses file text; throws {@link IllegalArgumentException} when it is not a format 2 playlist. */
     public static PlaylistFile fromJson(String text)
     {
@@ -156,6 +192,9 @@ public class PlaylistFile
         file.setCreatedAt(instant(root, "createdAt"));
         file.setUpdatedAt(instant(root, "updatedAt"));
         file.setShuffle(root.optBoolean("shuffle", false));
+        file.setDeletedBy(readPerson(root.optJSONObject("deletedBy")));
+        file.setDeletedAt(instant(root, "deletedAt"));
+        file.setOriginalFolder(text(root, "originalFolder"));
 
         JSONArray array = root.optJSONArray("songs");
         if(array != null)
@@ -182,6 +221,12 @@ public class PlaylistFile
         root.put("createdAt", createdAt == null ? null : createdAt.toString());
         root.put("updatedAt", updatedAt == null ? null : updatedAt.toString());
         root.put("shuffle", shuffle);
+        if(deletedBy != null)
+            root.put("deletedBy", deletedBy.toJson());
+        if(deletedAt != null)
+            root.put("deletedAt", deletedAt.toString());
+        if(originalFolder != null)
+            root.put("originalFolder", originalFolder);
         JSONArray array = new JSONArray();
         for(Song song : songs)
             array.put(song.toJson());
