@@ -1,7 +1,7 @@
 //! The always-on-top mini-player window and the commands its bundled UI may call.
 
-use crate::bridge::{self, BotCommand};
-use crate::lookup::{self, Lyrics, PlaylistInfo, SearchResult};
+use crate::bridge::{self, BotCommand, PlaylistSong};
+use crate::lookup::{self, Lyrics, PlaylistEntry, PlaylistInfo, SearchResult};
 use crate::spotify::{self, SpotifyStatus};
 use crate::hotkeys;
 use crate::settings::Settings;
@@ -370,7 +370,7 @@ pub fn mini_hide(app: AppHandle) {
     hide(&app);
 }
 
-/// `panel` is "menu", "lyrics" or "queue" (grow; returns which way) or "none" (shrink back).
+/// `panel` is "menu", "lyrics", "queue" or "picker" (grow; returns which way) or "none" (shrink back).
 #[tauri::command]
 pub fn mini_set_panel(app: AppHandle, panel: String) -> Result<Option<Direction>, String> {
     match panel.as_str() {
@@ -378,7 +378,7 @@ pub fn mini_set_panel(app: AppHandle, panel: String) -> Result<Option<Direction>
             collapse(&app);
             Ok(None)
         }
-        "menu" | "lyrics" | "queue" => expand(&app).map(Some),
+        "menu" | "lyrics" | "queue" | "picker" => expand(&app).map(Some),
         _ => Err(format!("Unknown panel: {panel}")),
     }
 }
@@ -564,6 +564,36 @@ pub async fn mini_playlists(app: AppHandle) -> Result<Vec<PlaylistInfo>, String>
     blocking(move || bridge::send_command_fetch(&app, BotCommand::Playlists, SEARCH_TIMEOUT))
         .await
         .map(|data| lookup::playlists(&data))
+}
+
+/// The playlists with their real song counts (and which are still being converted by the bot).
+#[tauri::command]
+pub async fn mini_playlists_v2(app: AppHandle) -> Result<Vec<PlaylistEntry>, String> {
+    blocking(move || match bridge::send_command_fetch(&app, BotCommand::PlaylistsTreeV2, SEARCH_TIMEOUT) {
+        Ok(data) => Ok(lookup::playlists_v2(&data)),
+        // A bot that isn't updated yet: its old tree still lists them (and they still play).
+        Err(e) if lookup::is_missing_route(&e) => bridge::send_command_fetch(&app, BotCommand::Playlists, SEARCH_TIMEOUT)
+            .map(|data| lookup::playlists(&data).into_iter().map(PlaylistEntry::from).collect()),
+        Err(e) => Err(e),
+    })
+    .await
+}
+
+/// Adds the song the UI names (it holds the one the user pointed at, which may not be playing any more).
+#[tauri::command]
+pub async fn mini_add_to_playlist(app: AppHandle, name: String, folder: Option<String>, song: PlaylistSong) -> Result<String, String> {
+    let cmd = lookup::add_command(name.clone(), folder, song)?;
+    blocking(move || {
+        bridge::send_command_await(&app, cmd, COMMAND_TIMEOUT)?;
+        Ok(format!("Added to “{name}”"))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mini_create_playlist(app: AppHandle, name: String, folder: Option<String>) -> Result<(), String> {
+    let cmd = lookup::create_command(name, folder)?;
+    blocking(move || bridge::send_command_await(&app, cmd, COMMAND_TIMEOUT)).await
 }
 
 #[tauri::command]

@@ -166,7 +166,92 @@
     return mods.concat([key]).join('+');
   }
 
+  // ---- Adding a song to a playlist: the picker in the drawer ----
+
+  var PICKER_RECENT_SHOWN = 5;
+  var PICKER_RECENT_STORED = 8;
+  var PICKER_ERROR_MAX = 160;
+
+  /** Names a playlist in the recently-used list (a top-level playlist has no folder). */
+  function playlistKey(playlist) {
+    return ((playlist && playlist.folder) || '') + '\n' + ((playlist && playlist.name) || '');
+  }
+
+  /** "12 songs" / "1 song"; "upgrading…" while the bot is still converting an old playlist. */
+  function playlistCount(playlist) {
+    if (playlist.legacy) return 'upgrading…';
+    var n = playlist.songCount || 0;
+    return n + (n === 1 ? ' song' : ' songs');
+  }
+
+  function pickerRow(playlist) {
+    return {
+      key: playlistKey(playlist), name: playlist.name, folder: playlist.folder || null,
+      path: playlist.folder || '', count: playlistCount(playlist), legacy: !!playlist.legacy
+    };
+  }
+
+  /**
+   * The picker's list: {recent, rest}. `recent` = up to 5 of the recently used playlists that still
+   * exist, newest first (recentKeys is newest first); `rest` = every other playlist in the order given.
+   * The filter keeps playlists whose folder path and name together hold every word typed, in any case.
+   */
+  function pickerRows(playlists, recentKeys, filter) {
+    var all = Array.isArray(playlists) ? playlists.filter(function (p) { return p && typeof p.name === 'string' && p.name; }) : [];
+    var byKey = {};
+    all.forEach(function (p) { byKey[playlistKey(p)] = p; });
+    var used = {};
+    var recent = [];
+    (Array.isArray(recentKeys) ? recentKeys : []).forEach(function (k) {
+      if (typeof k !== 'string' || !Object.prototype.hasOwnProperty.call(byKey, k) || used[k] || recent.length >= PICKER_RECENT_SHOWN) return;
+      used[k] = true;
+      recent.push(byKey[k]);
+    });
+    var rest = all.filter(function (p) { return !used[playlistKey(p)]; });
+    var words = String(filter || '').toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length) {
+      var matches = function (p) {
+        var hay = ((p.folder ? p.folder + '/' : '') + p.name).toLowerCase();
+        return words.every(function (w) { return hay.indexOf(w) >= 0; });
+      };
+      recent = recent.filter(matches);
+      rest = rest.filter(matches);
+    }
+    return { recent: recent.map(pickerRow), rest: rest.map(pickerRow) };
+  }
+
+  /** The recently-used list after using `key`: newest first, no repeats, the last 8. */
+  function rememberRecent(keys, key) {
+    var older = (Array.isArray(keys) ? keys : []).filter(function (k) { return typeof k === 'string' && k !== key; });
+    return [key].concat(older).slice(0, PICKER_RECENT_STORED);
+  }
+
+  /**
+   * The five fields a playlist keeps of a song, from the song playing or a search/history result;
+   * null when there is no uri. A live stream has no length; artwork is kept only if it is a web link.
+   */
+  function playlistSong(item) {
+    if (!item || typeof item.uri !== 'string' || !item.uri.trim()) return null;
+    var length = item.isStream ? 0 : Number(item.durationMs);
+    return {
+      uri: item.uri,
+      title: typeof item.title === 'string' ? item.title : '',
+      author: typeof item.author === 'string' ? item.author : '',
+      durationMs: isFinite(length) && length > 0 ? Math.round(length) : 0,
+      artworkUrl: typeof item.artworkUrl === 'string' && /^https?:\/\//i.test(item.artworkUrl) ? item.artworkUrl : null
+    };
+  }
+
+  /** An error for the picker's one-line slot: the bot's own words, whitespace squeezed and cut at 160. */
+  function pickerError(error, fallback) {
+    var text = String(error && error.message !== undefined ? error.message : error || '').replace(/\s+/g, ' ').trim();
+    if (!text) return fallback || "Couldn't add the song";
+    return text.length > PICKER_ERROR_MAX ? text.slice(0, PICKER_ERROR_MAX - 1) + '…' : text;
+  }
+
   var api = {
+    pickerRows: pickerRows, playlistKey: playlistKey, rememberRecent: rememberRecent, playlistSong: playlistSong,
+    pickerError: pickerError, playlistCount: playlistCount,
     accelFromEvent: accelFromEvent,
     sleepLabel: sleepLabel,
     repeatView: repeatView, seekPosition: seekPosition, queueRows: queueRows,

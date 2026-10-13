@@ -1,7 +1,7 @@
 //! Search results, lyrics and links for the mini-player. The bot's JSON comes from the panel page,
 //! so everything here is validated and capped before it reaches the UI.
 
-use crate::bridge::BotCommand;
+use crate::bridge::{BotCommand, PlaylistSong};
 use crate::spotify::parse_spotify_link;
 use crate::state::Track;
 use serde::Serialize;
@@ -11,6 +11,9 @@ const MAX_RESULTS: usize = 16;
 /// Recently played / most played lists.
 const MAX_LIST: usize = 50;
 const MAX_PLAYLISTS: usize = 100;
+/// The v2 tree lists every playlist (72 today); this only bounds what an odd answer can put in the UI.
+const MAX_PLAYLIST_ENTRIES: usize = 500;
+const MAX_FOLDER_CHARS: usize = 1000;
 const MAX_FOLDER_DEPTH: usize = 8;
 const MAX_FIELD_CHARS: usize = 200;
 const MAX_LYRIC_LINES: usize = 500;
@@ -64,6 +67,23 @@ pub struct PlaylistInfo {
     pub name: String,
     pub folder: Option<String>,
     pub track_count: u32,
+}
+
+/// A playlist in the Playlists tab and the add-to-playlist picker; `folder` is None for the top level.
+/// `legacy` playlists are still being converted by the bot: they play, but can't be edited yet.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistEntry {
+    pub name: String,
+    pub folder: Option<String>,
+    pub song_count: u32,
+    pub legacy: bool,
+}
+
+impl From<PlaylistInfo> for PlaylistEntry {
+    fn from(info: PlaylistInfo) -> Self {
+        PlaylistEntry { name: info.name, folder: info.folder, song_count: info.track_count, legacy: false }
+    }
 }
 
 /// The bot's `/search` answer (an array of tracks) → at most 16 results that can be queued.
@@ -145,6 +165,63 @@ fn collect_playlists(node: &Value, depth: usize, found: &mut Vec<PlaylistInfo>) 
     }
 }
 
+/// The bot's `/api/playlists/tree` answer → every playlist, sorted like the panel does (folder, then name,
+/// ignoring case; the top level first), at most 500.
+///
+/// Names and folders go back to the bot to say which playlist is meant (and a folder would be created
+/// if it didn't exist), so one is used whole or the entry is left out; it is never cut.
+pub fn playlists_v2(tree: &Value) -> Vec<PlaylistEntry> {
+    let mut found: Vec<PlaylistEntry> = tree
+        .get("playlists")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|playlist| {
+            let name = playlist.get("name").and_then(Value::as_str).filter(|n| !n.is_empty() && n.chars().count() <= MAX_FIELD_CHARS)?;
+            let folder = match playlist.get("folder").and_then(Value::as_str) {
+                Some(f) if f.chars().count() > MAX_FOLDER_CHARS => return None,
+                Some(f) if !f.is_empty() => Some(f.to_string()),
+                _ => None,
+            };
+            let song_count = playlist.get("songCount").and_then(Value::as_u64).unwrap_or(0).min(u64::from(u32::MAX)) as u32;
+            let legacy = playlist.get("legacy").and_then(Value::as_bool).unwrap_or(false);
+            Some(PlaylistEntry { name: name.to_string(), folder, song_count, legacy })
+        })
+        .collect();
+    found.sort_by_cached_key(|p| {
+        let folder = p.folder.clone().unwrap_or_default();
+        (folder.to_lowercase(), p.name.to_lowercase(), folder, p.name.clone())
+    });
+    found.truncate(MAX_PLAYLIST_ENTRIES);
+    found
+}
+
+/// True when the page's error for a fetch says the bot has no such route ("HTTP 404" is how it reports a
+/// plain 404): a bot from before playlists v2.
+pub fn is_missing_route(error: &str) -> bool {
+    error == "HTTP 404"
+}
+
+/// Adds `song` to the playlist `name`; refused here when there is nowhere to add it or nothing to add.
+pub fn add_command(name: String, folder: Option<String>, song: PlaylistSong) -> Result<BotCommand, String> {
+    if name.trim().is_empty() {
+        return Err("Pick a playlist".to_string());
+    }
+    if song.uri.trim().is_empty() {
+        return Err("That song can't be added to a playlist".to_string());
+    }
+    Ok(BotCommand::AddToPlaylist { name, folder: folder.filter(|f| !f.is_empty()), song })
+}
+
+/// A new, empty playlist; the bot trims the name and refuses duplicates and names the disk can't hold.
+pub fn create_command(name: String, folder: Option<String>) -> Result<BotCommand, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Give the playlist a name".to_string());
+    }
+    Ok(BotCommand::CreatePlaylist { name, folder: folder.filter(|f| !f.is_empty()) })
+}
+
 /// Lyrics for this exact song, so a song change mid-request can't show the next song's words.
 pub fn lyrics_command(track: Option<&Track>) -> Result<BotCommand, String> {
     let track = track.ok_or_else(|| "Nothing playing".to_string())?;
@@ -165,7 +242,7 @@ pub fn link_command(text: &str) -> Result<BotCommand, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bridge::BotCommand;
+    use crate::bridge::{BotCommand, PlaylistSong};
     use serde_json::json;
 
     #[test]
@@ -269,6 +346,164 @@ mod tests {
             serde_json::to_value(BotCommand::RemoveFromQueue { index: 2, uri: "u".into() }).unwrap(),
             json!({"type": "RemoveFromQueue", "value": {"index": 2, "uri": "u"}})
         );
+    }
+
+    fn v2_names(entries: &[PlaylistEntry]) -> Vec<(String, String)> {
+        entries.iter().map(|e| (e.folder.clone().unwrap_or_default(), e.name.clone())).collect()
+    }
+
+    #[test]
+    fn v2_tree_maps_and_sorts_like_the_panel() {
+        let tree = json!({
+            "folders": ["Fred", "Fred/Old"],
+            "playlists": [
+                {"name": "rap", "folder": "Fred", "songCount": 12, "durationMs": 1, "createdBy": null, "updatedAt": "x", "legacy": false},
+                {"name": "Zen", "folder": "", "songCount": 3, "legacy": false},
+                {"name": "2010", "folder": "Fred/Old", "songCount": 1, "legacy": true},
+                {"name": "Chill", "folder": "", "songCount": 0},
+                {"name": "Beats", "folder": "fred", "songCount": 5},
+                {"name": "apple", "folder": "Fred", "songCount": 2}
+            ],
+            "deleted": [{"id": "d1", "name": "Gone", "originalFolder": ""}]
+        });
+        let found = playlists_v2(&tree);
+        assert_eq!(
+            v2_names(&found),
+            vec![
+                ("".into(), "Chill".into()),
+                ("".into(), "Zen".into()),
+                ("Fred".into(), "apple".into()),
+                ("fred".into(), "Beats".into()),
+                ("Fred".into(), "rap".into()),
+                ("Fred/Old".into(), "2010".into()),
+            ],
+            "top level first, then by folder, then by name, ignoring case; the Deleted section is not a playlist list"
+        );
+        assert_eq!(found[0], PlaylistEntry { name: "Chill".into(), folder: None, song_count: 0, legacy: false });
+        assert_eq!(found[5], PlaylistEntry { name: "2010".into(), folder: Some("Fred/Old".into()), song_count: 1, legacy: true });
+        assert_eq!(found[4].song_count, 12);
+    }
+
+    #[test]
+    fn v2_tree_caps_at_500_keeping_the_first_in_order() {
+        let many: Vec<_> = (0..600).rev().map(|i| json!({"name": format!("p{i:03}"), "folder": "", "songCount": 1})).collect();
+        let found = playlists_v2(&json!({ "playlists": many }));
+        assert_eq!(found.len(), 500);
+        assert_eq!(found[0].name, "p000");
+        assert_eq!(found[499].name, "p499");
+    }
+
+    #[test]
+    fn v2_tree_defaults_and_bounds() {
+        let found = playlists_v2(&json!({"playlists": [
+            {"name": "A"},
+            {"name": "B", "songCount": 1_000_000_000_000u64, "legacy": "yes"},
+            {"name": "C", "songCount": -4, "folder": 7},
+            {"name": "D", "legacy": true}
+        ]}));
+        assert_eq!(found[0], PlaylistEntry { name: "A".into(), folder: None, song_count: 0, legacy: false });
+        assert_eq!(found[1].song_count, u32::MAX);
+        assert!(!found[1].legacy, "only a real true marks a playlist as being upgraded");
+        assert_eq!(found[2].song_count, 0);
+        assert_eq!(found[2].folder, None);
+        assert!(found[3].legacy);
+    }
+
+    #[test]
+    fn v2_tree_never_cuts_what_addresses_a_playlist() {
+        // A cut name or folder would name some other playlist (or make a new folder), so such entries are skipped.
+        let ok_name = "n".repeat(200);
+        let found = playlists_v2(&json!({"playlists": [
+            {"name": ok_name, "folder": "f".repeat(1000)},
+            {"name": "n".repeat(201), "folder": ""},
+            {"name": "fine", "folder": "f".repeat(1001)},
+            {"name": "", "folder": ""},
+            {"name": 5, "folder": ""},
+            {"folder": "Fred"},
+            "not an object"
+        ]}));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name.chars().count(), 200);
+        assert_eq!(found[0].folder.as_ref().map(|f| f.chars().count()), Some(1000));
+    }
+
+    #[test]
+    fn v2_tree_of_something_else_is_empty() {
+        assert!(playlists_v2(&json!({})).is_empty());
+        assert!(playlists_v2(&json!([])).is_empty());
+        assert!(playlists_v2(&json!({"error": "nope"})).is_empty());
+        assert!(playlists_v2(&json!({"playlists": "x"})).is_empty());
+    }
+
+    #[test]
+    fn old_tree_entries_convert_for_the_fallback() {
+        let info = PlaylistInfo { name: "Rap".into(), folder: Some("Fred".into()), track_count: 12 };
+        assert_eq!(PlaylistEntry::from(info), PlaylistEntry { name: "Rap".into(), folder: Some("Fred".into()), song_count: 12, legacy: false });
+        // The page reports a failed fetch as "HTTP <status>"; a bot from before playlists v2 has no such route.
+        assert!(is_missing_route("HTTP 404"));
+        assert!(!is_missing_route("HTTP 500"));
+        assert!(!is_missing_route("Could not reach the bot"));
+    }
+
+    #[test]
+    fn playlist_entries_reach_the_ui_in_camel_case() {
+        let entry = PlaylistEntry { name: "Rap".into(), folder: None, song_count: 3, legacy: true };
+        assert_eq!(serde_json::to_value(&entry).unwrap(), json!({"name": "Rap", "folder": null, "songCount": 3, "legacy": true}));
+    }
+
+    fn song() -> PlaylistSong {
+        PlaylistSong {
+            uri: "https://youtu.be/abc".into(),
+            title: "Ke$ha \"Tik\" Tok".into(),
+            author: "Kesha".into(),
+            duration_ms: 200_000,
+            artwork_url: Some("https://i.ytimg.com/vi/abc/hqdefault.jpg".into()),
+        }
+    }
+
+    #[test]
+    fn playlist_commands_have_the_wire_shape_the_page_reads() {
+        assert_eq!(serde_json::to_value(BotCommand::PlaylistsTreeV2).unwrap(), json!({"type": "PlaylistsTreeV2"}));
+        assert_eq!(
+            serde_json::to_value(BotCommand::AddToPlaylist { name: "Chill".into(), folder: Some("Fred".into()), song: song() }).unwrap(),
+            json!({"type": "AddToPlaylist", "value": {
+                "name": "Chill", "folder": "Fred",
+                "song": {"uri": "https://youtu.be/abc", "title": "Ke$ha \"Tik\" Tok", "author": "Kesha", "durationMs": 200000,
+                         "artworkUrl": "https://i.ytimg.com/vi/abc/hqdefault.jpg"}
+            }})
+        );
+        assert_eq!(
+            serde_json::to_value(BotCommand::CreatePlaylist { name: "Road trip".into(), folder: None }).unwrap(),
+            json!({"type": "CreatePlaylist", "value": {"name": "Road trip", "folder": null}})
+        );
+    }
+
+    #[test]
+    fn a_song_from_the_ui_may_lack_artwork() {
+        let song: PlaylistSong =
+            serde_json::from_value(json!({"uri": "u", "title": "T", "author": "A", "durationMs": 5000, "artworkUrl": null})).unwrap();
+        assert_eq!(song, PlaylistSong { uri: "u".into(), title: "T".into(), author: "A".into(), duration_ms: 5000, artwork_url: None });
+        let bare: PlaylistSong = serde_json::from_value(json!({"uri": "u"})).unwrap();
+        assert_eq!(bare, PlaylistSong { uri: "u".into(), ..Default::default() });
+    }
+
+    #[test]
+    fn add_and_create_are_checked_before_they_are_sent() {
+        assert_eq!(
+            add_command("Chill".into(), Some(String::new()), song()),
+            Ok(BotCommand::AddToPlaylist { name: "Chill".into(), folder: None, song: song() }),
+            "a top-level playlist has no folder"
+        );
+        assert_eq!(add_command("  ".into(), None, song()), Err("Pick a playlist".to_string()));
+        assert_eq!(
+            add_command("Chill".into(), None, PlaylistSong { uri: " ".into(), ..song() }),
+            Err("That song can't be added to a playlist".to_string())
+        );
+        assert_eq!(
+            create_command("  Road trip ".into(), Some("Fred".into())),
+            Ok(BotCommand::CreatePlaylist { name: "Road trip".into(), folder: Some("Fred".into()) })
+        );
+        assert_eq!(create_command("   ".into(), None), Err("Give the playlist a name".to_string()));
     }
 
     #[test]

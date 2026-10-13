@@ -134,6 +134,22 @@
     };
   }
 
+  /** One request to the panel API: {status, ok, text, body} (body = the JSON, or null when it isn't JSON). */
+  function exchange(req) {
+    return fetch(req.path, {
+      method: req.method,
+      credentials: 'same-origin',
+      headers: req.body ? { 'Content-Type': 'application/json' } : {},
+      body: req.body ? JSON.stringify(req.body) : undefined
+    }).then(function (resp) {
+      return resp.text().then(function (text) {
+        var body = null;
+        try { body = JSON.parse(text); } catch (e) { /* not JSON */ }
+        return { status: resp.status, ok: resp.ok, text: text, body: body };
+      });
+    });
+  }
+
   /** Executes an app command against the panel API and reports whether the bot accepted it. */
   function run(id, cmd) {
     function result(ok, message, data) {
@@ -147,27 +163,23 @@
       if (stale) { result(false, stale); return; }
     }
     if (cmd.type === 'PlayQuery' || cmd.type === 'PlaySpotifyLink') lastPlayAt = Date.now();
-    fetch(req.path, {
-      method: req.method,
-      credentials: 'same-origin',
-      headers: req.body ? { 'Content-Type': 'application/json' } : {},
-      body: req.body ? JSON.stringify(req.body) : undefined
-    }).then(function (resp) {
-      return resp.text().then(function (text) {
-        var body = null;
-        try { body = JSON.parse(text); } catch (e) { /* not JSON */ }
-        var message = body && (body.error || body.message);
-        // Fetches hand the bot's answer back as data; a 200 lyrics answer may carry its own "error".
-        if (req.method === 'GET') {
-          if (resp.ok && body !== null) result(true, null, body);
-          else result(false, (body && body.error) || ('HTTP ' + resp.status));
-          return;
-        }
-        // /play answers 200 with this message when it can't join voice.
-        var noVoice = typeof message === 'string' && /no voice channel/i.test(message);
-        if (resp.ok && !(body && body.error) && !noVoice) result(true);
-        else result(false, message || text || ('HTTP ' + resp.status));
-      });
+    exchange(req).then(function (first) {
+      // An older bot lacks some routes; core says when the old one should be tried once instead.
+      var retry = core.fallbackRequest(guildId, cmd, first.status, first.body);
+      return retry ? exchange(retry) : first;
+    }).then(function (answer) {
+      var body = answer.body;
+      var message = body && (body.error || body.message);
+      // Fetches hand the bot's answer back as data; a 200 lyrics answer may carry its own "error".
+      if (req.method === 'GET') {
+        if (answer.ok && body !== null) result(true, null, body);
+        else result(false, (body && body.error) || ('HTTP ' + answer.status));
+        return;
+      }
+      // /play answers 200 with this message when it can't join voice.
+      var noVoice = typeof message === 'string' && /no voice channel/i.test(message);
+      if (answer.ok && !(body && body.error) && !noVoice) result(true);
+      else result(false, message || answer.text || ('HTTP ' + answer.status));
     }).catch(function () { result(false, 'Could not reach the bot'); });
   }
 

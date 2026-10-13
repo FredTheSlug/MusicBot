@@ -58,6 +58,7 @@
 
     ['restart', 'toggle', 'skip'].forEach(function (id) { el(id).disabled = !v.track; });
     el('lyricsBtn').disabled = !MV.lyricsButtonEnabled(!!v.track, panel);
+    el('addBtn').disabled = !(v.track || panel === 'picker');
     var paused = !!(s && s.paused);
     el('toggleIcon').innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
     el('toggle').title = paused ? 'Play' : 'Pause';
@@ -104,9 +105,11 @@
   }
 
   function showStatus(message) {
+    // The line is short (and shorter still with the + beside it); hovering shows the whole message.
     el('status').textContent = message;
+    el('status').title = message;
     clearTimeout(statusTimer);
-    statusTimer = setTimeout(function () { el('status').textContent = ''; }, STATUS_CLEAR_MS);
+    statusTimer = setTimeout(function () { el('status').textContent = ''; el('status').title = ''; }, STATUS_CLEAR_MS);
   }
 
   function send(cmd) {
@@ -213,13 +216,19 @@
     el('menuPanel').hidden = next !== 'menu';
     el('lyricsPanel').hidden = next !== 'lyrics';
     el('queuePanel').hidden = next !== 'queue';
+    el('pickerPanel').hidden = next !== 'picker';
     el('queueBtn').setAttribute('aria-pressed', String(next === 'queue'));
     el('menuBtn').setAttribute('aria-pressed', String(next === 'menu'));
     el('lyricsBtn').setAttribute('aria-pressed', String(next === 'lyrics'));
     el('lyricsBtn').disabled = !MV.lyricsButtonEnabled(!!view(ui).track, next);
+    // The picker only lives while it is showing; whatever it was doing is dropped with it.
+    if (next !== 'picker') picker = null;
+    el('addBtn').setAttribute('aria-pressed', String(next === 'picker' && !!picker && picker.source === 'current'));
+    el('addBtn').disabled = !(view(ui).track || next === 'picker');
     if (next === 'menu') openMenu();
     if (next === 'lyrics') loadLyrics();
     if (next === 'queue') renderQueue();
+    if (next === 'picker') showPicker();
   }
 
   function setPanel(next) {
@@ -297,7 +306,12 @@
       list.appendChild(li);
     });
   }
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && panel !== 'none') setPanel('none'); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || panel === 'none') return;
+    // The picker steps back to where it was opened from (the menu, say); everything else closes.
+    if (panel === 'picker') closePicker();
+    else setPanel('none');
+  });
 
   // ---- Lyrics for the song playing; timed lyrics follow along ----
   var lyricsRequests = MV.latestOnly();
@@ -384,8 +398,10 @@
     items.forEach(function (item) { list.appendChild(item); });
   }
 
-  function resultRow(kind, title, artist, time, onPick) {
+  /** onAdd (optional) puts a + beside the row that adds this song to a playlist. */
+  function resultRow(kind, title, artist, time, onPick, onAdd) {
     var li = document.createElement('li');
+    if (onAdd) li.className = 'result-row';
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'result' + (kind ? ' ' + kind : '');
@@ -399,7 +415,14 @@
     button.title = artist ? title + ' – ' + artist : title;
     button.addEventListener('click', onPick);
     li.appendChild(button);
+    if (onAdd) li.appendChild(queueAction('Add to playlist', '+', onAdd));
     return li;
+  }
+
+  /** The + handler for a song in a list, or null when it has nothing a playlist could play. */
+  function addHandler(item) {
+    var song = MV.playlistSong(item);
+    return song ? function () { openPicker(song, 'result'); } : null;
   }
 
   function showLinkRow(link) {
@@ -423,7 +446,7 @@
       if (!searches.isLatest(n)) return;
       if (!results.length) { setResults([note('No results')]); return; }
       setResults(results.map(function (r) {
-        return resultRow('', r.title || 'Unknown', r.author, MV.formatDuration(r.durationMs, r.isStream), function () { queue(r); });
+        return resultRow('', r.title || 'Unknown', r.author, MV.formatDuration(r.durationMs, r.isStream), function () { queue(r); }, addHandler(r));
       }));
     }).catch(function (e) {
       if (searches.isLatest(n)) setResults([note(String(e))]);
@@ -454,18 +477,17 @@
     linkShown = false;
     setResults([note('Loading…')]);
     var current = tab;
-    var cmd = current === 'playlists' ? 'mini_playlists' : current === 'frequent' ? 'mini_frequent' : 'mini_history';
+    var cmd = current === 'playlists' ? 'mini_playlists_v2' : current === 'frequent' ? 'mini_frequent' : 'mini_history';
     invoke(cmd).then(function (items) {
       if (!searches.isLatest(n)) return;
       if (!items.length) { setResults([note(current === 'playlists' ? 'No saved playlists' : 'Nothing here yet')]); return; }
       setResults(items.map(function (it) {
         if (current === 'playlists') {
-          var count = it.trackCount + (it.trackCount === 1 ? ' song' : ' songs');
-          return resultRow('playlist', it.name, it.folder || '', count, function () {
+          return resultRow('playlist', it.name, it.folder || '', MV.playlistCount(it), function () {
             runAction('mini_play_playlist', { name: it.name, folder: it.folder });
           });
         }
-        return resultRow('', it.title || 'Unknown', it.author, MV.formatDuration(it.durationMs, it.isStream), function () { queue(it); });
+        return resultRow('', it.title || 'Unknown', it.author, MV.formatDuration(it.durationMs, it.isStream), function () { queue(it); }, addHandler(it));
       }));
     }).catch(function (e) {
       if (searches.isLatest(n)) setResults([note(String(e))]);
@@ -508,6 +530,235 @@
   });
 
   el('settingsBtn').addEventListener('click', function () { showSettings(el('settings').hidden); });
+
+  // ---- Add to playlist: the picker in the drawer ----
+  var RECENT_KEY = 'cks.playlistRecent';
+  var picker = null;
+
+  function readRecent() {
+    try {
+      var keys = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+      return Array.isArray(keys) ? keys : [];
+    } catch (e) { return []; }
+  }
+
+  function saveRecent(key) {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(MV.rememberRecent(readRecent(), key))); } catch (e) { /* storage unavailable */ }
+  }
+
+  /**
+   * Opens the picker for `song`. `source` is 'current' (the + in the bottom row) or 'result' (a song in
+   * the menu); closing returns to whatever was open before.
+   */
+  function openPicker(song, source) {
+    if (!song) return;
+    var returnTo = panel === 'picker' ? (picker ? picker.returnTo : 'none') : panel;
+    picker = { song: song, source: source, returnTo: returnTo, playlists: null, loadError: '', query: '', creating: false, busy: false };
+    if (panel === 'picker') showPicker();
+    else setPanel('picker');
+  }
+
+  function closePicker() {
+    setPanel(picker ? picker.returnTo : 'none');
+  }
+
+  function setPickerError(p, text) {
+    el('pickerError').textContent = text;
+    el('pickerError').hidden = !text;
+  }
+
+  /** While a request is out the lists and the new-playlist form ignore clicks (see .busy in the CSS). */
+  function setPickerBusy(p, busy) {
+    p.busy = busy;
+    el('pickerPanel').classList.toggle('busy', busy);
+  }
+
+  function showPicker() {
+    var p = picker;
+    if (!p) return;
+    el('pickerTitle').textContent = 'Add “' + (p.song.title || 'this song') + '” to…';
+    el('pickerTitle').title = p.song.title ? p.song.title + (p.song.author ? ' – ' + p.song.author : '') : '';
+    el('pickerFilter').value = '';
+    el('pickerPanel').classList.remove('busy');
+    setPickerError(p, '');
+    renderPickerFoot();
+    loadPlaylists(p);
+    el('pickerFilter').focus();
+  }
+
+  function loadPlaylists(p) {
+    p.playlists = null;
+    p.loadError = '';
+    renderPickerList();
+    invoke('mini_playlists_v2').then(function (items) {
+      if (picker !== p) return;
+      p.playlists = items;
+      renderPickerList();
+    }).catch(function (e) {
+      if (picker !== p) return;
+      p.loadError = MV.pickerError(e, "Couldn't load your playlists");
+      renderPickerList();
+    });
+  }
+
+  function pickerGroup(text) {
+    var li = document.createElement('li');
+    li.className = 'group';
+    li.textContent = text;
+    return li;
+  }
+
+  function pickerItem(p, row) {
+    var li = resultRow('picker-item', row.name, row.path, row.count, function () { addToPlaylist(p, row); });
+    if (row.legacy) {
+      // The bot is still converting it; it can't take songs until it has.
+      li.firstChild.disabled = true;
+      li.firstChild.title = 'Still being upgraded to the new format — try again in a moment';
+    }
+    return li;
+  }
+
+  function renderPickerList() {
+    var p = picker;
+    if (!p) return;
+    var list = el('pickerList');
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (p.loadError) {
+      var failed = note(p.loadError);
+      var retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'tab picker-retry';
+      retry.textContent = 'Try again';
+      retry.addEventListener('click', function () { loadPlaylists(p); });
+      failed.appendChild(retry);
+      list.appendChild(failed);
+      return;
+    }
+    if (p.playlists === null) { list.appendChild(note('Loading playlists…')); return; }
+    var rows = MV.pickerRows(p.playlists, readRecent(), p.query);
+    if (!rows.recent.length && !rows.rest.length) {
+      list.appendChild(note(p.query.trim() ? 'No matching playlists' : 'No playlists yet'));
+      return;
+    }
+    var headings = !p.query.trim() && rows.recent.length > 0;
+    if (headings) list.appendChild(pickerGroup('Recently used'));
+    rows.recent.forEach(function (row) { list.appendChild(pickerItem(p, row)); });
+    if (headings && rows.rest.length) list.appendChild(pickerGroup('All playlists'));
+    rows.rest.forEach(function (row) { list.appendChild(pickerItem(p, row)); });
+  }
+
+  /** "+ New playlist…", or its inline form (name, Create, Cancel) once clicked. */
+  function renderPickerFoot() {
+    var p = picker;
+    if (!p) return;
+    var foot = el('pickerFoot');
+    while (foot.firstChild) foot.removeChild(foot.firstChild);
+    if (!p.creating) {
+      var open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'picker-new';
+      open.textContent = '+ New playlist…';
+      open.addEventListener('click', function () {
+        if (p.busy) return;
+        p.creating = true;
+        setPickerError(p, '');
+        renderPickerFoot();
+      });
+      foot.appendChild(open);
+      return;
+    }
+    var form = document.createElement('form');
+    form.className = 'picker-newform';
+    form.autocomplete = 'off';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'search-box';
+    input.maxLength = 100;
+    input.placeholder = 'New playlist name';
+    input.setAttribute('aria-label', 'New playlist name');
+    input.spellcheck = false;
+    input.value = p.query.trim();
+    var create = document.createElement('button');
+    create.type = 'submit';
+    create.className = 'tab';
+    create.textContent = 'Create';
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'tab';
+    cancel.textContent = 'Cancel';
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      createAndAdd(p, input.value);
+    });
+    cancel.addEventListener('click', function () {
+      if (p.busy) return;
+      p.creating = false;
+      setPickerError(p, '');
+      renderPickerFoot();
+    });
+    form.appendChild(input);
+    form.appendChild(create);
+    form.appendChild(cancel);
+    foot.appendChild(form);
+    input.focus();
+    input.select();
+  }
+
+  /** The song went in: remember the playlist, say so on the status line and step back. */
+  function pickerDone(p, key, message) {
+    saveRecent(key);
+    showStatus(message || 'Added to the playlist');
+    if (picker === p) closePicker();
+  }
+
+  /** The bot's own words stay in the picker; if it was closed meanwhile they go to the status line. */
+  function pickerFailed(p, e, prefix) {
+    var text = (prefix || '') + MV.pickerError(e);
+    if (picker !== p) { showStatus(text); return; }
+    setPickerBusy(p, false);
+    setPickerError(p, text);
+  }
+
+  function addToPlaylist(p, row) {
+    if (picker !== p || p.busy) return;
+    setPickerBusy(p, true);
+    setPickerError(p, '');
+    invoke('mini_add_to_playlist', { name: row.name, folder: row.folder, song: p.song }).then(
+      function (message) { pickerDone(p, row.key, message); },
+      function (e) { pickerFailed(p, e); }
+    );
+  }
+
+  /** Creates the playlist at the top level, then adds the song to it. */
+  function createAndAdd(p, rawName) {
+    if (picker !== p || p.busy) return;
+    var name = String(rawName || '').trim();
+    if (!name) { setPickerError(p, 'Give the playlist a name'); return; }
+    setPickerBusy(p, true);
+    setPickerError(p, '');
+    invoke('mini_create_playlist', { name: name, folder: null }).then(function () {
+      var made = { name: name, folder: null, songCount: 0, legacy: false };
+      return invoke('mini_add_to_playlist', { name: name, folder: null, song: p.song }).then(function (message) {
+        pickerDone(p, MV.playlistKey(made), message);
+      }, function (e) {
+        // It exists now: list it, so picking it is a retry and not a second "create".
+        if (Array.isArray(p.playlists)) p.playlists.push(made);
+        if (picker === p) { p.creating = false; renderPickerFoot(); renderPickerList(); }
+        pickerFailed(p, e, '“' + name + '” was created, but the song was not added: ');
+      });
+    }, function (e) { pickerFailed(p, e); });
+  }
+
+  el('addBtn').addEventListener('click', function () {
+    if (panel === 'picker' && picker && picker.source === 'current') closePicker();
+    else openPicker(MV.playlistSong(view(ui).track), 'current');
+  });
+  el('pickerClose').addEventListener('click', closePicker);
+  el('pickerFilter').addEventListener('input', function () {
+    if (!picker) return;
+    picker.query = el('pickerFilter').value;
+    renderPickerList();
+  });
 
   // ---- Global hotkeys ----
   var HOTKEY_LABELS = [

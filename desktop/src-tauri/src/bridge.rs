@@ -17,6 +17,17 @@ const BRIDGE_JS: &str = include_str!("../../bridge/bridge.js");
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
+/// A song as the bot's playlists keep it: what the mini-player sends when you add one.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PlaylistSong {
+    pub uri: String,
+    pub title: String,
+    pub author: String,
+    pub duration_ms: u64,
+    pub artwork_url: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
 pub enum BotCommand {
@@ -42,7 +53,12 @@ pub enum BotCommand {
     Lyrics { title: String, author: String, duration_ms: u64 },
     History,
     Frequent,
+    /// The tree from before playlists v2; kept for a bot that doesn't have `PlaylistsTreeV2` yet.
     Playlists,
+    /// Playlists v2 (`folder` None = top level): the tree with real song counts, and edits by name.
+    PlaylistsTreeV2,
+    AddToPlaylist { name: String, folder: Option<String>, song: PlaylistSong },
+    CreatePlaylist { name: String, folder: Option<String> },
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,6 +181,26 @@ mod tests {
         let js = command_js(7, &cmd);
         let prefix = "window.__cksBridge && window.__cksBridge.run(7, ";
         assert!(js.starts_with(prefix) && js.ends_with(");"));
+        let back: BotCommand = serde_json::from_str(&js[prefix.len()..js.len() - 2]).unwrap();
+        assert_eq!(back, cmd);
+    }
+
+    #[test]
+    fn add_to_playlist_round_trips_hostile_song_text() {
+        // Song titles and uris come from YouTube: they reach the page only as JSON inside the eval'd call.
+        let cmd = BotCommand::AddToPlaylist {
+            name: "Chill \" vibes".into(),
+            folder: Some("Fred/O'ld".into()),
+            song: PlaylistSong {
+                uri: "https://y/watch?v=\u{2028}</script>".into(),
+                title: "'); alert(1); //\n${x}`".into(),
+                author: "Ke$ha \\ 🎵".into(),
+                duration_ms: 1,
+                artwork_url: None,
+            },
+        };
+        let js = command_js(9, &cmd);
+        let prefix = "window.__cksBridge && window.__cksBridge.run(9, ";
         let back: BotCommand = serde_json::from_str(&js[prefix.len()..js.len() - 2]).unwrap();
         assert_eq!(back, cmd);
     }

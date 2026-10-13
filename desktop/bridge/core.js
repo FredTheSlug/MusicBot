@@ -141,6 +141,24 @@
       '&duration=' + Math.max(0, Math.floor(num(song.durationMs, 0)));
   }
 
+  /** The old play route, which a bot from before playlists v2 still has (and a v2 bot keeps as a wrapper). */
+  function oldPlayRequest(base, playlist) {
+    var folder = typeof playlist.folder === 'string' && playlist.folder ? '?folder=' + encodeURIComponent(playlist.folder) : '';
+    return request(base + 'playplaylist/' + encodeURIComponent(playlist.name) + folder, null);
+  }
+
+  /** The five fields the bot keeps of a song, cleaned; null when there is no uri to play. */
+  function songBody(song) {
+    if (!song || typeof song.uri !== 'string' || !song.uri) return null;
+    return {
+      uri: song.uri,
+      title: str(song.title),
+      author: str(song.author),
+      durationMs: Math.max(0, Math.floor(num(song.durationMs, 0))),
+      artworkUrl: strOrNull(song.artworkUrl)
+    };
+  }
+
   /** command = {type, value?} (Rust BotCommand) → panel API request, or null when there's nothing to do. */
   function commandToRequest(guildId, command, state) {
     if (!guildId || !command) return null;
@@ -179,15 +197,40 @@
       case 'PlayPlaylist': {
         var pl = command.value || {};
         if (typeof pl.name !== 'string' || !pl.name) return null;
-        var folder = typeof pl.folder === 'string' && pl.folder ? '?folder=' + encodeURIComponent(pl.folder) : '';
-        return request(base + 'playplaylist/' + encodeURIComponent(pl.name) + folder, null);
+        return request(base + 'playlists/play', { name: pl.name, folder: str(pl.folder), mode: 'all' });
       }
       case 'History': return fetchRequest(base + 'history');
       case 'Frequent': return fetchRequest(base + 'frequent');
       // Playlists are shared by every server, so this one isn't under /guild/.
       case 'Playlists': return fetchRequest('/api/playlists-tree');
+      case 'PlaylistsTreeV2': return fetchRequest('/api/playlists/tree');
+      case 'AddToPlaylist': {
+        var add = command.value || {};
+        var song = songBody(add.song);
+        if (typeof add.name !== 'string' || !add.name || !song) return null;
+        return request('/api/playlists/songs/add', { name: add.name, folder: str(add.folder), songs: [song] });
+      }
+      case 'CreatePlaylist': {
+        var create = command.value || {};
+        if (typeof create.name !== 'string' || !create.name.trim()) return null;
+        return request('/api/playlists', { name: create.name.trim(), folder: str(create.folder) });
+      }
       default: return null;
     }
+  }
+
+  /**
+   * What to try instead when the bot answered `status` (and `body`, its JSON or null) to the request
+   * commandToRequest built, or null. Only play has one: a bot from before playlists v2 has no play route
+   * and answers 404 without an {"error"}; a 404 that carries one came from the route itself (the playlist
+   * or server is unknown), and the old route would only say the same.
+   */
+  function fallbackRequest(guildId, command, status, body) {
+    if (!guildId || !command || command.type !== 'PlayPlaylist' || status !== 404) return null;
+    if (body && typeof body.error === 'string') return null;
+    var playlist = command.value || {};
+    if (typeof playlist.name !== 'string' || !playlist.name) return null;
+    return oldPlayRequest('/api/guild/' + encodeURIComponent(guildId) + '/', playlist);
   }
 
   /** The panel theme's variables the mini-player borrows (the app drops any other name). */
@@ -206,7 +249,7 @@
   }
 
   var api = {
-    toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest,
+    toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest, fallbackRequest: fallbackRequest,
     isOwnLoadError: isOwnLoadError, readTheme: readTheme, THEME_VARS: THEME_VARS, queueEditError: queueEditError
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

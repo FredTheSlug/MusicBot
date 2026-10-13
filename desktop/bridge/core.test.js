@@ -141,8 +141,9 @@ test('new commands map to endpoints', () => {
   assert.deepEqual(commandToRequest(g, { type: 'MoveToTop', value: { index: 3, uri: 'u3' } }, {}), { method: 'POST', path: '/api/guild/9/reorder', body: { from: 3, to: 0 } });
   assert.equal(commandToRequest(g, { type: 'RemoveFromQueue', value: { index: -1, uri: 'x' } }, {}), null);
   assert.deepEqual(commandToRequest(g, { type: 'PlayPlaylist', value: { name: 'Chill / Vibes', folder: "Fred's" } }, {}),
-    { method: 'POST', path: "/api/guild/9/playplaylist/Chill%20%2F%20Vibes?folder=Fred's", body: null });
-  assert.equal(commandToRequest(g, { type: 'PlayPlaylist', value: { name: 'Rap', folder: null } }, {}).path, '/api/guild/9/playplaylist/Rap');
+    { method: 'POST', path: '/api/guild/9/playlists/play', body: { name: 'Chill / Vibes', folder: "Fred's", mode: 'all' } });
+  assert.deepEqual(commandToRequest(g, { type: 'PlayPlaylist', value: { name: 'Rap', folder: null } }, {}).body, { name: 'Rap', folder: '', mode: 'all' });
+  assert.equal(commandToRequest(g, { type: 'PlayPlaylist', value: { name: '', folder: null } }, {}), null);
   assert.deepEqual(commandToRequest(g, { type: 'History' }, {}), { method: 'GET', path: '/api/guild/9/history', body: null });
   assert.deepEqual(commandToRequest(g, { type: 'Frequent' }, {}), { method: 'GET', path: '/api/guild/9/frequent', body: null });
   assert.deepEqual(commandToRequest(g, { type: 'Playlists' }, {}), { method: 'GET', path: '/api/playlists-tree', body: null });
@@ -165,4 +166,67 @@ test('autoplay flag maps and toggles', () => {
   assert.equal(toBotState(Object.assign({}, base, { nowPlaying: {} })).autoplay, null, 'an older bot without the setting');
   assert.equal(toBotState(Object.assign({}, base, { signedIn: false, nowPlaying: { autoplay: true } })).autoplay, null);
   assert.deepEqual(commandToRequest('9', { type: 'ToggleAutoplay' }, {}), { method: 'POST', path: '/api/guild/9/autoplay', body: null });
+});
+
+const { fallbackRequest } = require('./core.js');
+
+const SONG = { uri: 'https://youtu.be/abc', title: 'Ke$ha "Tik" Tok', author: 'Kesha', durationMs: 200000, artworkUrl: 'https://i.ytimg.com/vi/abc/hqdefault.jpg' };
+
+test('the v2 playlist tree is a fetch that is not under a server', () => {
+  assert.deepEqual(commandToRequest('9', { type: 'PlaylistsTreeV2' }, {}), { method: 'GET', path: '/api/playlists/tree', body: null });
+  // The old tree stays available for the app's own fallback.
+  assert.deepEqual(commandToRequest('9', { type: 'Playlists' }, {}), { method: 'GET', path: '/api/playlists-tree', body: null });
+});
+
+test('AddToPlaylist posts one song to the named playlist', () => {
+  assert.deepEqual(commandToRequest('9', { type: 'AddToPlaylist', value: { name: 'Chill', folder: 'Fred/Old', song: SONG } }, {}),
+    { method: 'POST', path: '/api/playlists/songs/add', body: { name: 'Chill', folder: 'Fred/Old', songs: [SONG] } });
+  // A top-level playlist has no folder; the bot wants it as "".
+  const top = commandToRequest('9', { type: 'AddToPlaylist', value: { name: 'Chill', folder: null, song: Object.assign({}, SONG, { artworkUrl: null }) } }, {});
+  assert.equal(top.body.folder, '');
+  assert.equal(top.body.songs[0].artworkUrl, null);
+});
+
+test('AddToPlaylist sends only the five song fields, cleaned', () => {
+  const dirty = { uri: 'u', title: 5, author: null, durationMs: -3, artworkUrl: '', extra: 'x', addedBy: { id: '1', name: 'evil' } };
+  const req = commandToRequest('9', { type: 'AddToPlaylist', value: { name: 'P', folder: '', song: dirty } }, {});
+  assert.deepEqual(req.body.songs, [{ uri: 'u', title: '', author: '', durationMs: 0, artworkUrl: null }]);
+  assert.equal(commandToRequest('9', { type: 'AddToPlaylist', value: { name: 'P', folder: '', song: { uri: '' } } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'AddToPlaylist', value: { name: '', folder: '', song: SONG } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'AddToPlaylist', value: { name: 'P', folder: '' } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'AddToPlaylist' }, {}), null);
+});
+
+test('CreatePlaylist posts the name and folder', () => {
+  assert.deepEqual(commandToRequest('9', { type: 'CreatePlaylist', value: { name: 'Road trip', folder: null } }, {}),
+    { method: 'POST', path: '/api/playlists', body: { name: 'Road trip', folder: '' } });
+  assert.deepEqual(commandToRequest('9', { type: 'CreatePlaylist', value: { name: 'Road trip', folder: 'Fred' } }, {}).body, { name: 'Road trip', folder: 'Fred' });
+  assert.equal(commandToRequest('9', { type: 'CreatePlaylist', value: { name: '   ', folder: null } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'CreatePlaylist' }, {}), null);
+});
+
+test('play falls back to the old endpoint when the bot has no such route', () => {
+  const play = { type: 'PlayPlaylist', value: { name: 'Chill / Vibes', folder: "Fred's" } };
+  // An older bot answers an unknown route with a plain 404 (no JSON error).
+  assert.deepEqual(fallbackRequest('9', play, 404, null),
+    { method: 'POST', path: "/api/guild/9/playplaylist/Chill%20%2F%20Vibes?folder=Fred's", body: null });
+  assert.deepEqual(fallbackRequest('9', play, 404, { message: 'x' }).method, 'POST', 'a JSON answer without an error is still not our route');
+  assert.equal(fallbackRequest('9', { type: 'PlayPlaylist', value: { name: 'Rap', folder: null } }, 404, null).path, '/api/guild/9/playplaylist/Rap');
+});
+
+test('play does not fall back when the new route itself answered', () => {
+  const play = { type: 'PlayPlaylist', value: { name: 'Rap', folder: '' } };
+  assert.equal(fallbackRequest('9', play, 404, { error: 'Playlist not found' }), null, 'the playlist is gone: the old route would say the same');
+  assert.equal(fallbackRequest('9', play, 400, null), null);
+  assert.equal(fallbackRequest('9', play, 500, null), null);
+  assert.equal(fallbackRequest('9', play, 200, { message: 'Loading playlist Rap...' }), null);
+});
+
+test('only play has a fallback', () => {
+  assert.equal(fallbackRequest('9', { type: 'Skip' }, 404, null), null);
+  assert.equal(fallbackRequest('9', { type: 'PlaylistsTreeV2' }, 404, null), null);
+  assert.equal(fallbackRequest('9', { type: 'AddToPlaylist', value: { name: 'P', folder: '', song: SONG } }, 404, null), null);
+  assert.equal(fallbackRequest('', { type: 'PlayPlaylist', value: { name: 'Rap' } }, 404, null), null);
+  assert.equal(fallbackRequest('9', { type: 'PlayPlaylist', value: {} }, 404, null), null);
+  assert.equal(fallbackRequest('9', null, 404, null), null);
 });
