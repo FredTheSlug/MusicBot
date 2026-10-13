@@ -8329,11 +8329,6 @@
             return /^https?:\/\//i.test(uri);
         }
 
-        // What /play can load: a link or a search. A local file path it cannot.
-        function plCanQueue(uri) {
-            return plIsWebLink(uri) || /^(?:ytsearch|ytmsearch|scsearch):/.test(uri);
-        }
-
         // A song title kept short enough for a toast.
         function plShort(text) {
             return text.length > 60 ? text.slice(0, 59) + '…' : text;
@@ -9060,7 +9055,7 @@
             var guild = currentGuild;
             var waiting = null;
             try {
-                var before = plIsWebLink(song.uri) ? await plQueueTracks(guild) : null;
+                var before = await plQueueTracks(guild); // null when the queue can't be read: the song is then only added
                 var res = await plApi('POST', '/api/guild/' + encodeURIComponent(guild) + '/play', { query: song.uri });
                 if (!res.ok) {
                     plToast(plErrorText(res, "Couldn't add that song"), { error: true });
@@ -9249,6 +9244,11 @@
                     return;
                 }
                 if (res.ok) {
+                    if (plPageBusy(page)) {
+                        // A drag or a move is under way and this answer may be older than it: read again afterwards.
+                        page.deferred = true;
+                        return;
+                    }
                     plApplyItem(page, res.data);
                 } else if (res.status === 404) {
                     if (page.structureOps === 0) plPageGone(page); // else a rename, move or delete from here is under way
@@ -9327,6 +9327,10 @@
         function plRefreshRow(page, song) {
             var old = page.rowBySong.get(song);
             if (!old || !old.parentNode) return;
+            if (page.dragSong === song) {
+                page.deferred = true; // this row is being dragged: redrawing it would drop the drag
+                return;
+            }
             var fresh = plBuildRow(page, song);
             page.rowBySong.set(song, fresh);
             old.parentNode.replaceChild(fresh, old);
@@ -9362,10 +9366,12 @@
                 handle.title = 'Drag to reorder';
                 handle.setAttribute('aria-hidden', 'true');
                 handle.addEventListener('dragstart', function (e) {
-                    if (page.moving || page.dragSong) {
+                    if (page.moving) {
                         e.preventDefault();
                         return;
                     }
+                    // A new drag proves the last one is over, even if it never reported its end: start clean.
+                    plEndDrag(page);
                     page.dragSong = song;
                     page.dropGap = -1;
                     e.dataTransfer.effectAllowed = 'move';
@@ -9417,7 +9423,8 @@
             var remove = { label: 'Remove', danger: true, run: function () { plRemoveSong(page, song); } };
             if (song.unresolved) return [remove];
             var items = [];
-            if (plCanQueue(song.uri)) items.push({ label: 'Play next', run: function () { plPlayNext(song); } });
+            // Only links: /play puts "ytsearch:" in front of anything else, so a stored search would be searched for as text
+            if (plIsWebLink(song.uri)) items.push({ label: 'Play next', run: function () { plPlayNext(song); } });
             items.push({ label: 'Add to another playlist', run: function () { openPlaylistPicker(plPickerSong(song), anchor, 'playlist'); } });
             items.push(remove);
             return items;
@@ -9433,11 +9440,17 @@
                 if (res.ok) {
                     removed = true;
                     var token = typeof res.data.undo === 'string' ? res.data.undo : '';
-                    // by id: the page may have been read again while the request was on its way
-                    var at = page.songs.findIndex(function (s) { return s.id === song.id; });
-                    if (at >= 0) page.songs.splice(at, 1);
                     plNoteOwnChange(page, res.data.version);
-                    if (plPage === page) plRenderPage(page);
+                    if (plPage === page) {
+                        if (plPageBusy(page)) {
+                            page.deferred = true; // a drag is under way: the row goes when it ends, with the next read
+                        } else {
+                            // by id: the page may have been read again while the request was on its way
+                            var at = page.songs.findIndex(function (s) { return s.id === song.id; });
+                            if (at >= 0) page.songs.splice(at, 1);
+                            plRenderPage(page);
+                        }
+                    }
                     plLoadPaneTree();
                     plToast('Removed “' + plShort(song.title) + '”', token
                         ? { actionLabel: 'Undo', ms: PL_UNDO_MS, onAction: function () { plUndoRemove(page, token, song.title); } } : {});
@@ -9520,9 +9533,15 @@
                 var song = page.dragSong;
                 var gap = page.dropGap;
                 plEndDrag(page);
-                // Redrawing the rows removes the handle that started the drag; let the drag finish first.
-                if (gap >= 0) setTimeout(function () { plMoveSong(page, song, gap); }, 0);
-                else plFlushDeferred(page);
+                if (gap < 0) {
+                    plFlushDeferred(page);
+                    return;
+                }
+                // From here until the move is answered the page counts as busy, so no read or redraw gets in between
+                // (the dragend that follows must not start one). The move itself waits a tick: redrawing the rows
+                // removes the handle that started the drag, and the drag should finish first.
+                page.moving = true;
+                setTimeout(function () { plMoveSong(page, song, gap); }, 0);
             });
         }
 
@@ -9549,18 +9568,31 @@
             });
         }
 
-        // gap is where the song was dropped (between rows). Its final position is the gap, minus one when the
-        // song came from above it. The rows change at once; the server's refusal puts them back.
+        // gap is where the song was dropped (between rows). The drop handler has already marked the page busy
+        // (page.moving); this clears it again whatever happens, then lets a read that was held back go.
         async function plMoveSong(page, song, gap) {
+            try {
+                await plMoveSongNow(page, song, gap);
+            } finally {
+                page.moving = false;
+                plFlushDeferred(page);
+            }
+        }
+
+        // The song's final position is the gap, minus one when it came from above. The rows change at once; the
+        // server's refusal puts them back.
+        async function plMoveSongNow(page, song, gap) {
             var from = page.songs.indexOf(song);
-            if (from < 0 || page.moving) return;
+            if (from < 0) return;
             var to = gap > from ? gap - 1 : gap;
             if (to === from) return;
+            // Reads already on their way are dropped (they are older than this move) and a fresh one follows it.
+            page.seq++;
+            page.deferred = true;
             var before = page.songs.slice();
             page.songs.splice(from, 1);
             page.songs.splice(to, 0, song);
             plRenderRows(page);
-            page.moving = true;
             var failed = false;
             try {
                 var res = await plApi('POST', '/api/playlists/songs/move', { name: page.name, folder: page.folder, songId: song.id, toIndex: to });
@@ -9573,15 +9605,11 @@
             } catch (e) {
                 failed = true;
                 plCatch(e);
-            } finally {
-                page.moving = false;
             }
             if (failed && plPage === page) {
                 page.songs = before;
                 plRenderRows(page);
-                plLoadPage(page, { quiet: true });
             }
-            plFlushDeferred(page);
         }
 
         // ---- the header menu: rename, move, always shuffle, delete -----------------------------------------------
@@ -9866,6 +9894,20 @@
             if (page && page.loaded && page.legacy && !plPageBusy(page)) plLoadPage(page, { quiet: true });
             if (last !== true) plLoadMigration();
         }
+
+        // A drag that ends without telling the list (dropped outside it, or its handle gone) must not leave the page
+        // "busy" for good, with every refresh held back. Mouse events do not fire during a drag, so the first one
+        // afterwards shows it is over.
+        function plDragLeftover() {
+            var page = plPage;
+            if (!page || !page.dragSong) return;
+            plEndDrag(page);
+            plFlushDeferred(page);
+        }
+
+        document.addEventListener('dragend', plDragLeftover, true);
+        document.addEventListener('drop', plDragLeftover); // after the list's own handler, which clears the drag itself
+        document.addEventListener('mousemove', plDragLeftover, { passive: true });
 
         playlistDialogOk.addEventListener('click', plSubmitDialog);
         playlistDialogInput.addEventListener('keydown', function(e) {
