@@ -1583,6 +1583,7 @@ public class WebServer
             final int[] totalAvailable = {0};
             final boolean[] truncated = {false};
             final String[] kind = {""};
+            final String[] title = {null};
             final boolean[] failed = {false};
             CountDownLatch latch = new CountDownLatch(1);
             bot.getPlayerManager().loadItemOrdered(guild, loadUrl, new AudioLoadResultHandler()
@@ -1601,6 +1602,7 @@ public class WebServer
                 public void playlistLoaded(AudioPlaylist playlist)
                 {
                     kind[0] = "playlist";
+                    title[0] = playlist.getName();
                     int full = playlist.getTracks().size();
                     totalAvailable[0] = full;
                     addTracksUpTo(tracks, playlist, WEB_PLAYLIST_EXPAND_MAX, null);
@@ -1641,6 +1643,10 @@ public class WebServer
                 kind[0] = "track";
             }
             result.put("kind", kind[0]);
+            if (title[0] != null && !title[0].trim().isEmpty())
+            {
+                result.put("title", title[0].trim());
+            }
             result.put("tracks", tracks);
             result.put("totalAvailable", totalAvailable[0]);
             result.put("truncated", truncated[0]);

@@ -8290,6 +8290,7 @@
         var PL_LINK_DELAY_MS = 900;
         var PL_IMPORT_QUIET_MS = 120000;  // an import silent this long is shown as "still going" and stops locking the forms
         var PL_IMPORT_TOAST_MS = 10000;
+        var PL_IMPORT_TITLE_MAX = 40;     // characters of an album or playlist title shown on the Import button
 
         var plTree = null;            // {playlists, folders, deleted} as last loaded; null until the first answer
         var plTreeSig = '';           // the loaded tree as text: an unchanged tree is not drawn again
@@ -9989,13 +9990,13 @@
         }
 
         // A pasted http(s) link. The panel's resolve endpoint says whether it is one song (shown as a normal result with
-        // Add) or a playlist or album (an Import button with the song count). It cannot read every link the import can
-        // (Spotify, for one), and it names no title; when it cannot tell, the import is still offered.
+        // Add) or a playlist or album (an Import button with the song count and the title the source gives it). It
+        // cannot read every link the import can (Spotify, for one); when it cannot tell, the import is still offered.
         async function plAddLookup(page, url) {
             var add = page.add;
             if (!add || plPage !== page) return;
             var seq = ++add.seq;
-            var link = { url: url, count: 0, sample: '' };
+            var link = { url: url, count: 0, title: '', sample: '' };
             if (currentGuild) {
                 plAddShow(page, 'busy', 'Checking the link…');
                 try {
@@ -10011,6 +10012,7 @@
                         }
                     } else if (res.data.kind === 'playlist' && tracks.length) {
                         link.count = Math.max(tracks.length, Math.round(Number(res.data.totalAvailable)) || 0);
+                        if (typeof res.data.title === 'string') link.title = res.data.title.replace(/\s+/g, ' ').trim();
                         var first = tracks[0] || {};
                         var title = typeof first.title === 'string' ? first.title.trim() : '';
                         var artist = typeof first.author === 'string' ? first.author.trim() : '';
@@ -10129,16 +10131,21 @@
         function plAddLinkCard(page, link) {
             var add = page.add;
             var card = plEl('div', 'pl-add-card');
-            var label = link.count > 0
-                ? 'Import ' + link.count + ' ' + pluralUnit(link.count, 'song', 'songs') + ' from this link'
-                : 'Import songs from this link';
+            // "from “Title”" when the source names the playlist or album (cut to fit the button; the whole title is
+            // the tooltip), else "from this link"
+            var title = link.title.length > PL_IMPORT_TITLE_MAX ? link.title.slice(0, PL_IMPORT_TITLE_MAX - 1) + '…' : link.title;
+            var label = (link.count > 0 ? 'Import ' + link.count + ' ' + pluralUnit(link.count, 'song', 'songs') : 'Import songs')
+                + ' from ' + (title ? '“' + title + '”' : 'this link');
             var btn = plBtn(label, 'pl-primary', function () { plImportIntoPage(page, link.url); });
+            if (link.title) btn.title = link.title;
             add.importBtn = btn;
             add.importLabel = label;
             card.appendChild(btn);
-            card.appendChild(plEl('div', 'pl-add-card-note', link.sample
-                ? 'Starts with ' + link.sample
-                : "Couldn't preview this link — the import will say if it can't read it"));
+            if (!title) {
+                card.appendChild(plEl('div', 'pl-add-card-note', link.sample
+                    ? 'Starts with ' + link.sample
+                    : "Couldn't preview this link — the import will say if it can't read it"));
+            }
             card.appendChild(plEl('div', 'pl-add-card-note', 'The songs are added to the end of “' + page.name + '” as they load.'));
             return card;
         }
