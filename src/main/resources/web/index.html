@@ -1422,160 +1422,421 @@
 
         .playlist-input-row input:focus { border-color: var(--accent); }
 
-        .playlist-detail-panel {
+        /* ---- Playlists: migration banner, tree extras, playlist page, menus, confirm bars, toasts ---- */
+        .layout-pane[data-pane-id="playlists"] [hidden] { display: none !important; }
+
+        .pl-banner {
+            margin: 0 0 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius-select);
             background: var(--bg-elevated);
-            border-radius: 12px;
-            padding: 16px;
-            margin-top: 14px;
-            animation: fadeSlideIn 0.3s ease;
-        }
-
-        .playlist-detail-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }
-
-        .playlist-detail-title {
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .playlist-detail-tracks {
-            list-style: none;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .playlist-detail-tracks::-webkit-scrollbar { width: 6px; }
-        .playlist-detail-tracks::-webkit-scrollbar-track { background: transparent; }
-        .playlist-detail-tracks::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
-
-        .playlist-track-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 10px;
-            border-radius: 8px;
-            gap: 10px;
-            font-size: 0.82rem;
-            transition: background 0.15s;
-        }
-
-        .playlist-track-item:hover { background: var(--bg-hover); }
-
-        .playlist-track-idx {
-            color: var(--text-tertiary);
-            font-size: 0.72rem;
-            font-weight: 600;
-            min-width: 20px;
-            text-align: center;
-        }
-
-        .playlist-track-uri {
-            flex: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-        }
-
-        .playlist-track-row {
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            padding: 8px 10px;
-            border-radius: 8px;
-            margin-bottom: 6px;
-            font-size: 0.82rem;
-            transition: background 0.15s;
-            list-style: none;
-        }
-        .playlist-track-row:hover { background: var(--bg-hover); }
-        .playlist-track-row .playlist-track-item-inner {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-        }
-        .playlist-expand-slot {
-            width: 100%;
-            padding: 8px 0 4px 28px;
-            box-sizing: border-box;
-        }
-        .playlist-expand-slot .expand-loading {
-            font-size: 0.78rem;
-            color: var(--text-tertiary);
-        }
-        .playlist-expand-nested {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            border-left: 2px solid var(--border-light);
-            padding-left: 10px;
-            max-height: 280px;
-            overflow-y: auto;
-        }
-        .playlist-expand-nest-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 8px;
-            border-radius: 6px;
-            font-size: 0.78rem;
-            margin-bottom: 4px;
-        }
-        .playlist-expand-nest-item:hover { background: var(--bg-elevated); }
-        .playlist-expand-nest-meta {
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-        }
-        .playlist-expand-nest-title {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--text-primary);
-            font-weight: 500;
-        }
-        .playlist-expand-nest-sub {
-            font-size: 0.72rem;
-            color: var(--text-tertiary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .playlist-expand-trunc {
-            font-size: 0.72rem;
-            color: var(--text-tertiary);
-            margin-top: 6px;
-        }
-
-        .playlist-move-select {
-            background: var(--bg-elevated);
-            color: var(--text-primary);
             border: 1px solid var(--border-light);
-            border-radius: 6px;
-            padding: 4px 8px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        .pl-banner.quiet {
+            background: none;
+            border-color: transparent;
+            padding: 0 2px;
             font-size: 0.75rem;
+            color: var(--text-tertiary);
+        }
+
+        .pl-banner-bar {
+            height: 4px;
+            margin-top: 6px;
+            border-radius: 2px;
+            background: var(--bg-primary);
+            overflow: hidden;
+        }
+
+        .pl-banner-bar > i {
+            display: block;
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.4s;
+        }
+
+        button.playlist-name {
+            min-width: 0;
+            background: none;
+            border: none;
+            color: inherit;
             font-family: inherit;
-            outline: none;
+            text-align: left;
+            padding: 0;
+        }
+
+        .playlist-item { cursor: pointer; }
+        .playlist-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+        .playlist-text .playlist-name { flex: 0 1 auto; }
+        .playlist-text .playlist-count { margin-left: auto; flex-shrink: 0; }
+        .playlist-count.upgrading { font-style: italic; }
+        .folder-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+        /* A folder's buttons take the place of its counts while the row is hovered or focused (and always on touch
+           screens), so the name keeps its room in a narrow column. */
+        .folder-meta { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .folder-actions { display: none; }
+        .folder-item:hover .folder-actions, .folder-item:focus-within .folder-actions { display: flex; opacity: 1; }
+        .folder-item:hover .folder-meta, .folder-item:focus-within .folder-meta { display: none; }
+
+        @media (hover: none) {
+            .folder-actions { display: flex; opacity: 1; }
+            .folder-meta { display: none; }
+        }
+
+        .pl-hint {
+            list-style: none;
+            padding: 12px;
+            text-align: center;
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+        }
+
+        .pl-confirm {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px 10px;
+            margin: 4px 0 8px;
+            padding: 10px 12px;
+            border-radius: var(--radius-select);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-light);
+            font-size: 0.84rem;
+        }
+
+        .pl-confirm-text { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+
+        .btn-sm.pl-danger { background: #ef4444; border-color: #ef4444; color: #fff; }
+        .btn-sm.pl-danger:hover { background: #dc2626; border-color: #dc2626; }
+        .btn-sm.pl-primary { background: var(--accent-gradient); border-color: transparent; color: #fff; }
+        .btn-sm.pl-primary:hover { filter: brightness(1.1); }
+        .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .pl-deleted { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+        .pl-deleted-head {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            padding: 6px 4px;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font: inherit;
+            font-size: 0.82rem;
+            font-weight: 600;
+            text-align: left;
             cursor: pointer;
         }
 
-        .playlist-move-select:focus { border-color: var(--accent); }
+        .pl-deleted-head:hover, .pl-deleted-head:focus-visible { color: var(--text-primary); background: var(--bg-elevated); outline: none; }
 
-        .playlist-action-row {
+        .pl-deleted-item {
             display: flex;
-            gap: 6px;
-            margin-top: 12px;
             align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 10px;
         }
 
-        .playlist-action-row select {
-            flex: 1;
+        .pl-deleted-item:hover { background: var(--bg-elevated); }
+        .pl-deleted-info { flex: 1; min-width: 0; }
+
+        .pl-deleted-name {
+            font-size: 0.88rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+
+        .pl-deleted-folder { margin-left: 8px; font-size: 0.72rem; font-weight: 400; color: var(--text-tertiary); }
+        .pl-deleted-meta { margin-top: 2px; font-size: 0.75rem; color: var(--text-tertiary); }
+
+        /* The playlist page */
+        .pl-page { animation: fadeSlideIn 0.3s ease; }
+        .pl-page-head { margin-bottom: 4px; }
+
+        .pl-page-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            overflow-wrap: anywhere;
+            outline: none;
+        }
+
+        .pl-page-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px 10px;
+            margin-top: 4px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .pl-page-actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .btn-sm.pl-more { padding: 6px 12px; font-size: 0.9rem; line-height: 1; }
+
+        .pl-note {
+            margin-top: 12px;
+            padding: 8px 12px;
+            border-radius: var(--radius-select);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-light);
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        .pl-drawer {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius-select);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-light);
+        }
+
+        .pl-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .pl-form-label { font-size: 0.82rem; color: var(--text-secondary); }
+        .pl-form-note { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 8px; }
+        .pl-form .playlist-move-select { flex: 1 1 140px; min-width: 0; padding: 7px 8px; font-size: 0.82rem; }
+
+        .pl-input {
+            flex: 1 1 160px;
+            min-width: 0;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 7px 12px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .pl-input:focus { border-color: var(--accent); }
+
+        .pl-status { padding: 22px 12px; text-align: center; font-size: 0.85rem; color: var(--text-tertiary); }
+
+        .pl-songs {
+            list-style: none;
+            max-height: min(68vh, 640px);
+            margin-top: 12px;
+            overflow-y: auto;
+        }
+
+        .pl-songs::-webkit-scrollbar { width: 6px; }
+        .pl-songs::-webkit-scrollbar-track { background: transparent; }
+        .pl-songs::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+        .pl-song {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 8px;
+            border-radius: 10px;
+            transition: background 0.15s;
+        }
+
+        .pl-song:hover { background: var(--bg-elevated); }
+        .pl-song.dragging { opacity: 0.4; }
+        .pl-song.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+        .pl-song.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+        .pl-song.pending { opacity: 0.5; pointer-events: none; }
+
+        .pl-handle {
+            flex-shrink: 0;
+            width: 18px;
+            text-align: center;
+            color: var(--text-tertiary);
+            font-size: 0.85rem;
+            cursor: grab;
+            opacity: 0.5;
+            user-select: none;
+            transition: opacity 0.2s;
+        }
+
+        .pl-song:hover .pl-handle { opacity: 1; }
+
+        .pl-thumb {
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            object-fit: cover;
+            background: var(--bg-primary);
+        }
+
+        .pl-thumb-ph {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-tertiary);
+            font-size: 1.05rem;
+        }
+
+        .pl-song-info { flex: 1; min-width: 0; }
+
+        .pl-song-title {
+            font-size: 0.88rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pl-song-artist {
+            margin-top: 1px;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pl-song.unresolved .pl-song-title { color: var(--text-tertiary); font-weight: 400; }
+        .pl-song.unresolved .pl-thumb { opacity: 0.5; }
+        .pl-song-warn { color: #d97706; }
+
+        .pl-song-len {
+            flex-shrink: 0;
+            font-size: 0.78rem;
+            color: var(--text-tertiary);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .pl-song-len-inline { display: none; }
+
+        .pl-retry { flex-shrink: 0; white-space: nowrap; }
+
+        .pl-song .playlist-btn { flex-shrink: 0; }
+
+        /* The panel can sit in a narrow column of a wide window as well as on a phone, so rows adapt to the width of
+           the panel itself (a container query) and not to the window. */
+        #plTreeView, #plPageView { container-type: inline-size; }
+
+        @container (max-width: 440px) {
+            .playlist-text { flex-direction: column; align-items: flex-start; gap: 1px; }
+            .playlist-text .playlist-name { max-width: 100%; }
+            .playlist-text .playlist-count { margin-left: 0; font-size: 0.72rem; }
+            .pl-song { gap: 6px; padding: 6px 2px; }
+            .pl-handle { width: 14px; }
+            .pl-thumb { width: 34px; height: 34px; }
+            .pl-song > .pl-song-len { display: none; }
+            .pl-song-len-inline { display: inline; }
+            .pl-song-title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; }
+            .pl-song .playlist-btn { padding: 4px 6px; }
+            .pl-page-actions { gap: 6px; }
+        }
+
+        @media (max-width: 480px) {
+            .pl-songs { max-height: 62vh; }
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+            .pl-song .playlist-btn { padding: 8px 10px; }
+        }
+
+        /* Row and page menus */
+        .pl-menu {
+            position: fixed;
+            z-index: 1050;
+            min-width: 190px;
+            max-width: calc(100vw - 16px);
+            padding: 4px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-dropdown);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+            animation: fadeSlideIn 0.15s ease;
+        }
+
+        .pl-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 8px 10px;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font: inherit;
+            font-size: 0.85rem;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .pl-menu-item:hover, .pl-menu-item:focus-visible { background: var(--bg-hover); outline: none; }
+        .pl-menu-item.danger { color: #ef4444; }
+        .pl-menu-label { flex: 1; }
+        .pl-check { color: var(--success); font-weight: 700; }
+
+        @media (hover: none) and (pointer: coarse) {
+            .pl-menu-item { padding: 12px 10px; }
+        }
+
+        /* One toast stack for every playlist action result */
+        .pl-toasts {
+            position: fixed;
+            left: 50%;
+            bottom: max(16px, env(safe-area-inset-bottom));
+            transform: translateX(-50%);
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: min(440px, calc(100vw - 24px));
+            pointer-events: none;
+        }
+
+        .pl-toast {
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius-dropdown);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+            font-size: 0.86rem;
+            animation: fadeSlideIn 0.2s ease;
+        }
+
+        .pl-toast.error { border-left-color: #ef4444; }
+        .pl-toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+        .pl-toast-action {
+            flex-shrink: 0;
+            padding: 4px 10px;
+            background: none;
+            border: none;
+            border-radius: 6px;
+            color: var(--accent-light);
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .pl-toast-action:hover, .pl-toast-action:focus-visible { background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12); outline: none; }
 
         .folder-item {
             display: flex;
@@ -1634,84 +1895,6 @@
         .folder-breadcrumb span:hover { color: var(--accent-light); }
         .folder-breadcrumb span.current { color: var(--text-primary); cursor: default; }
         .folder-breadcrumb .sep { color: var(--text-tertiary); cursor: default; opacity: 0.4; }
-
-        .playlist-detail {
-            background: var(--bg-elevated);
-            border-radius: 12px;
-            padding: 16px;
-            margin-top: 12px;
-            animation: fadeSlideIn 0.3s ease;
-        }
-
-        .playlist-detail-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }
-
-        .playlist-detail-title {
-            font-size: 1.05rem;
-            font-weight: 600;
-        }
-
-        .playlist-detail-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .playlist-detail-tracks {
-            list-style: none;
-            max-height: 240px;
-            overflow-y: auto;
-        }
-
-        .playlist-detail-tracks::-webkit-scrollbar { width: 4px; }
-        .playlist-detail-tracks::-webkit-scrollbar-track { background: transparent; }
-        .playlist-detail-tracks::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
-
-        .playlist-detail-track {
-            display: flex;
-            align-items: center;
-            padding: 6px 8px;
-            gap: 10px;
-            border-radius: 6px;
-            font-size: 0.82rem;
-            transition: background 0.15s;
-        }
-
-        .playlist-detail-track:hover { background: var(--bg-hover); }
-
-        .playlist-detail-track .track-idx {
-            color: var(--text-tertiary);
-            min-width: 22px;
-            text-align: center;
-            font-size: 0.72rem;
-            font-weight: 600;
-        }
-
-        .playlist-detail-track .track-uri {
-            flex: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--text-secondary);
-        }
-
-        .playlist-detail-track .track-remove-btn {
-            background: none;
-            border: none;
-            color: var(--text-tertiary);
-            cursor: pointer;
-            font-size: 0.75rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            opacity: 0;
-            transition: all 0.15s;
-        }
-
-        .playlist-detail-track:hover .track-remove-btn { opacity: 1; }
-        .playlist-detail-track .track-remove-btn:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
 
         .playlist-move-select {
             background: var(--bg-primary);
@@ -5074,43 +5257,34 @@
                 <div class="pane-drag-bar" draggable="true" title="Drag to move this panel" aria-label="Drag to move this panel"></div>
                 <div class="playlist-header">
                     <div class="card-title" style="margin-bottom:0">Playlists</div>
-                    <div class="playlist-actions">
+                    <div class="playlist-actions" id="plActions">
                         <button class="btn-sm" onclick="showNewPlaylistDialog()">New Playlist</button>
                         <button class="btn-sm" onclick="showNewFolderDialog()">New Folder</button>
                         <button class="btn-sm" onclick="showSaveQueueDialog()">Save Queue</button>
-                        <button class="btn-sm" onclick="loadPlaylistsTree()">Refresh</button>
+                        <button class="btn-sm" onclick="plRefreshAll()">Refresh</button>
                     </div>
                 </div>
-                <div id="playlistBreadcrumb" class="playlist-breadcrumb" style="display:none"></div>
-                <div id="playlistDialogRow" style="display:none" class="playlist-input-row">
-                    <input type="text" id="playlistDialogInput" placeholder="" />
-                    <button class="btn-sm" id="playlistDialogOk">Create</button>
-                    <button class="btn-sm" onclick="hidePlaylistDialog()">Cancel</button>
+                <div id="plMigration" class="pl-banner" role="status" hidden></div>
+                <div id="plTreeView">
+                    <div id="playlistDialogRow" style="display:none" class="playlist-input-row">
+                        <input type="text" id="playlistDialogInput" placeholder="" maxlength="100" />
+                        <button class="btn-sm" id="playlistDialogOk">Create</button>
+                        <button class="btn-sm" onclick="hidePlaylistDialog()">Cancel</button>
+                    </div>
+                    <div id="playlistSaveRow" style="display:none" class="playlist-input-row">
+                        <input type="text" id="playlistSaveInput" placeholder="Playlist name..." maxlength="100" />
+                        <select id="playlistSaveFolder" class="playlist-move-select"></select>
+                        <button class="btn-sm" onclick="savePlaylistFromQueue()">Save</button>
+                        <button class="btn-sm" onclick="hideSaveDialog()">Cancel</button>
+                    </div>
+                    <ul class="playlist-list" id="playlistList"></ul>
+                    <div class="empty-state" id="playlistEmpty" style="display:none">
+                        <p>No playlists yet</p>
+                        <p class="sub">Create a playlist or folder to get started</p>
+                    </div>
+                    <div id="plDeleted" class="pl-deleted" hidden></div>
                 </div>
-                <div id="playlistSaveRow" style="display:none" class="playlist-input-row">
-                    <input type="text" id="playlistSaveInput" placeholder="Playlist name..." />
-                    <select id="playlistSaveFolder" class="playlist-move-select"></select>
-                    <button class="btn-sm" onclick="savePlaylistFromQueue()">Save</button>
-                    <button class="btn-sm" onclick="hideSaveDialog()">Cancel</button>
-                </div>
-                <ul class="playlist-list" id="playlistList"></ul>
-                <div id="playlistDetailPanel" style="display:none"></div>
-                <div class="empty-state" id="playlistEmpty">
-                    <p>No playlists yet</p>
-                    <p class="sub">Create a playlist or folder to get started</p>
-                </div>
-                <div id="savePlaylistRow" style="display:none" class="playlist-input-row">
-                    <input type="text" id="playlistNameInput" placeholder="Playlist name..." />
-                    <button class="btn-sm" onclick="savePlaylistFromQueue()">Save</button>
-                    <button class="btn-sm" onclick="hideSavePlaylist()">Cancel</button>
-                </div>
-                <div id="createFolderRow" style="display:none" class="playlist-input-row">
-                    <input type="text" id="folderNameInput" placeholder="Folder name..." />
-                    <button class="btn-sm" onclick="createFolder()">Create</button>
-                    <button class="btn-sm" onclick="hideCreateFolder()">Cancel</button>
-                </div>
-                <div id="playlistTreeContainer"></div>
-                <div id="playlistDetailView" style="display:none"></div>
+                <div id="plPageView" hidden></div>
             </div>
         </div>
 
@@ -5131,6 +5305,8 @@
             </div>
         </div>
     </div>
+
+    <div id="plToasts" class="pl-toasts" role="status" aria-live="polite"></div>
 
     <script>
         let currentGuild = localStorage.getItem('defaultGuild') || '';
@@ -6489,6 +6665,10 @@
                         renderHistory(data.data);
                     } else if (data.type === 'frequent' && data.data) {
                         renderFrequent(data.data);
+                    } else if (data.type === 'playlists') {
+                        plOnPlaylistsMessage(data.data);
+                    } else if (data.type === 'playlist-import') {
+                        plOnImportMessage(data.data);
                     } else if (data.type === 'error') {
                         var errText = data.message || 'Something went wrong';
                         searchResults.innerHTML = '<div class="status-message" style="color:#ef4444;">' + escHtml(errText) + '</div>';
@@ -7054,7 +7234,6 @@
         var plRowSongs = { queue: [], history: [], frequent: [], search: [] };
         var plNowPlayingSong = null;
         var plPicker = null;
-        var plNoticeTimer = null;
 
         // The {uri, title, author, durationMs, artworkUrl} the server wants, from any track payload of the panel.
         // Null when the row has no uri (nothing a playlist could play), so it gets no button.
@@ -7135,16 +7314,6 @@
             } catch (e) {}
         }
 
-        // The existing success/failure notice under the Add Music box.
-        function plShowNotice(text, isError) {
-            searchResults.innerHTML = '<div class="status-message"' + (isError ? ' style="color:#ef4444;"' : '') + '>' + escHtml(text) + '</div>';
-            if (plNoticeTimer) clearTimeout(plNoticeTimer);
-            plNoticeTimer = setTimeout(function () {
-                plNoticeTimer = null;
-                searchResults.innerHTML = '';
-            }, isError ? 8000 : 5000);
-        }
-
         function plFlashAdded(button) {
             if (!button || !button.isConnected) return;
             button.classList.add('pl-added');
@@ -7157,7 +7326,7 @@
             var resp = await authFetch(url, opts);
             var data = await readApiJson(resp);
             if (!data || typeof data !== 'object') data = {};
-            return { ok: resp.ok, data: data };
+            return { ok: resp.ok, status: resp.status, data: data };
         }
 
         // The server's {"error": ...} text; a long answer is some proxy's error page, not a message for people.
@@ -7319,10 +7488,10 @@
             Array.prototype.forEach.call(p.foot.querySelectorAll('button, input'), function (el) { el.disabled = busy; });
         }
 
-        // A failure shows in the picker (which stays open); if it was closed meanwhile, in the panel's notice.
+        // A failure shows in the picker (which stays open); if it was closed meanwhile, in a toast.
         function plFail(p, message) {
             if (p.closed) {
-                plShowNotice(message, true);
+                plToast(message, { error: true });
                 return;
             }
             plSetBusy(p, false);
@@ -7340,9 +7509,8 @@
 
         function plSucceed(p, pl) {
             plRemember(pl.name, pl.folder, p.playlists);
-            plShowNotice('Added to ' + pl.name, false);
+            plToast('Added to ' + pl.name, {});
             plFlashAdded(p.anchor);
-            if (p.source === 'search') closeSearchDropdown(); // it would cover the notice
             closePlaylistPicker(p);
         }
 
@@ -8060,38 +8228,53 @@
             }
         }
 
+        // ---- Playlists: tree, playlist page, editing, Deleted folder, toasts ----------------------------------------
+        // Same rules as the picker above: every name, folder, title, artist and message reaches the page through
+        // textContent or a DOM property, and uris and artwork urls never go into markup. Songs live in JS
+        // (plPage.songs and closures); the markup carries no song data.
         const playlistList = document.getElementById('playlistList');
         const playlistEmpty = document.getElementById('playlistEmpty');
-        const playlistDetailPanel = document.getElementById('playlistDetailPanel');
-        const playlistBreadcrumb = document.getElementById('playlistBreadcrumb');
         const playlistDialogRow = document.getElementById('playlistDialogRow');
         const playlistDialogInput = document.getElementById('playlistDialogInput');
         const playlistDialogOk = document.getElementById('playlistDialogOk');
         const playlistSaveRow = document.getElementById('playlistSaveRow');
         const playlistSaveInput = document.getElementById('playlistSaveInput');
         const playlistSaveFolder = document.getElementById('playlistSaveFolder');
+        const plTreeView = document.getElementById('plTreeView');
+        const plPageView = document.getElementById('plPageView');
+        const plActions = document.getElementById('plActions');
+        const plMigrationBanner = document.getElementById('plMigration');
+        const plDeletedBox = document.getElementById('plDeleted');
+        const plToastBox = document.getElementById('plToasts');
 
-        var playlistTree = null;
-        var currentPlaylistFolder = '';
-        var expandedFolders = {};
-        var dialogMode = null;
+        var PL_SONG_DND_TYPE = 'application/x-jmusicbot-playlist-song';
+        var PL_COLLATE = { sensitivity: 'base', numeric: true };
+        var PL_UNDO_MS = 6000;
+        var PL_REFRESH_DELAY_MS = 300;
+        var PL_MIGRATION_POLL_MS = 5000;
+        var PL_QUEUE_SAVE_MAX = 2000;
+        var PL_TOAST_MAX = 3;
 
-        async function loadPlaylistsTree() {
-            try {
-                var resp = await authFetch('/api/playlists-tree');
-                playlistTree = await resp.json();
-                renderPlaylistTree();
-            } catch(e) {}
-        }
+        var plTree = null;            // {playlists, folders, deleted} as last loaded; null until the first answer
+        var plTreeSig = '';           // the loaded tree as text: an unchanged tree is not drawn again
+        var plTreeSeq = 0;            // numbers tree requests, so a slow old answer cannot overwrite a newer one
+        var plTreeError = '';
+        var plExpanded = Object.create(null);   // folder path -> open
+        var plFolderEls = Object.create(null);  // folder path -> its row, for keyboard focus after a redraw
+        var plDeletedOpen = false;
+        var plPage = null;            // the open playlist page; null while the tree shows
+        var plDialog = null;          // the New Playlist / New Folder form, while open
+        var plMenu = null;            // the open ⋯ menu
+        var plConfirmRoot = null;     // the open confirm bar (or its list item)
+        var plConfirmReturn = null;   // where focus goes when the confirm bar is cancelled
+        var plSaving = false;
+        var plRefreshTimer = null;
+        var plRefreshWant = null;
+        var plMigrationTimer = null;
+        var plMigrationActive = false;
+        var plMigrationSeq = 0;
 
-        function renderPlaylistTree() {
-            if (!playlistTree) return;
-            var html = renderFolderNode(playlistTree, true);
-            playlistList.innerHTML = html;
-            var hasContent = (playlistTree.playlists && playlistTree.playlists.length > 0) || (playlistTree.folders && playlistTree.folders.length > 0);
-            playlistEmpty.style.display = hasContent ? 'none' : '';
-            hidePlaylistDetail();
-        }
+        // ---- small helpers --------------------------------------------------------------------------------------
 
         function pluralUnit(count, singular, plural) {
             var n = Number(count);
@@ -8099,422 +8282,662 @@
             return n === 1 ? singular : plural;
         }
 
-        function renderFolderNode(node, isRoot) {
-            var html = '';
-            if (node.folders) {
-                node.folders.forEach(function(folder) {
-                    var isExpanded = expandedFolders[folder.folder] || false;
-                    var plCount = typeof folder.playlistCount === 'number' ? folder.playlistCount : (folder.playlists ? folder.playlists.length : 0);
-                    var subCount = typeof folder.subFolderCount === 'number' ? folder.subFolderCount : (folder.folders ? folder.folders.length : 0);
-                    var folderLabel = folder.name != null && folder.name !== '' ? folder.name : (folder.folder || 'Folder');
-                    html += '<li class="folder-item' + (isExpanded ? ' open' : ' closed') + '" onclick="toggleFolder(\'' + escJsAttr(folder.folder) + '\', event)">' +
-                        '<span class="folder-icon">' + (isExpanded ? '&#128194;' : '&#128193;') + '</span>' +
-                        '<span class="folder-name">' + escHtml(folderLabel) + '</span>' +
-                        '<span class="folder-meta">' + plCount + ' ' + pluralUnit(plCount, 'playlist', 'playlists') + (subCount > 0 ? ', ' + subCount + ' ' + pluralUnit(subCount, 'folder', 'folders') : '') + '</span>' +
-                        '<div class="folder-actions">' +
-                        '<button class="playlist-btn" onclick="showNewPlaylistInFolder(\'' + escJsAttr(folder.folder) + '\', event)" title="New Playlist">+</button>' +
-                        '<button class="playlist-btn" onclick="showNewSubfolder(\'' + escJsAttr(folder.folder) + '\', event)" title="New Subfolder">&#128193;+</button>' +
-                        '<button class="playlist-btn danger" onclick="deleteFolder(\'' + escJsAttr(folder.folder) + '\', event)" title="Delete Folder">&#10005;</button>' +
-                        '</div></li>';
-                    if (isExpanded) {
-                        html += '<div class="folder-contents">';
-                        html += '<ul class="playlist-list">' + renderFolderNode(folder, false) + '</ul>';
-                        html += '</div>';
-                    }
-                });
-            }
-            if (node.playlists) {
-                node.playlists.forEach(function(pl) {
-                    var expIdx = firstExpandablePlaylistItemIndex(pl.items || []);
-                    var expandTreeBtn = expIdx >= 0
-                        ? '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); showPlaylistDetailAndExpand(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\',' + expIdx + ')" title="Open details and expand remote playlist">Expand</button>'
-                        : '';
-                    html += '<li class="playlist-item">' +
-                        '<span class="playlist-icon">&#9835;</span>' +
-                        '<span class="playlist-name" onclick="showPlaylistDetail(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')">' + escHtml(pl.name) + '</span>' +
-                        '<span class="playlist-count">' + pl.trackCount + ' ' + pluralUnit(pl.trackCount, 'track', 'tracks') + '</span>' +
-                        '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); playPlaylist(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')" title="Play">&#9654;</button>' +
-                        expandTreeBtn +
-                        '<button type="button" class="playlist-btn" onclick="event.stopPropagation(); showPlaylistDetail(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')" title="Details">&#8943;</button>' +
-                        '<button type="button" class="playlist-btn danger" onclick="event.stopPropagation(); deletePlaylist(\'' + escJsAttr(pl.name) + '\',\'' + escJsAttr(pl.folder || '') + '\')" title="Delete">&#10005;</button>' +
-                        '</li>';
-                });
-            }
-            return html;
-        }
-
-        function toggleFolder(path, event) {
-            if (event) {
-                var target = event.target;
-                if (target.closest('.folder-actions') || target.closest('.playlist-btn')) return;
-            }
-            expandedFolders[path] = !expandedFolders[path];
-            renderPlaylistTree();
-        }
-
-        async function playPlaylist(name, folder) {
-            if (!currentGuild) return;
-            try {
-                var url = '/api/guild/' + currentGuild + '/playplaylist/' + encodeURIComponent(name);
-                if (folder) url += '?folder=' + encodeURIComponent(folder);
-                var resp = await authFetch(url, {method: 'POST'});
-                var data = await resp.json();
-                searchResults.innerHTML = '<div class="status-message">' + escHtml(data.message || 'Loading...') + '</div>';
-                refreshAll();
-                setTimeout(function() { searchResults.innerHTML = ''; }, 5000);
-            } catch(e) {}
-        }
-
-        async function deletePlaylist(name, folder) {
-            if (!confirm('Delete playlist "' + name + '"?')) return;
-            try {
-                var url = '/api/playlist/' + encodeURIComponent(name);
-                if (folder) url += '?folder=' + encodeURIComponent(folder);
-                await authFetch(url, {method: 'DELETE'});
-                hidePlaylistDetail();
-                loadPlaylistsTree();
-            } catch(e) {}
-        }
-
-        async function deleteFolder(path, event) {
-            if (event) event.stopPropagation();
-            if (!confirm('Delete folder "' + path + '" and all its contents?')) return;
-            try {
-                await authFetch('/api/playlist-folder', {
-                    method: 'DELETE',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({path: path})
-                });
-                delete expandedFolders[path];
-                loadPlaylistsTree();
-            } catch(e) {}
-        }
-
-        var resolvePlaylistUrlCache = Object.create(null);
-
-        function isExpandablePlaylistUrl(uri) {
-            if (!uri || typeof uri !== 'string') return false;
-            var u = uri.trim().toLowerCase();
-            if (u.indexOf('http://') !== 0 && u.indexOf('https://') !== 0) return false;
-            if (u.indexOf('youtube.com') >= 0 || u.indexOf('youtu.be') >= 0 || u.indexOf('music.youtube.com') >= 0) {
-                if (u.indexOf('list=') >= 0) return true;
-                if (u.indexOf('/playlist') >= 0) return true;
-            }
-            if (u.indexOf('soundcloud.com') >= 0 && u.indexOf('/sets/') >= 0) return true;
-            return false;
-        }
-
-        function firstExpandablePlaylistItemIndex(items) {
-            if (!items || !items.length) return -1;
-            for (var j = 0; j < items.length; j++) {
-                if (isExpandablePlaylistUrl(items[j])) return j;
-            }
-            return -1;
-        }
-
-        function renderExpandedTracksHtml(payload) {
-            var tracks = payload.tracks || [];
-            if (!tracks.length) return '<div class="expand-loading">No tracks</div>';
-            var total = payload.totalAvailable != null ? payload.totalAvailable : tracks.length;
-            var trunc = payload.truncated
-                ? '<div class="playlist-expand-trunc">Showing first ' + tracks.length + ' of ' + total + ' tracks</div>'
-                : '';
-            var rows = tracks.map(function(t) {
-                var u = t.uri || '';
-                return '<li class="playlist-expand-nest-item">' +
-                    '<div class="playlist-expand-nest-meta">' +
-                    '<div class="playlist-expand-nest-title">' + escHtml(t.title || 'Unknown') + '</div>' +
-                    '<div class="playlist-expand-nest-sub">' + escHtml(t.author || '') + (t.durationFormatted ? ' · ' + escHtml(t.durationFormatted) : '') + '</div></div>' +
-                    '<button type="button" class="playlist-btn" onclick="playSingleUri(\'' + escJsAttr(u) + '\')" title="Play">&#9654;</button>' +
-                    '</li>';
-            }).join('');
-            return '<ul class="playlist-expand-nested">' + rows + '</ul>' + trunc;
-        }
-
-        async function expandRemotePlaylistRow(index) {
-            var items = renderPlaylistDetail.lastItems || [];
-            var uri = items[index];
-            if (!uri || !currentGuild) return;
-            var slot = document.getElementById('playlist-expand-' + index);
-            if (!slot) return;
-            if (resolvePlaylistUrlCache[uri]) {
-                slot.innerHTML = renderExpandedTracksHtml(resolvePlaylistUrlCache[uri]);
-                return;
-            }
-            slot.innerHTML = '<div class="expand-loading"><span class="loading-spinner"></span> Loading tracks…</div>';
-            try {
-                var resp = await authFetch('/api/guild/' + currentGuild + '/resolve-playlist-url', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({url: uri})
-                });
-                var payload = await readApiJson(resp);
-                if (!resp.ok) {
-                    slot.innerHTML = '<div class="expand-loading">' + escHtml(payload.error || 'Could not load tracks') + '</div>';
-                    return;
+        // One toast stack at the bottom of the window for every result of a playlist action. At most PL_TOAST_MAX
+        // at once (the oldest goes first), so a few quick removals each keep their own Undo. Returns {dismiss()}.
+        function plToast(text, opts) {
+            opts = opts || {};
+            var el = plEl('div', 'pl-toast' + (opts.error ? ' error' : ''));
+            el.appendChild(plEl('span', 'pl-toast-text', text));
+            var timer = null;
+            var handle = {
+                dismiss: function () {
+                    if (timer) clearTimeout(timer);
+                    timer = null;
+                    if (el.parentNode) el.parentNode.removeChild(el);
                 }
-                resolvePlaylistUrlCache[uri] = payload;
-                slot.innerHTML = renderExpandedTracksHtml(payload);
-            } catch (e) {
-                slot.innerHTML = '<div class="expand-loading">Failed to load tracks</div>';
-            }
-        }
-
-        async function fetchPlaylistDetail(name, folder) {
-            var url = '/api/playlist-detail/' + encodeURIComponent(name);
-            if (folder) url += '?folder=' + encodeURIComponent(folder);
-            var resp = await authFetch(url);
-            return readApiJson(resp);
-        }
-
-        async function showPlaylistDetail(name, folder) {
-            try {
-                var data = await fetchPlaylistDetail(name, folder);
-                renderPlaylistDetail(data);
-            } catch(e) {}
-        }
-
-        async function showPlaylistDetailAndExpand(name, folder, itemIndex) {
-            try {
-                var data = await fetchPlaylistDetail(name, folder);
-                renderPlaylistDetail(data);
-                var idx = typeof itemIndex === 'number' ? itemIndex : -1;
-                if (idx < 0) return;
-                requestAnimationFrame(function() {
-                    requestAnimationFrame(function() {
-                        expandRemotePlaylistRow(idx);
-                    });
+            };
+            if (opts.actionLabel && typeof opts.onAction === 'function') {
+                var act = plEl('button', 'pl-toast-action', opts.actionLabel);
+                act.type = 'button';
+                act.addEventListener('click', function () {
+                    handle.dismiss();
+                    opts.onAction();
                 });
-            } catch(e) {}
+                el.appendChild(act);
+            }
+            plToastBox.appendChild(el);
+            while (plToastBox.children.length > PL_TOAST_MAX) plToastBox.removeChild(plToastBox.firstChild);
+            timer = setTimeout(handle.dismiss, opts.ms || (opts.error ? 8000 : 5000));
+            return handle;
         }
 
-        function renderPlaylistDetail(data) {
-            renderPlaylistDetail.lastItems = data.items || [];
-            var folderOptions = buildFolderOptions(playlistTree, '');
-            var items = data.items || [];
-            var tracksHtml = items.map(function(uri, i) {
-                var displayUri = uri;
-                if (uri.startsWith('ytsearch:')) displayUri = uri.substring(9);
-                else if (uri.startsWith('http')) {
-                    try { displayUri = decodeURIComponent(uri).substring(0, 80); } catch(e) { displayUri = uri.substring(0, 80); }
+        // A request that threw: a lost login already shows the login overlay; anything else is a network problem.
+        function plCatch(e) {
+            if (e && e.message === 'unauthorized') return;
+            plToast("Couldn't reach the server — try again", { error: true });
+        }
+
+        function plDelay(ms) {
+            return new Promise(function (resolve) { setTimeout(resolve, ms); });
+        }
+
+        function plPersonName(person) {
+            return person && typeof person.name === 'string' ? person.name.trim() : '';
+        }
+
+        function plIsWebLink(uri) {
+            return /^https?:\/\//i.test(uri);
+        }
+
+        // What /play can load: a link or a search. A local file path it cannot.
+        function plCanQueue(uri) {
+            return plIsWebLink(uri) || /^(?:ytsearch|ytmsearch|scsearch):/.test(uri);
+        }
+
+        // A song title kept short enough for a toast.
+        function plShort(text) {
+            return text.length > 60 ? text.slice(0, 59) + '…' : text;
+        }
+
+        function plFolderLabel(path) {
+            return path ? path.split('/').join(' / ') : 'the top level';
+        }
+
+        function plDaysLeft(days) {
+            var n = Number(days);
+            if (!isFinite(n) || n < 1) return 'less than a day left';
+            return n === 1 ? '1 day left' : n + ' days left';
+        }
+
+        // "2 h 5 min", "47 min", "under a minute".
+        function plFormatTotal(ms) {
+            var minutes = Math.round(ms / 60000);
+            if (minutes < 1) return 'under a minute';
+            var h = Math.floor(minutes / 60);
+            var m = minutes % 60;
+            return h > 0 ? h + ' h' + (m ? ' ' + m + ' min' : '') : m + ' min';
+        }
+
+        function plShortDate(iso) {
+            if (!iso) return '';
+            var d = new Date(iso);
+            return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        // "Added by fred · Oct 13, 2026", leaving out what is not known.
+        function plAddedTip(song) {
+            var date = plShortDate(song.addedAt);
+            if (song.addedBy && date) return 'Added by ' + song.addedBy + ' · ' + date;
+            if (song.addedBy) return 'Added by ' + song.addedBy;
+            return date ? 'Added ' + date : '';
+        }
+
+        function plIconBtn(label, title, onClick, extraClass) {
+            var b = plEl('button', 'playlist-btn' + (extraClass ? ' ' + extraClass : ''), label);
+            b.type = 'button';
+            b.title = title;
+            b.setAttribute('aria-label', title);
+            b.addEventListener('click', function (e) {
+                e.stopPropagation();
+                onClick(b);
+            });
+            return b;
+        }
+
+        function plBtn(label, cls, onClick) {
+            var b = plEl('button', 'btn-sm' + (cls ? ' ' + cls : ''), label);
+            b.type = 'button';
+            b.addEventListener('click', onClick);
+            return b;
+        }
+
+        function plNormalizeDeleted(raw) {
+            return {
+                id: raw.id,
+                name: raw.name,
+                folder: typeof raw.originalFolder === 'string' ? raw.originalFolder : '',
+                deletedBy: plPersonName(raw.deletedBy),
+                deletedAt: typeof raw.deletedAt === 'string' ? raw.deletedAt : '',
+                daysLeft: Number(raw.daysLeft)
+            };
+        }
+
+        function plNormalizeSong(raw) {
+            var uri = typeof raw.uri === 'string' ? raw.uri : '';
+            var length = Number(raw.durationMs);
+            return {
+                id: typeof raw.id === 'string' ? raw.id : '',
+                uri: uri,
+                title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : (uri || 'Unknown'),
+                author: typeof raw.author === 'string' ? raw.author : '',
+                durationMs: isFinite(length) && length > 0 && length < PL_MAX_DURATION_MS ? Math.round(length) : 0,
+                artworkUrl: typeof raw.artworkUrl === 'string' && plIsWebLink(raw.artworkUrl) ? raw.artworkUrl : null,
+                addedBy: plPersonName(raw.addedBy),
+                addedAt: typeof raw.addedAt === 'string' ? raw.addedAt : '',
+                unresolved: raw.unresolved === true
+            };
+        }
+
+        // The {uri, title, author, durationMs, artworkUrl} the server wants, for the "Add to playlist" picker.
+        function plPickerSong(song) {
+            return { uri: song.uri, title: song.title, author: song.author || null, durationMs: song.durationMs, artworkUrl: song.artworkUrl };
+        }
+
+        function plFillFolderSelect(select, current, topLabel) {
+            select.textContent = '';
+            var top = plEl('option', null, topLabel);
+            top.value = '';
+            select.appendChild(top);
+            var paths = plTree ? plTree.folders.slice() : [];
+            paths.sort(function (a, b) { return a.localeCompare(b, undefined, PL_COLLATE); });
+            paths.forEach(function (path) {
+                var o = plEl('option', null, path.split('/').join(' / '));
+                o.value = path;
+                select.appendChild(o);
+            });
+            select.value = current || '';
+        }
+
+        function plRevealFolder(path) {
+            var acc = '';
+            (path ? path.split('/') : []).forEach(function (seg) {
+                acc = acc ? acc + '/' + seg : seg;
+                plExpanded[acc] = true;
+            });
+        }
+
+        // ---- the ⋯ menu -----------------------------------------------------------------------------------------
+
+        // items: [{label, run, danger?, checked?}]. Clicking the button that opened the menu closes it again.
+        function plOpenMenu(anchor, items) {
+            var toggleOff = plMenu && plMenu.anchor === anchor;
+            plCloseMenu(false);
+            if (toggleOff) return;
+            var menu = plEl('div', 'pl-menu');
+            menu.setAttribute('role', 'menu');
+            items.forEach(function (it) {
+                var b = plEl('button', 'pl-menu-item' + (it.danger ? ' danger' : ''));
+                b.type = 'button';
+                b.setAttribute('role', it.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
+                if (it.checked !== undefined) b.setAttribute('aria-checked', it.checked ? 'true' : 'false');
+                b.appendChild(plEl('span', 'pl-menu-label', it.label));
+                if (it.checked) b.appendChild(plEl('span', 'pl-check', '✓'));
+                b.addEventListener('click', function () {
+                    plCloseMenu(true);
+                    it.run();
+                });
+                menu.appendChild(b);
+            });
+            var m = { el: menu, anchor: anchor };
+            m.onDown = function (e) {
+                if (!menu.contains(e.target) && !anchor.contains(e.target)) plCloseMenu(false);
+            };
+            m.onKey = function (e) {
+                var buttons = Array.prototype.slice.call(menu.querySelectorAll('.pl-menu-item'));
+                var at = buttons.indexOf(document.activeElement);
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    plCloseMenu(true);
+                } else if (e.key === 'Tab') {
+                    plCloseMenu(false);
+                } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+                    e.preventDefault();
+                    var next = e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1
+                        : (at + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+                    buttons[next].focus();
                 }
-                var expandBtn = isExpandablePlaylistUrl(uri)
-                    ? '<button type="button" class="playlist-btn" onclick="expandRemotePlaylistRow(' + i + ')" title="List tracks from this playlist URL">Expand</button>'
-                    : '';
-                return '<li class="playlist-track-row">' +
-                    '<div class="playlist-track-item-inner">' +
-                    '<span class="playlist-track-idx">' + (i + 1) + '</span>' +
-                    '<span class="playlist-track-uri" title="' + escHtmlAttr(uri) + '">' + escHtml(displayUri) + '</span>' +
-                    '<button type="button" class="playlist-btn" onclick="playSingleUri(\'' + escJsAttr(uri) + '\')" title="Play">&#9654;</button>' +
-                    expandBtn +
-                    '<button type="button" class="playlist-btn danger" onclick="removePlaylistTrack(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\',' + i + ')" title="Remove">&#10005;</button>' +
-                    '</div>' +
-                    '<div class="playlist-expand-slot" id="playlist-expand-' + i + '"></div>' +
-                    '</li>';
-            }).join('');
+            };
+            m.onMove = function (e) {
+                if (e.type === 'scroll' && menu.contains(e.target)) return;
+                plCloseMenu(false);
+            };
+            document.addEventListener('pointerdown', m.onDown, true);
+            document.addEventListener('keydown', m.onKey, true);
+            window.addEventListener('resize', m.onMove);
+            window.addEventListener('scroll', m.onMove, true);
+            document.body.appendChild(menu);
+            plMenu = m;
 
-            playlistDetailPanel.innerHTML =
-                '<div class="playlist-detail-panel">' +
-                '<div class="playlist-detail-header">' +
-                '<span class="playlist-detail-title">' + escHtml(data.name) + '</span>' +
-                '<div style="display:flex;gap:6px;align-items:center">' +
-                '<button class="btn-sm" onclick="playPlaylist(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\')">&#9654; Play All</button>' +
-                '<button class="btn-sm" onclick="startRenamePlaylist(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\')">Rename</button>' +
-                '<select class="playlist-move-select" onchange="movePlaylistToFolder(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\', this.value)" title="Move to folder">' +
-                '<option value="">Move to...</option>' + folderOptions + '</select>' +
-                '<button class="btn-sm" onclick="hidePlaylistDetail()" style="color:var(--text-tertiary)">Close</button>' +
-                '</div></div>' +
-                (data.folder ? '<div style="font-size:0.75rem;color:var(--text-tertiary);margin-bottom:10px">Folder: ' + escHtml(data.folder) + '</div>' : '') +
-                '<ul class="playlist-detail-tracks">' + tracksHtml + '</ul>' +
-                '<div class="playlist-action-row">' +
-                '<button class="btn-sm" onclick="addTrackToPlaylist(\'' + escJsAttr(data.name) + '\',\'' + escJsAttr(data.folder || '') + '\')">+ Add Track</button>' +
-                '</div>' +
-                '</div>';
-            playlistDetailPanel.style.display = '';
+            var r = anchor.getBoundingClientRect();
+            var vw = document.documentElement.clientWidth;
+            var vh = window.innerHeight;
+            var w = menu.offsetWidth;
+            var h = menu.offsetHeight;
+            menu.style.left = Math.max(8, Math.min(r.right - w, vw - w - 8)) + 'px';
+            var top = (vh - r.bottom - 8 >= h || r.top < h + 8) ? r.bottom + 4 : r.top - h - 4;
+            menu.style.top = Math.max(8, Math.min(top, vh - h - 8)) + 'px';
+            var first = menu.querySelector('.pl-menu-item');
+            if (first) first.focus({ preventScroll: true });
         }
 
-        function hidePlaylistDetail() {
-            playlistDetailPanel.style.display = 'none';
-            playlistDetailPanel.innerHTML = '';
+        function plCloseMenu(restoreFocus) {
+            var m = plMenu;
+            if (!m) return;
+            plMenu = null;
+            document.removeEventListener('pointerdown', m.onDown, true);
+            document.removeEventListener('keydown', m.onKey, true);
+            window.removeEventListener('resize', m.onMove);
+            window.removeEventListener('scroll', m.onMove, true);
+            if (m.el.parentNode) m.el.parentNode.removeChild(m.el);
+            if (restoreFocus && m.anchor.isConnected) m.anchor.focus({ preventScroll: true });
         }
 
-        function buildFolderOptions(node, prefix) {
-            var html = '';
-            if (!node || !node.folders) return html;
-            node.folders.forEach(function(folder) {
-                var displayPath = prefix ? prefix + ' / ' + folder.name : folder.name;
-                html += '<option value="' + escHtmlAttr(folder.folder) + '">' + escHtml(displayPath) + '</option>';
-                if (folder.folders && folder.folders.length > 0) {
-                    html += buildFolderOptions(folder, displayPath);
+        // ---- the small confirm bar ------------------------------------------------------------------------------
+
+        // place(bar) puts the bar where it belongs and returns the element to remove again (the bar, or its list
+        // item). Focus starts on Cancel, the safe choice; it goes back to `returnTo` when the bar is cancelled.
+        function plShowConfirm(place, text, yesLabel, onYes, returnTo) {
+            plCloseConfirm();
+            var bar = plEl('div', 'pl-confirm');
+            bar.setAttribute('role', 'group');
+            bar.setAttribute('aria-label', 'Confirm');
+            bar.appendChild(plEl('span', 'pl-confirm-text', text));
+            var yes = plBtn(yesLabel, 'pl-danger', function () {
+                plCloseConfirm(false);
+                onYes();
+            });
+            var no = plBtn('Cancel', '', function () { plCloseConfirm(true); });
+            bar.appendChild(yes);
+            bar.appendChild(no);
+            bar.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    plCloseConfirm(true);
                 }
             });
-            return html;
+            plConfirmRoot = place(bar) || bar;
+            plConfirmReturn = returnTo || null;
+            no.focus({ preventScroll: true });
         }
 
-        async function playSingleUri(uri) {
-            if (!currentGuild || !uri) return;
-            try {
-                await authFetch('/api/guild/' + currentGuild + '/play', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({query: uri})
-                });
-                refreshAll();
-            } catch(e) {}
+        function plCloseConfirm(restoreFocus) {
+            var root = plConfirmRoot;
+            var back = plConfirmReturn;
+            plConfirmRoot = null;
+            plConfirmReturn = null;
+            if (root && root.parentNode) root.parentNode.removeChild(root);
+            if (restoreFocus && back && back.isConnected) back.focus({ preventScroll: true });
         }
 
-        async function removePlaylistTrack(name, folder, index) {
+        // After `row` in the tree list.
+        function plPlaceAfter(row) {
+            return function (bar) {
+                var item = plEl('li');
+                item.appendChild(bar);
+                row.parentNode.insertBefore(item, row.nextSibling);
+                return item;
+            };
+        }
+
+        // ---- the tree -------------------------------------------------------------------------------------------
+
+        async function plLoadPaneTree() {
+            var seq = ++plTreeSeq;
+            var next = null;
             try {
-                var url = '/api/playlist-detail/' + encodeURIComponent(name);
-                if (folder) url += '?folder=' + encodeURIComponent(folder);
-                var resp = await authFetch(url);
-                var data = await resp.json();
-                var items = data.items || [];
-                if (index >= 0 && index < items.length) {
-                    items.splice(index, 1);
-                    var saveUrl = '/api/playlist/' + encodeURIComponent(name);
-                    await authFetch(saveUrl, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({items: items, folder: folder || ''})
-                    });
-                    showPlaylistDetail(name, folder);
-                    loadPlaylistsTree();
+                var res = await plApi('GET', '/api/playlists/tree');
+                if (seq !== plTreeSeq) return;
+                if (res.ok) {
+                    next = {
+                        playlists: (Array.isArray(res.data.playlists) ? res.data.playlists : [])
+                            .filter(function (raw) { return raw && typeof raw.name === 'string' && raw.name; })
+                            .map(plNormalize),
+                        folders: (Array.isArray(res.data.folders) ? res.data.folders : [])
+                            .filter(function (f) { return typeof f === 'string' && f; }),
+                        deleted: (Array.isArray(res.data.deleted) ? res.data.deleted : [])
+                            .filter(function (raw) { return raw && typeof raw.id === 'string' && typeof raw.name === 'string' && raw.name; })
+                            .map(plNormalizeDeleted)
+                    };
+                } else if (!plTree) {
+                    plTreeError = plErrorText(res, "Couldn't load your playlists");
                 }
-            } catch(e) {}
+            } catch (e) {
+                if (seq !== plTreeSeq) return;
+                if (e && e.message === 'unauthorized') return;
+                if (!plTree) plTreeError = "Couldn't reach the server";
+            }
+            if (!next) {
+                if (!plTree) plRenderTree(); // a refresh that fails keeps the tree on screen
+                return;
+            }
+            plTreeError = '';
+            var sig = JSON.stringify(next);
+            var changed = sig !== plTreeSig;
+            plTree = next;
+            plTreeSig = sig;
+            if (changed) plRenderTree();
+            plCheckOpenPage();
         }
 
-        async function movePlaylistToFolder(name, fromFolder, toFolder) {
-            if (!toFolder && toFolder !== '') return;
+        // The open page's playlist was renamed, moved or deleted by someone else: back to the tree.
+        function plCheckOpenPage() {
+            var page = plPage;
+            if (!page || !page.loaded || page.structureOps > 0 || !plTree) return;
+            var there = plTree.playlists.some(function (pl) { return pl.name === page.name && pl.folder === page.folder; });
+            if (!there) plPageGone(page);
+        }
+
+        function plPageGone(page) {
+            if (plPage !== page) return;
+            plToast('“' + page.name + '” was renamed, moved or deleted', {});
+            plShowTree('');
+        }
+
+        function plRefreshAll() {
+            plLoadPaneTree();
+            plLoadMigration();
+        }
+
+        // folders (flat paths) and playlists (each with its folder) -> nested nodes, sorted.
+        function plTreeNodes(tree) {
+            var root = { path: '', name: '', children: [], playlists: [] };
+            var byPath = Object.create(null);
+            byPath[''] = root;
+            var ensure = function (path) {
+                if (byPath[path]) return byPath[path];
+                var cut = path.lastIndexOf('/');
+                var parent = ensure(cut < 0 ? '' : path.substring(0, cut));
+                var node = { path: path, name: path.substring(cut + 1), children: [], playlists: [] };
+                parent.children.push(node);
+                byPath[path] = node;
+                return node;
+            };
+            tree.folders.forEach(function (path) { ensure(path); });
+            tree.playlists.forEach(function (pl) { ensure(pl.folder).playlists.push(pl); });
+            var sortNode = function (node) {
+                node.children.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, PL_COLLATE); });
+                node.playlists.sort(plCompare);
+                node.children.forEach(sortNode);
+            };
+            sortNode(root);
+            return root;
+        }
+
+        function plRenderTree() {
+            // Only what sits in the tree goes with the redraw; a bar or menu of the open page stays.
+            if (plConfirmRoot && plTreeView.contains(plConfirmRoot)) plCloseConfirm(false);
+            if (plMenu && plTreeView.contains(plMenu.anchor)) plCloseMenu(false);
+            playlistList.textContent = '';
+            plFolderEls = Object.create(null);
+            if (!plTree) {
+                playlistEmpty.style.display = 'none';
+                var msg = plEl('li', 'pl-hint');
+                if (plTreeError) {
+                    msg.appendChild(document.createTextNode(plTreeError));
+                    msg.appendChild(document.createElement('br'));
+                    var retry = plBtn('Try again', '', plLoadPaneTree);
+                    retry.style.marginTop = '8px';
+                    msg.appendChild(retry);
+                } else {
+                    msg.appendChild(plEl('span', 'loading-spinner'));
+                    msg.appendChild(document.createTextNode('Loading playlists…'));
+                }
+                playlistList.appendChild(msg);
+                plRenderDeleted();
+                return;
+            }
+            plAppendNode(playlistList, plTreeNodes(plTree));
+            playlistEmpty.style.display = plTree.playlists.length || plTree.folders.length ? 'none' : '';
+            plRenderDeleted();
+        }
+
+        function plAppendNode(ul, node) {
+            node.children.forEach(function (child) {
+                ul.appendChild(plFolderRow(child));
+                if (!plExpanded[child.path]) return;
+                var wrap = plEl('li');
+                var inner = plEl('ul', 'playlist-list folder-contents');
+                if (!child.children.length && !child.playlists.length) inner.appendChild(plEl('li', 'pl-hint', 'Nothing in this folder yet'));
+                else plAppendNode(inner, child);
+                wrap.appendChild(inner);
+                ul.appendChild(wrap);
+            });
+            node.playlists.forEach(function (pl) { ul.appendChild(plPlaylistRow(pl)); });
+        }
+
+        function plToggleFolder(path, keepFocus) {
+            plExpanded[path] = !plExpanded[path];
+            plRenderTree();
+            if (keepFocus && plFolderEls[path]) plFolderEls[path].focus({ preventScroll: true });
+        }
+
+        function plFolderRow(node) {
+            var open = !!plExpanded[node.path];
+            var li = plEl('li', 'folder-item ' + (open ? 'open' : 'closed'));
+            li.tabIndex = 0;
+            li.setAttribute('role', 'button');
+            li.setAttribute('aria-expanded', open ? 'true' : 'false');
+            li.appendChild(plEl('span', 'folder-icon', open ? '📂' : '📁'));
+            li.appendChild(plEl('span', 'folder-name', node.name));
+            var n = node.playlists.length;
+            var m = node.children.length;
+            li.appendChild(plEl('span', 'folder-meta', n + ' ' + pluralUnit(n, 'playlist', 'playlists')
+                + (m > 0 ? ', ' + m + ' ' + pluralUnit(m, 'folder', 'folders') : '')));
+            var actions = plEl('div', 'folder-actions');
+            actions.appendChild(plIconBtn('+', 'New playlist in this folder', function () { plOpenDialog('playlist', node.path); }));
+            actions.appendChild(plIconBtn('📁+', 'New subfolder', function () { plOpenDialog('folder', node.path); }));
+            actions.appendChild(plIconBtn('✕', 'Delete folder', function (btn) {
+                plShowConfirm(plPlaceAfter(li), 'Move the playlists in this folder to Deleted? You can restore them for 7 days.',
+                    'Delete folder', function () { plDeleteFolder(node.path); }, btn);
+            }, 'danger'));
+            li.appendChild(actions);
+            li.addEventListener('click', function () { plToggleFolder(node.path, false); });
+            li.addEventListener('keydown', function (e) {
+                if (e.target === li && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    plToggleFolder(node.path, true);
+                }
+            });
+            plFolderEls[node.path] = li;
+            return li;
+        }
+
+        function plPlaylistRow(pl) {
+            var li = plEl('li', 'playlist-item');
+            li.appendChild(plEl('span', 'playlist-icon', '♫'));
+            var text = plEl('div', 'playlist-text');
+            var name = plEl('button', 'playlist-name', pl.name);
+            name.type = 'button';
+            name.title = (pl.folder ? pl.folder + ' / ' : '') + pl.name;
+            text.appendChild(name);
+            text.appendChild(plEl('span', 'playlist-count' + (pl.legacy ? ' upgrading' : ''),
+                pl.legacy ? 'upgrading…' : pl.songCount + ' ' + pluralUnit(pl.songCount, 'song', 'songs')));
+            li.appendChild(text);
+            li.appendChild(plIconBtn('▶', 'Play', function () { plPlay(pl.name, pl.folder, 'all'); }));
+            if (!pl.legacy) {
+                li.appendChild(plIconBtn('✕', 'Move to Deleted', function (btn) {
+                    plShowConfirm(plPlaceAfter(li), 'Move “' + pl.name + '” to Deleted? You can restore it for 7 days.',
+                        'Move to Deleted', function () { plDeletePlaylist(pl.name, pl.folder, null); }, btn);
+                }, 'danger'));
+            }
+            li.addEventListener('click', function () { plOpenPage(pl.name, pl.folder); });
+            return li;
+        }
+
+        // ---- the Deleted section --------------------------------------------------------------------------------
+
+        function plRenderDeleted() {
+            var box = plDeletedBox;
+            box.textContent = '';
+            var gone = plTree ? plTree.deleted : [];
+            if (!gone.length) {
+                box.hidden = true;
+                return;
+            }
+            box.hidden = false;
+            var head = plEl('button', 'pl-deleted-head');
+            head.type = 'button';
+            head.setAttribute('aria-expanded', plDeletedOpen ? 'true' : 'false');
+            head.appendChild(plEl('span', null, plDeletedOpen ? '▾' : '▸'));
+            head.appendChild(plEl('span', null, 'Deleted (' + gone.length + ')'));
+            head.addEventListener('click', function () {
+                plDeletedOpen = !plDeletedOpen;
+                plRenderDeleted();
+                var again = plDeletedBox.querySelector('.pl-deleted-head');
+                if (again) again.focus({ preventScroll: true });
+            });
+            box.appendChild(head);
+            if (!plDeletedOpen) return;
+            var ul = plEl('ul', 'playlist-list');
+            gone.slice().sort(function (a, b) { return a.deletedAt < b.deletedAt ? 1 : a.deletedAt > b.deletedAt ? -1 : 0; })
+                .forEach(function (d) {
+                    var li = plEl('li', 'pl-deleted-item');
+                    var info = plEl('div', 'pl-deleted-info');
+                    var title = plEl('div', 'pl-deleted-name', d.name);
+                    if (d.folder) title.appendChild(plEl('span', 'pl-deleted-folder', d.folder));
+                    info.appendChild(title);
+                    var meta = [];
+                    if (d.deletedBy) meta.push('deleted by ' + d.deletedBy);
+                    meta.push(plDaysLeft(d.daysLeft));
+                    info.appendChild(plEl('div', 'pl-deleted-meta', meta.join(' · ')));
+                    li.appendChild(info);
+                    li.appendChild(plBtn('Restore', '', function (e) { plRestore(d, e.currentTarget); }));
+                    ul.appendChild(li);
+                });
+            box.appendChild(ul);
+        }
+
+        async function plRestore(entry, button) {
+            button.disabled = true;
             try {
-                await authFetch('/api/playlist-move', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name: name, fromFolder: fromFolder, toFolder: toFolder})
-                });
-                hidePlaylistDetail();
-                loadPlaylistsTree();
-            } catch(e) {}
+                var res = await plApi('POST', '/api/playlists/restore', { id: entry.id });
+                if (res.ok) {
+                    var name = typeof res.data.name === 'string' && res.data.name ? res.data.name : entry.name;
+                    var folder = typeof res.data.folder === 'string' ? res.data.folder : entry.folder;
+                    var elsewhere = folder !== entry.folder || name !== entry.name;
+                    plToast('Restored “' + name + '”' + (elsewhere ? ' to ' + plFolderLabel(folder) : ''), {});
+                    plRevealFolder(folder);
+                    plLoadPaneTree();
+                    return;
+                }
+                plToast(plErrorText(res, "Couldn't restore that playlist"), { error: true });
+            } catch (e) {
+                plCatch(e);
+            }
+            button.disabled = false;
         }
 
-        function startRenamePlaylist(name, folder) {
-            var newName = prompt('Rename playlist to:', name);
-            if (!newName || newName.trim() === '' || newName.trim() === name) return;
-            authFetch('/api/playlist-rename/' + encodeURIComponent(name), {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({newName: newName.trim(), folder: folder || ''})
-            }).then(function() {
-                hidePlaylistDetail();
-                loadPlaylistsTree();
-            }).catch(function() {});
-        }
+        // ---- creating, deleting, saving the queue ---------------------------------------------------------------
 
-        function addTrackToPlaylist(name, folder) {
-            var uri = prompt('Enter track URL or search term:');
-            if (!uri || !uri.trim()) return;
-            var item = uri.trim();
-            if (!item.startsWith('http')) item = 'ytsearch:' + item;
-            var url = '/api/playlist-detail/' + encodeURIComponent(name);
-            if (folder) url += '?folder=' + encodeURIComponent(folder);
-            authFetch(url).then(function(r) { return r.json(); }).then(function(data) {
-                var items = data.items || [];
-                items.push(item);
-                var saveUrl = '/api/playlist/' + encodeURIComponent(name);
-                return authFetch(saveUrl, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({items: items, folder: folder || ''})
-                });
-            }).then(function() {
-                showPlaylistDetail(name, folder);
-                loadPlaylistsTree();
-            }).catch(function() {});
-        }
-
-        function showNewPlaylistDialog() {
-            dialogMode = 'playlist';
-            playlistDialogInput.placeholder = 'Playlist name...';
+        function plOpenDialog(kind, parent) {
+            plDialog = { kind: kind, parent: parent || '', busy: false };
+            playlistSaveRow.style.display = 'none';
+            var what = kind === 'folder' ? (parent ? 'Subfolder name' : 'Folder name') : 'Playlist name';
+            playlistDialogInput.placeholder = what + (parent ? ' in ' + parent : '') + '…';
             playlistDialogInput.value = '';
-            playlistDialogRow.style.display = 'flex';
             playlistDialogOk.textContent = 'Create';
-            playlistDialogOk.onclick = function() { createNewPlaylist(''); };
+            playlistDialogRow.style.display = 'flex';
             playlistDialogInput.focus();
         }
 
-        function showNewPlaylistInFolder(folder, event) {
-            if (event) event.stopPropagation();
-            dialogMode = 'playlist';
-            var safeFolder = (typeof folder === 'string') ? folder : '';
-            playlistDialogInput.placeholder = 'Playlist name in ' + safeFolder + '...';
-            playlistDialogInput.value = '';
-            playlistDialogRow.style.display = 'flex';
-            playlistDialogOk.textContent = 'Create';
-            playlistDialogOk.onclick = function() { createNewPlaylist(safeFolder); };
-            playlistDialogInput.focus();
-        }
-
-        function showNewFolderDialog() {
-            dialogMode = 'folder';
-            playlistDialogInput.placeholder = 'Folder name...';
-            playlistDialogInput.value = '';
-            playlistDialogRow.style.display = 'flex';
-            playlistDialogOk.textContent = 'Create';
-            playlistDialogOk.onclick = function() { createNewFolder(''); };
-            playlistDialogInput.focus();
-        }
-
-        function showNewSubfolder(parent, event) {
-            if (event) event.stopPropagation();
-            dialogMode = 'folder';
-            var safeParent = (typeof parent === 'string') ? parent : '';
-            playlistDialogInput.placeholder = 'Subfolder name in ' + safeParent + '...';
-            playlistDialogInput.value = '';
-            playlistDialogRow.style.display = 'flex';
-            playlistDialogOk.textContent = 'Create';
-            playlistDialogOk.onclick = function() { createNewFolder(safeParent); };
-            playlistDialogInput.focus();
-        }
+        function showNewPlaylistDialog() { plOpenDialog('playlist', ''); }
+        function showNewFolderDialog() { plOpenDialog('folder', ''); }
 
         function hidePlaylistDialog() {
             playlistDialogRow.style.display = 'none';
             playlistDialogInput.value = '';
-            dialogMode = null;
+            plDialog = null;
         }
 
-        async function createNewPlaylist(folder) {
+        async function plSubmitDialog() {
+            var d = plDialog;
+            if (!d || d.busy) return;
             var name = playlistDialogInput.value.trim();
-            if (!name) return;
+            if (!name) {
+                playlistDialogInput.focus();
+                return;
+            }
+            d.busy = true;
             try {
-                await authFetch('/api/playlist/' + encodeURIComponent(name), {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({items: [], folder: folder || ''})
-                });
-                hidePlaylistDialog();
-                loadPlaylistsTree();
-                showPlaylistDetail(name, folder || '');
-            } catch(e) {}
+                if (d.kind === 'folder') {
+                    if (/[\/\\]/.test(name)) {
+                        plToast("A folder name can't contain / or \\", { error: true });
+                        return;
+                    }
+                    var path = d.parent ? d.parent + '/' + name : name;
+                    var made = await plApi('POST', '/api/playlists/folder', { path: path });
+                    if (!made.ok) {
+                        plToast(plErrorText(made, "Couldn't create the folder"), { error: true });
+                        return;
+                    }
+                    hidePlaylistDialog();
+                    plRevealFolder(d.parent);
+                    plToast('Created folder “' + name + '”', {});
+                    plLoadPaneTree();
+                } else {
+                    var created = await plApi('POST', '/api/playlists', { name: name, folder: d.parent });
+                    if (!created.ok) {
+                        plToast(plErrorText(created, "Couldn't create the playlist"), { error: true });
+                        return;
+                    }
+                    var madeName = typeof created.data.name === 'string' && created.data.name ? created.data.name : name;
+                    var madeFolder = typeof created.data.folder === 'string' ? created.data.folder : d.parent;
+                    hidePlaylistDialog();
+                    plRevealFolder(madeFolder);
+                    plToast('Created “' + madeName + '”', {});
+                    plLoadPaneTree();
+                    plOpenPage(madeName, madeFolder);
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                d.busy = false;
+            }
         }
 
-        async function createNewFolder(parent) {
-            var name = playlistDialogInput.value.trim();
-            if (!name) return;
+        // Gone from the tree at once, before the next answer from the server confirms it.
+        function plDropFromTree(name, folder) {
+            if (!plTree) return;
+            plTree.playlists = plTree.playlists.filter(function (pl) { return !(pl.name === name && pl.folder === folder); });
+            plTreeSig = '';
+        }
+
+        // page: the open page of this playlist (the answer goes back to the tree), or null from the tree itself.
+        async function plDeletePlaylist(name, folder, page) {
+            if (page) page.structureOps++;
             try {
-                await authFetch('/api/playlist-folder', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name: name, parent: parent || ''})
-                });
-                hidePlaylistDialog();
-                loadPlaylistsTree();
-            } catch(e) {}
+                var res = await plApi('POST', '/api/playlists/delete', { name: name, folder: folder });
+                if (res.ok) {
+                    plDropFromTree(name, folder);
+                    plToast('Moved “' + name + '” to Deleted', {});
+                    plLoadPaneTree();
+                    if (page && plPage === page) plShowTree(folder);
+                    else plRenderTree();
+                } else {
+                    plToast(plErrorText(res, "Couldn't delete that playlist"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                if (page) page.structureOps--;
+            }
+        }
+
+        async function plDeleteFolder(path) {
+            try {
+                var res = await plApi('POST', '/api/playlists/folder/delete', { path: path });
+                if (res.ok) {
+                    var moved = Number(res.data.moved) || 0;
+                    Object.keys(plExpanded).forEach(function (key) {
+                        if (key === path || key.indexOf(path + '/') === 0) delete plExpanded[key];
+                    });
+                    var label = path.split('/').pop();
+                    plToast('Deleted folder “' + label + '”' + (moved > 0
+                        ? ' — ' + moved + ' ' + pluralUnit(moved, 'playlist', 'playlists') + ' moved to Deleted' : ''), {});
+                    plLoadPaneTree();
+                } else {
+                    plToast(plErrorText(res, "Couldn't delete that folder"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            }
         }
 
         function showSaveQueueDialog() {
+            hidePlaylistDialog();
             playlistSaveInput.value = '';
-            var folderOptions = buildFolderOptions(playlistTree, '');
-            playlistSaveFolder.innerHTML = '<option value="">Root</option>' + folderOptions;
+            plFillFolderSelect(playlistSaveFolder, '', 'Top level');
             playlistSaveRow.style.display = 'flex';
             playlistSaveInput.focus();
         }
@@ -8524,30 +8947,929 @@
             playlistSaveInput.value = '';
         }
 
+        // Creates the playlist, then adds the queue's songs. If the songs are refused the playlist stays (empty), and
+        // the message says so.
         async function savePlaylistFromQueue() {
+            if (plSaving) return;
             var name = playlistSaveInput.value.trim();
-            if (!name) return;
-            if (!currentGuild) return;
+            if (!name) {
+                playlistSaveInput.focus();
+                return;
+            }
+            if (!currentGuild) {
+                plToast('Pick a server first', { error: true });
+                return;
+            }
             var folder = playlistSaveFolder.value || '';
+            plSaving = true;
             try {
-                var queueResp = await authFetch('/api/guild/' + currentGuild + '/queue');
-                var queueData = await queueResp.json();
-                var items = [];
-                if (queueData.tracks) {
-                    items = queueData.tracks.map(function(t) { return t.uri || ''; }).filter(function(u) { return u; });
+                var queue = await plApi('GET', '/api/guild/' + encodeURIComponent(currentGuild) + '/queue');
+                if (!queue.ok) {
+                    plToast(plErrorText(queue, "Couldn't read the queue"), { error: true });
+                    return;
                 }
-                await authFetch('/api/playlist/' + encodeURIComponent(name), {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({items: items, folder: folder})
-                });
+                var songs = (Array.isArray(queue.data.tracks) ? queue.data.tracks : []).map(plSongFromTrack).filter(Boolean);
+                if (!songs.length) {
+                    plToast('The queue is empty — there is nothing to save', { error: true });
+                    return;
+                }
+                var cut = songs.length > PL_QUEUE_SAVE_MAX;
+                if (cut) songs = songs.slice(0, PL_QUEUE_SAVE_MAX);
+                var made = await plApi('POST', '/api/playlists', { name: name, folder: folder });
+                if (!made.ok) {
+                    plToast(plErrorText(made, "Couldn't create the playlist"), { error: true });
+                    return;
+                }
+                var savedName = typeof made.data.name === 'string' && made.data.name ? made.data.name : name;
+                var savedFolder = typeof made.data.folder === 'string' ? made.data.folder : folder;
+                var added = await plApi('POST', '/api/playlists/songs/add', { name: savedName, folder: savedFolder, songs: songs });
                 hideSaveDialog();
-                loadPlaylistsTree();
-            } catch(e) {}
+                plRevealFolder(savedFolder);
+                plLoadPaneTree();
+                if (added.ok) {
+                    plToast('Saved ' + songs.length + ' ' + pluralUnit(songs.length, 'song', 'songs') + ' to “' + savedName + '”'
+                        + (cut ? ' (the first ' + PL_QUEUE_SAVE_MAX + ')' : ''), {
+                        actionLabel: 'Open', onAction: function () { plOpenPage(savedName, savedFolder); }
+                    });
+                } else {
+                    plToast('“' + savedName + '” was created, but the songs were not saved: ' + plErrorText(added, 'try again'), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                plSaving = false;
+            }
         }
 
+        // ---- playing --------------------------------------------------------------------------------------------
+
+        // mode: all, shuffle or from (then songId is the song to start with).
+        async function plPlay(name, folder, mode, songId) {
+            if (!currentGuild) {
+                plToast('Pick a server first', { error: true });
+                return;
+            }
+            var body = { name: name, folder: folder, mode: mode };
+            if (songId) body.songId = songId;
+            try {
+                var res = await plApi('POST', '/api/guild/' + encodeURIComponent(currentGuild) + '/playlists/play', body);
+                if (res.ok) {
+                    plToast(typeof res.data.message === 'string' && res.data.message ? res.data.message : 'Loading playlist…', {});
+                    refreshAll();
+                } else {
+                    plToast(plErrorText(res, "Couldn't play that playlist"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            }
+        }
+
+        async function plQueueTracks(guild) {
+            var res = await plApi('GET', '/api/guild/' + encodeURIComponent(guild) + '/queue');
+            return res.ok && Array.isArray(res.data.tracks) ? res.data.tracks : null;
+        }
+
+        // The song loads in the background, so the queue is asked a few times. It is moved to the top only when the
+        // queue grew by exactly one and the new last entry is this link; anything else (a link the bot shows under
+        // another address, somebody else queueing at the same moment) stays where it landed.
+        async function plMoveToFront(guild, uri, countBefore) {
+            for (var attempt = 0; attempt < 4; attempt++) {
+                await plDelay(attempt === 0 ? 700 : 1100);
+                var tracks = await plQueueTracks(guild);
+                if (!tracks) continue;
+                var last = tracks.length - 1;
+                if (tracks.length === countBefore + 1 && tracks[last] && tracks[last].uri === uri) {
+                    if (last === 0) return true;
+                    var moved = await plApi('POST', '/api/guild/' + encodeURIComponent(guild) + '/reorder', { from: last, to: 0 });
+                    return moved.ok;
+                }
+                if (tracks.length > countBefore + 1) return false;
+                if (countBefore === 0 && tracks.length === 0) {
+                    var np = await plApi('GET', '/api/guild/' + encodeURIComponent(guild) + '/nowplaying');
+                    if (np.ok && np.data.playing && np.data.uri === uri) return false; // nothing was playing: it just started
+                }
+            }
+            return false;
+        }
+
+        async function plPlayNext(song) {
+            if (!currentGuild) {
+                plToast('Pick a server first', { error: true });
+                return;
+            }
+            var guild = currentGuild;
+            var waiting = null;
+            try {
+                var before = plIsWebLink(song.uri) ? await plQueueTracks(guild) : null;
+                var res = await plApi('POST', '/api/guild/' + encodeURIComponent(guild) + '/play', { query: song.uri });
+                if (!res.ok) {
+                    plToast(plErrorText(res, "Couldn't add that song"), { error: true });
+                    return;
+                }
+                var moved = false;
+                if (before) {
+                    waiting = plToast('Adding “' + plShort(song.title) + '”…', { ms: 15000 });
+                    moved = await plMoveToFront(guild, song.uri, before.length);
+                    waiting.dismiss();
+                }
+                plToast(moved ? 'Playing next: “' + plShort(song.title) + '”' : 'Added to queue', {});
+                refreshAll();
+            } catch (e) {
+                if (waiting) waiting.dismiss();
+                plCatch(e);
+            }
+        }
+
+        // ---- the playlist page ----------------------------------------------------------------------------------
+
+        function plShowTree(revealFolder) {
+            plCloseMenu(false);
+            plCloseConfirm(false);
+            plPage = null;
+            if (revealFolder) plRevealFolder(revealFolder);
+            plPageView.hidden = true;
+            plPageView.textContent = '';
+            plTreeView.hidden = false;
+            plActions.hidden = false;
+            plRenderTree();
+        }
+
+        function plOpenPage(name, folder) {
+            plCloseMenu(false);
+            plCloseConfirm(false);
+            hidePlaylistDialog();
+            hideSaveDialog();
+            var page = {
+                name: name, folder: folder || '', version: 0, latestSeen: 0, seq: 0,
+                loaded: false, error: '', legacy: false, shuffle: false, createdBy: '', songs: [],
+                rowBySong: new Map(), retrying: new Set(), removing: new Set(),
+                dragSong: null, dropGap: -1, moving: false, deferred: false, structureOps: 0, els: null
+            };
+            plPage = page;
+            plBuildPage(page);
+            plTreeView.hidden = true;
+            plActions.hidden = true;
+            plPageView.textContent = '';
+            plPageView.appendChild(page.els.root);
+            plPageView.hidden = false;
+            plRenderPage(page);
+            page.els.title.focus({ preventScroll: true });
+            plLoadPage(page, { quiet: false });
+        }
+
+        function plBuildPage(page) {
+            var root = plEl('div', 'pl-page');
+            var crumb = plEl('div', 'playlist-breadcrumb');
+            var head = plEl('div', 'pl-page-head');
+            var title = plEl('h2', 'pl-page-title');
+            title.tabIndex = -1;
+            var meta = plEl('div', 'pl-page-meta');
+            var actions = plEl('div', 'pl-page-actions');
+            var playBtn = plBtn('▶ Play', 'pl-primary', function () { plPlay(page.name, page.folder, 'all'); });
+            var shuffleBtn = plBtn('Shuffle', '', function () { plPlay(page.name, page.folder, 'shuffle'); });
+            var addBtn = plBtn('+ Add songs', '', function () { plOpenAddSongs(page); });
+            var menuBtn = plBtn('⋯', 'pl-more', function () { plOpenMenu(menuBtn, plPageMenu(page)); });
+            menuBtn.title = 'More';
+            menuBtn.setAttribute('aria-label', 'More actions');
+            menuBtn.setAttribute('aria-haspopup', 'menu');
+            actions.appendChild(playBtn);
+            actions.appendChild(shuffleBtn);
+            actions.appendChild(addBtn);
+            actions.appendChild(menuBtn);
+            head.appendChild(title);
+            head.appendChild(meta);
+            head.appendChild(actions);
+            var note = plEl('div', 'pl-note', 'This playlist is being upgraded — editing is back in a minute');
+            var drawer = plEl('div', 'pl-drawer');
+            drawer.hidden = true;
+            var addSongs = plEl('div', 'pl-addsongs');
+            addSongs.hidden = true;
+            var status = plEl('div', 'pl-status');
+            var list = plEl('ul', 'pl-songs');
+            plWireDrag(page, list);
+            [crumb, head, note, drawer, addSongs, status, list].forEach(function (el) { root.appendChild(el); });
+            page.els = {
+                root: root, crumb: crumb, title: title, meta: meta, playBtn: playBtn, shuffleBtn: shuffleBtn,
+                addBtn: addBtn, menuBtn: menuBtn, note: note, drawer: drawer, addSongs: addSongs, status: status, list: list
+            };
+        }
+
+        function plRenderPage(page) {
+            plRenderHead(page);
+            plRenderStatus(page);
+            plRenderRows(page);
+        }
+
+        function plLinkSpan(text, onClick) {
+            var s = plEl('span', null, text);
+            s.tabIndex = 0;
+            s.setAttribute('role', 'link');
+            s.addEventListener('click', onClick);
+            s.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onClick();
+                }
+            });
+            return s;
+        }
+
+        function plRenderHead(page) {
+            var h = page.els;
+            h.crumb.textContent = '';
+            h.crumb.appendChild(plLinkSpan('‹ Playlists', function () { plShowTree(page.folder); }));
+            var acc = '';
+            (page.folder ? page.folder.split('/') : []).forEach(function (seg) {
+                acc = acc ? acc + '/' + seg : seg;
+                var path = acc;
+                h.crumb.appendChild(plEl('span', 'bc-sep', '/'));
+                h.crumb.appendChild(plLinkSpan(seg, function () { plShowTree(path); }));
+            });
+            h.crumb.appendChild(plEl('span', 'bc-sep', '/'));
+            h.crumb.appendChild(plEl('span', 'bc-current', page.name));
+
+            h.title.textContent = page.name;
+            h.meta.textContent = '';
+            var count = page.songs.length;
+            if (page.loaded) {
+                var parts = [];
+                if (page.createdBy) parts.push('by ' + page.createdBy);
+                parts.push(count + ' ' + pluralUnit(count, 'song', 'songs'));
+                var total = page.songs.reduce(function (sum, s) { return sum + s.durationMs; }, 0);
+                if (total > 0) parts.push(plFormatTotal(total));
+                if (page.shuffle) parts.push('Always shuffle');
+                parts.forEach(function (text) { h.meta.appendChild(plEl('span', null, text)); });
+            }
+
+            h.note.hidden = !page.legacy;
+            h.addBtn.hidden = !page.loaded || page.legacy;
+            h.menuBtn.hidden = !page.loaded || page.legacy;
+            h.playBtn.disabled = h.shuffleBtn.disabled = !page.loaded || count === 0;
+        }
+
+        function plRenderStatus(page) {
+            var s = page.els.status;
+            s.textContent = '';
+            if (!page.loaded) {
+                page.els.list.hidden = true;
+                s.hidden = false;
+                if (page.error) {
+                    s.appendChild(document.createTextNode(page.error));
+                    s.appendChild(document.createElement('br'));
+                    var retry = plBtn('Try again', '', function () {
+                        page.error = '';
+                        plRenderStatus(page);
+                        plLoadPage(page, { quiet: false });
+                    });
+                    retry.style.marginTop = '8px';
+                    s.appendChild(retry);
+                } else {
+                    s.appendChild(plEl('span', 'loading-spinner'));
+                    s.appendChild(document.createTextNode('Loading playlist…'));
+                }
+                return;
+            }
+            var empty = page.songs.length === 0;
+            page.els.list.hidden = empty;
+            s.hidden = !empty;
+            if (empty) s.textContent = page.legacy ? 'This playlist is empty' : 'No songs yet — use “Add songs” to fill it';
+        }
+
+        async function plLoadPage(page, opts) {
+            var quiet = !!(opts && opts.quiet);
+            var seq = ++page.seq;
+            var name = page.name;
+            var folder = page.folder;
+            try {
+                var url = '/api/playlists/item?name=' + encodeURIComponent(name) + (folder ? '&folder=' + encodeURIComponent(folder) : '');
+                var res = await plApi('GET', url);
+                if (plPage !== page || seq !== page.seq) return;
+                if (name !== page.name || folder !== page.folder) {
+                    plLoadPage(page, opts); // renamed or moved from here while the request was on its way: ask again
+                    return;
+                }
+                if (res.ok) {
+                    plApplyItem(page, res.data);
+                } else if (res.status === 404) {
+                    if (page.structureOps === 0) plPageGone(page); // else a rename, move or delete from here is under way
+                } else if (!page.loaded) {
+                    page.error = plErrorText(res, "Couldn't load this playlist");
+                    plRenderStatus(page);
+                } else if (!quiet) {
+                    plToast(plErrorText(res, "Couldn't refresh this playlist"), { error: true });
+                }
+            } catch (e) {
+                if (plPage !== page || seq !== page.seq) return;
+                if (!page.loaded) {
+                    if (!(e && e.message === 'unauthorized')) page.error = "Couldn't reach the server";
+                    plRenderStatus(page);
+                } else if (!quiet) {
+                    plCatch(e);
+                }
+            }
+        }
+
+        function plApplyItem(page, d) {
+            if (typeof d.name === 'string' && d.name) page.name = d.name;
+            if (typeof d.folder === 'string') page.folder = d.folder;
+            page.version = Number(d.version) || 0;
+            page.latestSeen = Math.max(page.latestSeen, page.version);
+            page.createdBy = plPersonName(d.createdBy);
+            page.shuffle = d.shuffle === true;
+            page.legacy = d.legacy === true;
+            page.songs = (Array.isArray(d.songs) ? d.songs : [])
+                .filter(function (raw) { return raw && typeof raw === 'object'; })
+                .map(plNormalizeSong);
+            page.loaded = true;
+            page.error = '';
+            plRenderPage(page);
+        }
+
+        // An answer to one of this panel's own edits carries the playlist's new version. One more than shown is just
+        // that edit; further ahead means somebody else edited meanwhile, so the page is read again.
+        function plNoteOwnChange(page, version) {
+            var v = Number(version);
+            if (!isFinite(v)) return;
+            if (v > page.version + 1) plScheduleRefresh({ tree: false, page: true, force: true });
+            if (v > page.version) page.version = v;
+            page.latestSeen = Math.max(page.latestSeen, page.version);
+        }
+
+        function plPageBusy(page) {
+            return !!page.dragSong || page.moving;
+        }
+
+        // A reload that came while a drag or a move was under way waits for it to end.
+        function plFlushDeferred(page) {
+            if (!page.deferred || plPageBusy(page) || plPage !== page) return;
+            page.deferred = false;
+            plLoadPage(page, { quiet: true });
+        }
+
+        // ---- the rows -------------------------------------------------------------------------------------------
+
+        function plRenderRows(page) {
+            var list = page.els.list;
+            if (plMenu && list.contains(plMenu.anchor)) plCloseMenu(false);
+            var keep = list.scrollTop;
+            list.textContent = '';
+            page.rowBySong = new Map();
+            var frag = document.createDocumentFragment();
+            page.songs.forEach(function (song) {
+                var li = plBuildRow(page, song);
+                page.rowBySong.set(song, li);
+                frag.appendChild(li);
+            });
+            list.appendChild(frag);
+            list.scrollTop = keep;
+        }
+
+        function plRefreshRow(page, song) {
+            var old = page.rowBySong.get(song);
+            if (!old || !old.parentNode) return;
+            var fresh = plBuildRow(page, song);
+            page.rowBySong.set(song, fresh);
+            old.parentNode.replaceChild(fresh, old);
+        }
+
+        function plThumb(song) {
+            if (song.artworkUrl) {
+                var img = document.createElement('img');
+                img.className = 'pl-thumb';
+                img.alt = '';
+                img.loading = 'lazy';
+                img.decoding = 'async';
+                img.referrerPolicy = 'no-referrer';
+                img.addEventListener('error', function () {
+                    if (img.parentNode) img.parentNode.replaceChild(plEl('span', 'pl-thumb pl-thumb-ph', '♪'), img);
+                });
+                img.src = song.artworkUrl;
+                return img;
+            }
+            return plEl('span', 'pl-thumb pl-thumb-ph', '♪');
+        }
+
+        function plBuildRow(page, song) {
+            var editable = !page.legacy;
+            var broken = song.unresolved && editable;
+            var li = plEl('li', 'pl-song' + (broken ? ' unresolved' : '') + (page.removing.has(song.id) ? ' pending' : ''));
+            var tip = plAddedTip(song);
+            if (tip) li.title = tip;
+
+            if (editable) {
+                var handle = plEl('span', 'pl-handle', '☰');
+                handle.draggable = true;
+                handle.title = 'Drag to reorder';
+                handle.setAttribute('aria-hidden', 'true');
+                handle.addEventListener('dragstart', function (e) {
+                    if (page.moving || page.dragSong) {
+                        e.preventDefault();
+                        return;
+                    }
+                    page.dragSong = song;
+                    page.dropGap = -1;
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData(PL_SONG_DND_TYPE, song.id);
+                    if (e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(li, 12, 16);
+                    li.classList.add('dragging');
+                });
+                handle.addEventListener('dragend', function () {
+                    plEndDrag(page);
+                    plFlushDeferred(page);
+                });
+                li.appendChild(handle);
+            }
+            if (editable || song.artworkUrl) li.appendChild(plThumb(song));
+
+            var info = plEl('div', 'pl-song-info');
+            info.appendChild(plEl('div', 'pl-song-title', song.title));
+            if (broken) {
+                info.appendChild(plEl('div', 'pl-song-artist pl-song-warn', "Couldn't load"));
+            } else if (song.author || song.durationMs > 0) {
+                var sub = plEl('div', 'pl-song-artist', song.author);
+                if (song.durationMs > 0) sub.appendChild(plEl('span', 'pl-song-len-inline', (song.author ? ' · ' : '') + formatTime(song.durationMs)));
+                info.appendChild(sub);
+            }
+            li.appendChild(info);
+            if (!broken && song.durationMs > 0) li.appendChild(plEl('span', 'pl-song-len', formatTime(song.durationMs)));
+            if (!editable) return li;
+
+            if (broken) {
+                if (page.retrying.has(song.id)) {
+                    var wait = plEl('span', 'pl-retry');
+                    wait.appendChild(plEl('span', 'loading-spinner'));
+                    wait.appendChild(document.createTextNode('Retrying…'));
+                    li.appendChild(wait);
+                } else {
+                    var retry = plBtn('Retry', 'pl-retry', function () { plRetrySong(page, song); });
+                    li.appendChild(retry);
+                }
+            } else {
+                li.appendChild(plIconBtn('▶', 'Play from here', function () { plPlay(page.name, page.folder, 'from', song.id); }));
+            }
+            var more = plIconBtn('⋯', 'More', function (btn) { plOpenMenu(btn, plSongMenu(page, song, btn)); });
+            more.setAttribute('aria-haspopup', 'menu');
+            li.appendChild(more);
+            return li;
+        }
+
+        function plSongMenu(page, song, anchor) {
+            var remove = { label: 'Remove', danger: true, run: function () { plRemoveSong(page, song); } };
+            if (song.unresolved) return [remove];
+            var items = [];
+            if (plCanQueue(song.uri)) items.push({ label: 'Play next', run: function () { plPlayNext(song); } });
+            items.push({ label: 'Add to another playlist', run: function () { openPlaylistPicker(plPickerSong(song), anchor, 'playlist'); } });
+            items.push(remove);
+            return items;
+        }
+
+        async function plRemoveSong(page, song) {
+            if (page.removing.has(song.id)) return;
+            page.removing.add(song.id);
+            plRefreshRow(page, song);
+            var removed = false;
+            try {
+                var res = await plApi('POST', '/api/playlists/songs/remove', { name: page.name, folder: page.folder, songId: song.id });
+                if (res.ok) {
+                    removed = true;
+                    var token = typeof res.data.undo === 'string' ? res.data.undo : '';
+                    // by id: the page may have been read again while the request was on its way
+                    var at = page.songs.findIndex(function (s) { return s.id === song.id; });
+                    if (at >= 0) page.songs.splice(at, 1);
+                    plNoteOwnChange(page, res.data.version);
+                    if (plPage === page) plRenderPage(page);
+                    plLoadPaneTree();
+                    plToast('Removed “' + plShort(song.title) + '”', token
+                        ? { actionLabel: 'Undo', ms: PL_UNDO_MS, onAction: function () { plUndoRemove(page, token, song.title); } } : {});
+                } else {
+                    plToast(plErrorText(res, "Couldn't remove that song"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                page.removing.delete(song.id);
+            }
+            if (!removed && plPage === page) plRefreshRow(page, song);
+        }
+
+        async function plUndoRemove(page, token, title) {
+            try {
+                var res = await plApi('POST', '/api/playlists/songs/undo', { token: token });
+                if (res.ok) {
+                    plToast('Put back “' + plShort(title) + '”', {});
+                    plLoadPaneTree();
+                    if (plPage === page) {
+                        plNoteOwnChange(page, res.data.version);
+                        plLoadPage(page, { quiet: true });
+                    }
+                } else {
+                    plToast(plErrorText(res, "Couldn't undo that"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            }
+        }
+
+        async function plRetrySong(page, song) {
+            if (page.retrying.has(song.id)) return;
+            page.retrying.add(song.id);
+            plRefreshRow(page, song);
+            var loaded = false;
+            try {
+                var res = await plApi('POST', '/api/playlists/songs/retry', { name: page.name, folder: page.folder, songId: song.id });
+                if (res.ok) {
+                    loaded = true;
+                    plNoteOwnChange(page, res.data.version);
+                    plToast('Loaded “' + plShort(song.title) + '”', {});
+                    plLoadPaneTree();
+                } else {
+                    plToast(plErrorText(res, "Still couldn't load this song"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                page.retrying.delete(song.id);
+            }
+            if (plPage !== page) return;
+            if (loaded) plLoadPage(page, { quiet: true });
+            else plRefreshRow(page, song);
+        }
+
+        // ---- drag to reorder ------------------------------------------------------------------------------------
+
+        function plWireDrag(page, list) {
+            list.addEventListener('dragover', function (e) {
+                if (!page.dragSong || !dndTypesHas(e.dataTransfer, PL_SONG_DND_TYPE)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                var row = e.target && e.target.closest ? e.target.closest('.pl-song') : null;
+                var gap = list.children.length;
+                if (row && row.parentNode === list) {
+                    var at = Array.prototype.indexOf.call(list.children, row);
+                    var box = row.getBoundingClientRect();
+                    gap = e.clientY < box.top + box.height / 2 ? at : at + 1;
+                }
+                plMarkDrop(page, gap);
+            });
+            list.addEventListener('dragleave', function (e) {
+                if (page.dragSong && !list.contains(e.relatedTarget)) plMarkDrop(page, -1);
+            });
+            list.addEventListener('drop', function (e) {
+                if (!page.dragSong || !dndTypesHas(e.dataTransfer, PL_SONG_DND_TYPE)) return;
+                e.preventDefault();
+                var song = page.dragSong;
+                var gap = page.dropGap;
+                plEndDrag(page);
+                // Redrawing the rows removes the handle that started the drag; let the drag finish first.
+                if (gap >= 0) setTimeout(function () { plMoveSong(page, song, gap); }, 0);
+                else plFlushDeferred(page);
+            });
+        }
+
+        // gap: the place between two rows (0 = above the first, n = below the last); -1 = none, or no change.
+        function plMarkDrop(page, gap) {
+            var list = page.els.list;
+            var from = page.songs.indexOf(page.dragSong);
+            if (gap === from || gap === from + 1) gap = -1;
+            if (gap === page.dropGap) return;
+            var prev = list.querySelector('.drop-before, .drop-after');
+            if (prev) prev.classList.remove('drop-before', 'drop-after');
+            page.dropGap = gap;
+            if (gap < 0 || !list.children.length) return;
+            if (gap < list.children.length) list.children[gap].classList.add('drop-before');
+            else list.children[list.children.length - 1].classList.add('drop-after');
+        }
+
+        function plEndDrag(page) {
+            var list = page.els.list;
+            page.dragSong = null;
+            page.dropGap = -1;
+            Array.prototype.forEach.call(list.querySelectorAll('.dragging, .drop-before, .drop-after'), function (el) {
+                el.classList.remove('dragging', 'drop-before', 'drop-after');
+            });
+        }
+
+        // gap is where the song was dropped (between rows). Its final position is the gap, minus one when the
+        // song came from above it. The rows change at once; the server's refusal puts them back.
+        async function plMoveSong(page, song, gap) {
+            var from = page.songs.indexOf(song);
+            if (from < 0 || page.moving) return;
+            var to = gap > from ? gap - 1 : gap;
+            if (to === from) return;
+            var before = page.songs.slice();
+            page.songs.splice(from, 1);
+            page.songs.splice(to, 0, song);
+            plRenderRows(page);
+            page.moving = true;
+            var failed = false;
+            try {
+                var res = await plApi('POST', '/api/playlists/songs/move', { name: page.name, folder: page.folder, songId: song.id, toIndex: to });
+                if (res.ok) {
+                    plNoteOwnChange(page, res.data.version);
+                } else {
+                    failed = true;
+                    plToast(plErrorText(res, "Couldn't move that song"), { error: true });
+                }
+            } catch (e) {
+                failed = true;
+                plCatch(e);
+            } finally {
+                page.moving = false;
+            }
+            if (failed && plPage === page) {
+                page.songs = before;
+                plRenderRows(page);
+                plLoadPage(page, { quiet: true });
+            }
+            plFlushDeferred(page);
+        }
+
+        // ---- the header menu: rename, move, always shuffle, delete -----------------------------------------------
+
+        function plPageMenu(page) {
+            return [
+                { label: 'Rename', run: function () { plOpenRename(page); } },
+                { label: 'Move to folder…', run: function () { plOpenMove(page); } },
+                { label: 'Always shuffle', checked: page.shuffle, run: function () { plSetShuffle(page, !page.shuffle); } },
+                { label: 'Delete', danger: true, run: function () { plAskDelete(page); } }
+            ];
+        }
+
+        function plCloseDrawer(page) {
+            page.els.drawer.hidden = true;
+            page.els.drawer.textContent = '';
+        }
+
+        function plOpenRename(page) {
+            plCloseConfirm(false);
+            var drawer = page.els.drawer;
+            drawer.textContent = '';
+            var form = plEl('form', 'pl-form');
+            var input = plEl('input', 'pl-input');
+            input.type = 'text';
+            input.maxLength = 100;
+            input.value = page.name;
+            input.autocomplete = 'off';
+            input.setAttribute('aria-label', 'New name');
+            var save = plEl('button', 'btn-sm pl-primary', 'Rename');
+            save.type = 'submit';
+            var cancel = plBtn('Cancel', '', function () { plCloseDrawer(page); });
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                plRename(page, input.value, save);
+            });
+            form.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    plCloseDrawer(page);
+                }
+            });
+            form.appendChild(input);
+            form.appendChild(save);
+            form.appendChild(cancel);
+            drawer.appendChild(form);
+            drawer.hidden = false;
+            input.focus();
+            input.select();
+        }
+
+        async function plRename(page, raw, button) {
+            var name = raw.trim();
+            if (!name || name === page.name) {
+                plCloseDrawer(page);
+                return;
+            }
+            page.structureOps++;
+            button.disabled = true;
+            try {
+                var res = await plApi('POST', '/api/playlists/rename', { name: page.name, folder: page.folder, newName: name });
+                if (res.ok) {
+                    page.name = typeof res.data.name === 'string' && res.data.name ? res.data.name : name;
+                    plNoteOwnChange(page, res.data.version);
+                    plCloseDrawer(page);
+                    plRenderHead(page);
+                    plToast('Renamed to “' + page.name + '”', {});
+                    plLoadPaneTree();
+                } else {
+                    plToast(plErrorText(res, "Couldn't rename the playlist"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                page.structureOps--;
+                button.disabled = false;
+            }
+        }
+
+        function plOpenMove(page) {
+            plCloseConfirm(false);
+            var drawer = page.els.drawer;
+            drawer.textContent = '';
+            if (!plTree || !plTree.folders.length) {
+                drawer.appendChild(plEl('div', 'pl-form-note', 'There are no folders yet — create one with New Folder first.'));
+                drawer.appendChild(plBtn('Close', '', function () { plCloseDrawer(page); }));
+                drawer.hidden = false;
+                return;
+            }
+            var form = plEl('form', 'pl-form');
+            form.appendChild(plEl('label', 'pl-form-label', 'Move to'));
+            var select = plEl('select', 'playlist-move-select');
+            select.setAttribute('aria-label', 'Folder');
+            plFillFolderSelect(select, page.folder, 'Top level');
+            var save = plEl('button', 'btn-sm pl-primary', 'Move');
+            save.type = 'submit';
+            var cancel = plBtn('Cancel', '', function () { plCloseDrawer(page); });
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                plMovePage(page, select.value, save);
+            });
+            form.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    plCloseDrawer(page);
+                }
+            });
+            form.appendChild(select);
+            form.appendChild(save);
+            form.appendChild(cancel);
+            drawer.appendChild(form);
+            drawer.hidden = false;
+            select.focus();
+        }
+
+        async function plMovePage(page, toFolder, button) {
+            if (toFolder === page.folder) {
+                plCloseDrawer(page);
+                return;
+            }
+            page.structureOps++;
+            button.disabled = true;
+            try {
+                var res = await plApi('POST', '/api/playlists/move', { name: page.name, folder: page.folder, toFolder: toFolder });
+                if (res.ok) {
+                    page.folder = typeof res.data.folder === 'string' ? res.data.folder : toFolder;
+                    plNoteOwnChange(page, res.data.version);
+                    plCloseDrawer(page);
+                    plRenderHead(page);
+                    plRevealFolder(page.folder);
+                    plToast('Moved to ' + plFolderLabel(page.folder), {});
+                    plLoadPaneTree();
+                } else {
+                    plToast(plErrorText(res, "Couldn't move the playlist"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            } finally {
+                page.structureOps--;
+                button.disabled = false;
+            }
+        }
+
+        async function plSetShuffle(page, on) {
+            try {
+                var res = await plApi('POST', '/api/playlists/shuffle', { name: page.name, folder: page.folder, on: on });
+                if (res.ok) {
+                    page.shuffle = on;
+                    plNoteOwnChange(page, res.data.version);
+                    if (plPage === page) plRenderHead(page);
+                    plToast(on ? 'Always shuffle is on' : 'Always shuffle is off', {});
+                } else {
+                    plToast(plErrorText(res, "Couldn't change the shuffle setting"), { error: true });
+                }
+            } catch (e) {
+                plCatch(e);
+            }
+        }
+
+        function plAskDelete(page) {
+            plCloseDrawer(page);
+            plShowConfirm(function (bar) {
+                page.els.root.insertBefore(bar, page.els.drawer);
+                return bar;
+            }, 'Move “' + page.name + '” to Deleted? You can restore it for 7 days.', 'Move to Deleted',
+            function () { plDeletePlaylist(page.name, page.folder, page); }, page.els.menuBtn);
+        }
+
+        // Task 10b fills this in: the inline "Add songs" area (search box, results with an Add button, pasted links to
+        // import) opens in page.els.addSongs, under the header. Until then the button only says so.
+        function plOpenAddSongs(page) {
+            plToast('Adding songs from this page is coming soon', {});
+        }
+
+        // ---- live refresh: WebSocket "playlists" and "playlist-import" messages -----------------------------------
+
+        // Collects what to reload and does it once, 300 ms after the first message, so a burst is one reload.
+        function plScheduleRefresh(want) {
+            if (!plRefreshWant) plRefreshWant = { tree: false, page: false, force: false };
+            plRefreshWant.tree = plRefreshWant.tree || !!want.tree;
+            plRefreshWant.page = plRefreshWant.page || !!want.page;
+            plRefreshWant.force = plRefreshWant.force || !!want.force;
+            if (!plRefreshTimer) plRefreshTimer = setTimeout(plRunRefresh, PL_REFRESH_DELAY_MS);
+        }
+
+        function plRunRefresh() {
+            plRefreshTimer = null;
+            var want = plRefreshWant;
+            plRefreshWant = null;
+            if (!want) return;
+            if (want.tree) plLoadPaneTree();
+            var page = plPage;
+            if (!want.page || !page || !page.loaded) return;
+            if (!want.force && page.latestSeen <= page.version) return; // this panel's own edit, already shown
+            if (plPageBusy(page)) page.deferred = true;
+            else plLoadPage(page, { quiet: true });
+        }
+
+        function plIsOpenPage(name, folder) {
+            return !!plPage && plPage.loaded && plPage.name === name && plPage.folder === (typeof folder === 'string' ? folder : '');
+        }
+
+        // {tree: true}: the tree changed. {name, folder, version}: the songs of one playlist changed.
+        function plOnPlaylistsMessage(d) {
+            if (!d || typeof d !== 'object') return;
+            var want = { tree: true, page: false, force: false };
+            if (!d.tree && plIsOpenPage(d.name, d.folder)) {
+                var v = Number(d.version);
+                if (isFinite(v)) plPage.latestSeen = Math.max(plPage.latestSeen, v);
+                want.page = true;
+            }
+            plScheduleRefresh(want);
+        }
+
+        // An import adds songs without a "playlists" message: reload when it finishes, and show its songs arriving when
+        // it fills the playlist that is open.
+        function plOnImportMessage(d) {
+            if (!d || typeof d !== 'object') return;
+            var finished = d.finished === true;
+            var forOpenPage = typeof d.playlist === 'string' && plIsOpenPage(d.playlist, d.folder);
+            if (!finished && !forOpenPage) return;
+            plScheduleRefresh({ tree: true, page: forOpenPage || (finished && !!plPage), force: true });
+        }
+
+        // ---- the "Upgrading playlists" banner ---------------------------------------------------------------------
+
+        function plRenderMigration(total, done, failed, upgrading) {
+            var b = plMigrationBanner;
+            b.textContent = '';
+            b.classList.remove('quiet');
+            if (upgrading) {
+                b.appendChild(plEl('div', null, 'Upgrading playlists: ' + done + '/' + total));
+                var bar = plEl('div', 'pl-banner-bar');
+                var fill = document.createElement('i');
+                fill.style.width = Math.min(100, Math.round((done + failed) / total * 100)) + '%';
+                bar.appendChild(fill);
+                b.appendChild(bar);
+                b.hidden = false;
+            } else if (failed > 0) {
+                b.classList.add('quiet');
+                b.textContent = failed + (failed === 1
+                    ? " couldn't be upgraded yet — it keeps playing as before"
+                    : " couldn't be upgraded yet — they keep playing as before");
+                b.hidden = false;
+            } else {
+                b.hidden = true;
+            }
+        }
+
+        // Asks how far the one-time upgrade has come; while it runs, asks again every 5 s and redraws the tree.
+        async function plLoadMigration() {
+            if (plMigrationTimer) {
+                clearTimeout(plMigrationTimer);
+                plMigrationTimer = null;
+            }
+            var seq = ++plMigrationSeq;
+            var upgrading = plMigrationActive; // a failed request keeps polling if it was
+            try {
+                var res = await plApi('GET', '/api/playlists/migration');
+                if (seq !== plMigrationSeq) return;
+                if (res.ok) {
+                    var total = Number(res.data.total) || 0;
+                    var done = Number(res.data.done) || 0;
+                    var failed = Number(res.data.failed) || 0;
+                    upgrading = total > 0 && done + failed < total;
+                    plRenderMigration(total, done, failed, upgrading);
+                }
+            } catch (e) {
+                if (seq !== plMigrationSeq) return;
+                if (e && e.message === 'unauthorized') upgrading = false;
+            }
+            var justFinished = plMigrationActive && !upgrading;
+            plMigrationActive = upgrading;
+            if (upgrading) plMigrationTimer = setTimeout(plMigrationTick, PL_MIGRATION_POLL_MS);
+            if (justFinished) plMigrationTick(true);
+        }
+
+        function plMigrationTick(last) {
+            plMigrationTimer = null;
+            plLoadPaneTree();
+            var page = plPage;
+            if (page && page.loaded && page.legacy && !plPageBusy(page)) plLoadPage(page, { quiet: true });
+            if (last !== true) plLoadMigration();
+        }
+
+        playlistDialogOk.addEventListener('click', plSubmitDialog);
         playlistDialogInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') playlistDialogOk.click();
+            if (e.key === 'Enter') plSubmitDialog();
             if (e.key === 'Escape') hidePlaylistDialog();
         });
 
@@ -8556,7 +9878,9 @@
             if (e.key === 'Escape') hideSaveDialog();
         });
 
-        loadPlaylistsTree();
+        plRenderTree();
+        plLoadPaneTree();
+        plLoadMigration();
         (function checkDiscordLoginError() {
             try {
                 var u = new URL(window.location.href);
