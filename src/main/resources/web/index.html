@@ -1963,6 +1963,219 @@
         .history-item:hover .history-replay { opacity: 1; }
         .history-replay:hover { color: var(--accent-light); background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1); }
 
+        /* "Add to playlist": the button on every song row and the picker it opens. */
+        .pl-add-btn {
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            line-height: 1;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            opacity: 0.55;
+            transition: all 0.2s;
+        }
+
+        .pl-add-icon { width: 16px; height: 16px; display: block; flex-shrink: 0; }
+        .np-toggle .pl-add-icon { width: 14px; height: 14px; }
+
+        .queue-item:hover .pl-add-btn,
+        .history-item:hover .pl-add-btn,
+        .search-result-item:hover .pl-add-btn,
+        .pl-add-btn:focus-visible { opacity: 1; }
+        .pl-add-btn:hover { color: var(--accent-light); background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1); opacity: 1; }
+        .pl-add-btn.pl-added { color: var(--success); opacity: 1; }
+
+        @media (hover: none) and (pointer: coarse) {
+            .pl-add-btn { padding: 8px 10px; opacity: 0.8; }
+        }
+
+        /* Wide screens: the popup sits next to the button (left/top or bottom set by script). Narrow: centred over a scrim. */
+        .plpick-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 1000;
+        }
+
+        .plpick {
+            position: absolute;
+            width: min(340px, calc(100vw - 16px));
+            max-height: min(460px, calc(100vh - 16px));
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-dropdown);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+            overflow: hidden;
+            animation: fadeSlideIn 0.2s ease;
+        }
+
+        .plpick-head { padding: 12px 12px 8px; flex-shrink: 0; }
+
+        .plpick-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+        }
+
+        .plpick-song {
+            margin: 2px 0 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .plpick-filter, .plpick-newname {
+            width: 100%;
+            min-width: 0;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-select);
+            padding: 8px 10px;
+            font: inherit;
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        .plpick-filter:focus, .plpick-newname:focus { border-color: var(--accent); }
+
+        .plpick-list {
+            list-style: none;
+            flex: 1 1 auto;
+            min-height: 60px;
+            overflow-y: auto;
+            padding: 0 6px 6px;
+        }
+
+        .plpick-list::-webkit-scrollbar { width: 6px; }
+        .plpick-list::-webkit-scrollbar-track { background: transparent; }
+        .plpick-list::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+        .plpick.busy .plpick-list { opacity: 0.6; pointer-events: none; }
+
+        .plpick-group {
+            padding: 8px 8px 4px;
+            font-size: 0.66rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-tertiary);
+        }
+
+        .plpick-msg {
+            padding: 18px 12px;
+            text-align: center;
+            font-size: 0.84rem;
+            color: var(--text-tertiary);
+        }
+
+        .plpick-item {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            width: 100%;
+            padding: 8px 8px;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font: inherit;
+            font-size: 0.86rem;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .plpick-item:hover:not(:disabled), .plpick-item:focus-visible { background: var(--bg-hover); outline: none; }
+        .plpick-item:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .plpick-name {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: 62%;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .plpick-folder {
+            flex: 1 1 0;
+            min-width: 0;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .plpick-count {
+            flex: none;
+            margin-left: auto;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        .plpick-error {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            color: #ef4444;
+            overflow-wrap: anywhere;
+        }
+
+        .plpick-error:empty { display: none; }
+
+        .plpick-foot { flex-shrink: 0; padding: 6px; border-top: 1px solid var(--border); }
+
+        .plpick-newbtn {
+            width: 100%;
+            padding: 8px 8px;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            color: var(--accent-light);
+            font: inherit;
+            font-size: 0.86rem;
+            font-weight: 600;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .plpick-newbtn:hover:not(:disabled), .plpick-newbtn:focus-visible { background: var(--bg-hover); outline: none; }
+
+        .plpick-newform { display: flex; align-items: center; gap: 6px; padding: 2px; }
+
+        @media (max-width: 640px) {
+            .plpick-backdrop {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 12px;
+                background: rgba(0, 0, 0, 0.55);
+            }
+            .plpick {
+                position: relative;
+                width: min(380px, 100%);
+                max-height: min(80vh, 560px);
+            }
+            .plpick-filter, .plpick-newname { font-size: 16px; }
+            .plpick-item, .plpick-newbtn { padding-top: 11px; padding-bottom: 11px; }
+        }
+
         .history-list { list-style: none; max-height: var(--pane-history-align-max); overflow-y: auto; }
         .history-list::-webkit-scrollbar { width: 6px; }
         .history-list::-webkit-scrollbar-track { background: transparent; }
@@ -6146,6 +6359,7 @@
                 searchDropdown.innerHTML = '<div class="search-loading">No results found</div>';
                 return;
             }
+            plSetRowSongs('search', results);
             searchDropdown.innerHTML = results.map(function(t, i) {
                 var dur = t.isStream ? 'LIVE' : (t.durationFormatted || '');
                 var src = t.source || inferSourceFromUri(t.uri);
@@ -6155,6 +6369,7 @@
                     '<div class="search-result-info"><div class="search-result-title">' + escHtml(t.title || 'Unknown') + '</div>' +
                     '<div class="search-result-meta">' + escHtml(t.author || '') + '</div></div>' +
                     '<span class="search-result-duration">' + escHtml(dur) + '</span>' +
+                    plAddButtonHtml('search', i) +
                     '<button class="search-result-add">+</button></div>';
             }).join('');
         }
@@ -6357,6 +6572,7 @@
             if (!data.playing) {
                 npRenderKey = '';
                 lastNpLyricsKey = '';
+                plNowPlayingSong = null;
                 nowPlayingContent.innerHTML = '<div class="empty-state"><div class="icon">&#9835;</div><p>Nothing playing</p></div>';
                 clearInterval(progressInterval);
                 clearLyricsPane();
@@ -6366,6 +6582,7 @@
             currentProgress = data.position || 0;
             currentDuration = data.duration || 0;
             isPaused = data.paused || false;
+            plNowPlayingSong = plSongFromTrack(data);
 
             var stableKey = nowPlayingStableKey(data);
             if (stableKey === npRenderKey && document.getElementById('progressFill')) {
@@ -6495,7 +6712,7 @@
                 '<input type="range" class="volume-slider" min="0" max="150" value="' + vol + '" oninput="setVolume(this.value)" />' +
                 '<span class="volume-value" id="volVal">' + vol + '%</span>' +
                 '</div>' +
-                '<div class="np-toggles">' + renderAutoplayButton(data) + renderSponsorBlockButton(data) + '</div>';
+                '<div class="np-toggles">' + renderAutoplayButton(data) + renderSponsorBlockButton(data) + renderAddToPlaylistButton() + '</div>';
         }
 
         function updateProgress() {
@@ -6647,6 +6864,7 @@
                 if (clearQueueBtn) clearQueueBtn.style.display = 'none';
                 return;
             }
+            plSetRowSongs('queue', data.tracks);
             var qSnap = JSON.stringify(data.tracks.map(function(t) {
                 return {
                     t: t.title || '',
@@ -6668,6 +6886,7 @@
                     '<div class="queue-info"><div class="queue-title">' + escHtml(t.title) + '</div>' +
                     '<div class="queue-meta">' + escHtml(t.author || '') + (t.requestedBy ? ' &middot; ' + escHtml(t.requestedBy) : '') + '</div></div>' +
                     '<span class="queue-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
+                    plAddButtonHtml('queue', i) +
                     '<button class="queue-remove" onclick="removeQueueItem(' + i + ')" title="Remove">&#10005;</button></li>';
             }).join('');
             initQueueDragDrop();
@@ -6819,6 +7038,569 @@
                 return JSON.parse(text);
             } catch (e) {
                 return { error: text, message: text };
+            }
+        }
+
+        // ---- Add to playlist: a button on every song row, one shared picker popup ---------------------------
+        // The song objects stay in JS (plRowSongs / plNowPlayingSong). The markup carries only a source name and
+        // an integer index, so a uri, title or artwork url never lands in an HTML attribute or an inline handler,
+        // and the picker builds every name, folder, title and error message with textContent.
+        var PL_RECENT_KEY = 'jmusicbot_playlist_recent_v1';
+        var PL_RECENT_STORED = 8;
+        var PL_RECENT_SHOWN = 5;
+        // A live stream reports a huge "length"; anything past 100 days is not a duration worth keeping.
+        var PL_MAX_DURATION_MS = 8.64e9;
+        var PL_ADD_ICON = '<svg class="pl-add-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h13M3 12h13M3 18h7"/><path d="M18 15v6M15 18h6"/></svg>';
+        var plRowSongs = { queue: [], history: [], frequent: [], search: [] };
+        var plNowPlayingSong = null;
+        var plPicker = null;
+        var plNoticeTimer = null;
+
+        // The {uri, title, author, durationMs, artworkUrl} the server wants, from any track payload of the panel.
+        // Null when the row has no uri (nothing a playlist could play), so it gets no button.
+        function plSongFromTrack(t) {
+            if (!t || typeof t.uri !== 'string' || !t.uri.trim()) return null;
+            var length = t.isStream ? NaN : Number(t.duration);
+            return {
+                uri: t.uri,
+                title: t.title ? String(t.title) : null,
+                author: t.author ? String(t.author) : null,
+                durationMs: isFinite(length) && length > 0 && length < PL_MAX_DURATION_MS ? Math.round(length) : 0,
+                artworkUrl: typeof t.artworkUrl === 'string' && /^https?:\/\//i.test(t.artworkUrl) ? t.artworkUrl : null
+            };
+        }
+
+        function plSetRowSongs(source, tracks) {
+            plRowSongs[source] = (tracks || []).map(plSongFromTrack);
+        }
+
+        function plAddButtonHtml(source, index) {
+            if (!plRowSongs[source][index]) return '';
+            return '<button type="button" class="pl-add-btn" title="Add to playlist" aria-label="Add to playlist" aria-haspopup="dialog" onclick="openPlaylistPickerFor(\'' + source + '\',' + index + ', this, event)">' + PL_ADD_ICON + '</button>';
+        }
+
+        function renderAddToPlaylistButton() {
+            if (!plNowPlayingSong) return '';
+            return '<button type="button" class="np-toggle" title="Add to playlist" aria-haspopup="dialog" onclick="openPlaylistPickerFor(\'np\', 0, this, event)">' + PL_ADD_ICON + 'Add to playlist</button>';
+        }
+
+        // The click must not also reach the row it sits in (a search result plays itself when clicked).
+        function openPlaylistPickerFor(source, index, anchor, event) {
+            if (event) event.stopPropagation();
+            var song = source === 'np' ? plNowPlayingSong : (plRowSongs[source] || [])[index];
+            if (song) openPlaylistPicker(song, anchor, source);
+        }
+
+        function plEl(tag, cls, text) {
+            var el = document.createElement(tag);
+            if (cls) el.className = cls;
+            if (text != null) el.textContent = text;
+            return el;
+        }
+
+        function plKey(name, folder) {
+            return (folder || '') + '\n' + name;
+        }
+
+        function plIsNarrow() {
+            return window.matchMedia('(max-width: 640px)').matches;
+        }
+
+        // Recently used playlists: {name, folder}, newest first. The panel works without localStorage.
+        function plReadRecent() {
+            try {
+                var list = JSON.parse(localStorage.getItem(PL_RECENT_KEY) || '[]');
+                if (!Array.isArray(list)) return [];
+                return list.filter(function (e) {
+                    return e && typeof e.name === 'string' && e.name && (e.folder == null || typeof e.folder === 'string');
+                }).map(function (e) { return { name: e.name, folder: e.folder || '' }; });
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function plRemember(name, folder, playlists) {
+            try {
+                var key = plKey(name, folder);
+                var known = null;
+                if (Array.isArray(playlists)) {
+                    known = Object.create(null);
+                    playlists.forEach(function (pl) { known[plKey(pl.name, pl.folder)] = true; });
+                }
+                var older = plReadRecent().filter(function (e) {
+                    var k = plKey(e.name, e.folder);
+                    return k !== key && (!known || known[k]);
+                });
+                localStorage.setItem(PL_RECENT_KEY, JSON.stringify([{ name: name, folder: folder }].concat(older).slice(0, PL_RECENT_STORED)));
+            } catch (e) {}
+        }
+
+        // The existing success/failure notice under the Add Music box.
+        function plShowNotice(text, isError) {
+            searchResults.innerHTML = '<div class="status-message"' + (isError ? ' style="color:#ef4444;"' : '') + '>' + escHtml(text) + '</div>';
+            if (plNoticeTimer) clearTimeout(plNoticeTimer);
+            plNoticeTimer = setTimeout(function () {
+                plNoticeTimer = null;
+                searchResults.innerHTML = '';
+            }, isError ? 8000 : 5000);
+        }
+
+        function plFlashAdded(button) {
+            if (!button || !button.isConnected) return;
+            button.classList.add('pl-added');
+            setTimeout(function () { button.classList.remove('pl-added'); }, 1600);
+        }
+
+        async function plApi(method, url, body) {
+            var opts = { method: method };
+            if (body !== undefined) opts.body = JSON.stringify(body);
+            var resp = await authFetch(url, opts);
+            var data = await readApiJson(resp);
+            if (!data || typeof data !== 'object') data = {};
+            return { ok: resp.ok, data: data };
+        }
+
+        // The server's {"error": ...} text; a long answer is some proxy's error page, not a message for people.
+        function plErrorText(res, fallback) {
+            var e = res.data.error;
+            return typeof e === 'string' && e.trim() && e.length <= 200 ? e : fallback;
+        }
+
+        function plNormalize(raw) {
+            return {
+                name: String(raw.name),
+                folder: typeof raw.folder === 'string' ? raw.folder : '',
+                songCount: Number(raw.songCount) || 0,
+                legacy: raw.legacy === true
+            };
+        }
+
+        function plCompare(a, b) {
+            var opts = { sensitivity: 'base', numeric: true };
+            return a.name.localeCompare(b.name, undefined, opts) || a.folder.localeCompare(b.folder, undefined, opts);
+        }
+
+        // Recently used first (newest first, only playlists that still exist), then the rest A to Z; the filter
+        // keeps playlists whose name or folder path contains every word typed.
+        function plVisible(p) {
+            var byKey = Object.create(null);
+            p.playlists.forEach(function (pl) { byKey[plKey(pl.name, pl.folder)] = pl; });
+            var used = Object.create(null);
+            var recent = [];
+            var stored = plReadRecent();
+            for (var i = 0; i < stored.length && recent.length < PL_RECENT_SHOWN; i++) {
+                var k = plKey(stored[i].name, stored[i].folder);
+                if (byKey[k] && !used[k]) {
+                    used[k] = true;
+                    recent.push(byKey[k]);
+                }
+            }
+            var rest = p.playlists.filter(function (pl) { return !used[plKey(pl.name, pl.folder)]; }).sort(plCompare);
+            var words = p.query.toLowerCase().split(/\s+/).filter(Boolean);
+            if (words.length) {
+                var matches = function (pl) {
+                    var hay = ((pl.folder ? pl.folder + '/' : '') + pl.name + '\n' + pl.folder).toLowerCase();
+                    return words.every(function (w) { return hay.indexOf(w) >= 0; });
+                };
+                recent = recent.filter(matches);
+                rest = rest.filter(matches);
+            }
+            return { recent: recent, rest: rest };
+        }
+
+        function plRow(p, pl) {
+            var li = plEl('li');
+            var btn = plEl('button', 'plpick-item');
+            btn.type = 'button';
+            btn.appendChild(plEl('span', 'plpick-name', pl.name));
+            if (pl.folder) btn.appendChild(plEl('span', 'plpick-folder', pl.folder));
+            if (pl.legacy) {
+                btn.appendChild(plEl('span', 'plpick-count', 'upgrading…'));
+                btn.title = 'This playlist is being converted to the new format — try again in a moment';
+                btn.disabled = true;
+            } else {
+                btn.appendChild(plEl('span', 'plpick-count', pl.songCount + ' ' + pluralUnit(pl.songCount, 'song', 'songs')));
+                btn.title = (pl.folder ? pl.folder + ' / ' : '') + pl.name;
+                btn.addEventListener('click', function () { plAddTo(p, pl); });
+            }
+            li.appendChild(btn);
+            return li;
+        }
+
+        function plRender() {
+            var p = plPicker;
+            if (!p) return;
+            var list = p.list;
+            list.textContent = '';
+            if (p.loadError) {
+                var failed = plEl('li', 'plpick-msg', p.loadError);
+                var retry = plEl('button', 'btn-sm', 'Try again');
+                retry.type = 'button';
+                retry.style.marginTop = '8px';
+                retry.addEventListener('click', plLoadTree);
+                failed.appendChild(document.createElement('br'));
+                failed.appendChild(retry);
+                list.appendChild(failed);
+            } else if (p.playlists === null) {
+                var loading = plEl('li', 'plpick-msg');
+                loading.appendChild(plEl('span', 'loading-spinner'));
+                loading.appendChild(document.createTextNode('Loading playlists…'));
+                list.appendChild(loading);
+            } else {
+                var v = plVisible(p);
+                if (!v.recent.length && !v.rest.length) {
+                    list.appendChild(plEl('li', 'plpick-msg', p.query.trim() ? 'No matching playlists' : 'No playlists yet'));
+                } else {
+                    var headings = !p.query.trim() && v.recent.length > 0;
+                    if (headings) list.appendChild(plEl('li', 'plpick-group', 'Recently used'));
+                    v.recent.forEach(function (pl) { list.appendChild(plRow(p, pl)); });
+                    if (headings && v.rest.length) list.appendChild(plEl('li', 'plpick-group', 'All playlists'));
+                    v.rest.forEach(function (pl) { list.appendChild(plRow(p, pl)); });
+                }
+            }
+            plPosition();
+        }
+
+        function plRenderFooter() {
+            var p = plPicker;
+            if (!p) return;
+            p.foot.textContent = '';
+            p.newName = null;
+            if (!p.creating) {
+                var open = plEl('button', 'plpick-newbtn', '+ New playlist…');
+                open.type = 'button';
+                open.addEventListener('click', function () {
+                    p.creating = true;
+                    plSetError(p, '');
+                    plRenderFooter();
+                    p.newName.focus();
+                    p.newName.select();
+                });
+                p.foot.appendChild(open);
+                return;
+            }
+            var form = plEl('form', 'plpick-newform');
+            var input = plEl('input', 'plpick-newname');
+            input.type = 'text';
+            input.maxLength = 100;
+            input.placeholder = 'New playlist name';
+            input.setAttribute('aria-label', 'New playlist name');
+            input.autocomplete = 'off';
+            input.value = p.query.trim();
+            var create = plEl('button', 'btn-sm', 'Create');
+            create.type = 'submit';
+            var cancel = plEl('button', 'btn-sm', 'Cancel');
+            cancel.type = 'button';
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                plCreateAndAdd(p, input.value);
+            });
+            cancel.addEventListener('click', function () {
+                p.creating = false;
+                plSetError(p, '');
+                plRenderFooter();
+                p.foot.querySelector('button').focus();
+            });
+            form.appendChild(input);
+            form.appendChild(create);
+            form.appendChild(cancel);
+            p.foot.appendChild(form);
+            p.newName = input;
+        }
+
+        function plSetError(p, message) {
+            p.error.textContent = message || '';
+        }
+
+        function plSetBusy(p, busy) {
+            p.busy = busy;
+            p.box.classList.toggle('busy', busy);
+            p.box.setAttribute('aria-busy', busy ? 'true' : 'false');
+            Array.prototype.forEach.call(p.foot.querySelectorAll('button, input'), function (el) { el.disabled = busy; });
+        }
+
+        // A failure shows in the picker (which stays open); if it was closed meanwhile, in the panel's notice.
+        function plFail(p, message) {
+            if (p.closed) {
+                plShowNotice(message, true);
+                return;
+            }
+            plSetBusy(p, false);
+            plSetError(p, message);
+            if (p.creating && p.newName) p.newName.focus();
+        }
+
+        function plFailed(p, e) {
+            if (e && e.message === 'unauthorized') {
+                closePlaylistPicker(p);
+                return;
+            }
+            plFail(p, "Couldn't reach the server — try again");
+        }
+
+        function plSucceed(p, pl) {
+            plRemember(pl.name, pl.folder, p.playlists);
+            plShowNotice('Added to ' + pl.name, false);
+            plFlashAdded(p.anchor);
+            if (p.source === 'search') closeSearchDropdown(); // it would cover the notice
+            closePlaylistPicker(p);
+        }
+
+        async function plAddTo(p, pl) {
+            if (plPicker !== p || p.busy) return;
+            plSetBusy(p, true);
+            plSetError(p, '');
+            try {
+                var res = await plApi('POST', '/api/playlists/songs/add', { name: pl.name, folder: pl.folder, songs: [p.song] });
+                if (res.ok) plSucceed(p, pl);
+                else plFail(p, plErrorText(res, "Couldn't add the song to that playlist"));
+            } catch (e) {
+                plFailed(p, e);
+            }
+        }
+
+        // Creates the playlist at the top level, then adds the song to it: one step for the person.
+        async function plCreateAndAdd(p, rawName) {
+            if (plPicker !== p || p.busy) return;
+            var name = String(rawName || '').trim();
+            if (!name) {
+                plSetError(p, 'Give the playlist a name');
+                if (p.newName) p.newName.focus();
+                return;
+            }
+            plSetBusy(p, true);
+            plSetError(p, '');
+            var made;
+            try {
+                made = await plApi('POST', '/api/playlists', { name: name, folder: '' });
+            } catch (e) {
+                plFailed(p, e);
+                return;
+            }
+            if (!made.ok) {
+                plFail(p, plErrorText(made, "Couldn't create the playlist"));
+                return;
+            }
+            var pl = {
+                name: typeof made.data.name === 'string' && made.data.name ? made.data.name : name,
+                folder: typeof made.data.folder === 'string' ? made.data.folder : '',
+                songCount: 0,
+                legacy: false
+            };
+            var problem = '';
+            try {
+                var added = await plApi('POST', '/api/playlists/songs/add', { name: pl.name, folder: pl.folder, songs: [p.song] });
+                if (added.ok) {
+                    if (Array.isArray(p.playlists)) p.playlists.push(pl);
+                    plSucceed(p, pl);
+                    return;
+                }
+                problem = plErrorText(added, 'try again');
+            } catch (e) {
+                if (e && e.message === 'unauthorized') {
+                    closePlaylistPicker(p);
+                    return;
+                }
+                problem = "couldn't reach the server";
+            }
+            // The playlist exists now: list it, so picking it is a retry and not a second "create".
+            if (Array.isArray(p.playlists)) p.playlists.push(pl);
+            if (!p.closed) {
+                p.creating = false;
+                plRenderFooter();
+                plRender();
+            }
+            plFail(p, '“' + pl.name + '” was created, but the song was not added: ' + problem);
+        }
+
+        async function plLoadTree() {
+            var p = plPicker;
+            if (!p) return;
+            p.playlists = null;
+            p.loadError = '';
+            plRender();
+            try {
+                var res = await plApi('GET', '/api/playlists/tree');
+                if (plPicker !== p) return;
+                if (res.ok) {
+                    p.playlists = (Array.isArray(res.data.playlists) ? res.data.playlists : [])
+                        .filter(function (raw) { return raw && typeof raw.name === 'string' && raw.name; })
+                        .map(plNormalize);
+                } else {
+                    p.loadError = plErrorText(res, "Couldn't load your playlists");
+                }
+            } catch (e) {
+                if (plPicker !== p) return;
+                if (e && e.message === 'unauthorized') {
+                    closePlaylistPicker(p);
+                    return;
+                }
+                p.loadError = "Couldn't reach the server";
+            }
+            plRender();
+        }
+
+        // Wide screens: just under (or, near the bottom of the window, just over) the button, centred on it.
+        // Narrow screens: centred by CSS.
+        function plPosition() {
+            var p = plPicker;
+            if (!p) return;
+            var box = p.box;
+            if (plIsNarrow()) {
+                box.style.left = box.style.top = box.style.bottom = box.style.maxHeight = '';
+                return;
+            }
+            var vw = document.documentElement.clientWidth;
+            var vh = window.innerHeight;
+            if (p.anchor && p.anchor.isConnected) {
+                var a = p.anchor.getBoundingClientRect();
+                p.lastRect = { left: a.left, right: a.right, top: a.top, bottom: a.bottom };
+            }
+            var r = p.lastRect || { left: vw / 2, right: vw / 2, top: vh / 3, bottom: vh / 3 };
+            var margin = 8;
+            var gap = 6;
+            var below = vh - r.bottom - gap - margin;
+            var above = r.top - gap - margin;
+            var up = below < 280 && above > below;
+            box.style.maxHeight = Math.min(460, Math.max(160, up ? above : below)) + 'px';
+            var left = (r.left + r.right) / 2 - box.offsetWidth / 2;
+            box.style.left = Math.max(margin, Math.min(left, vw - box.offsetWidth - margin)) + 'px';
+            if (up) {
+                box.style.top = '';
+                box.style.bottom = (vh - r.top + gap) + 'px';
+            } else {
+                box.style.bottom = '';
+                box.style.top = (r.bottom + gap) + 'px';
+            }
+        }
+
+        // Keeps Tab inside the popup.
+        function plTrapTab(p, e) {
+            var inside = Array.prototype.filter.call(p.box.querySelectorAll('input, button'), function (el) {
+                return !el.disabled && el.offsetParent !== null;
+            });
+            if (!inside.length) return;
+            var first = inside[0];
+            var last = inside[inside.length - 1];
+            if (!p.box.contains(document.activeElement)) {
+                e.preventDefault();
+                first.focus();
+            } else if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+
+        function openPlaylistPicker(song, anchor, source) {
+            closePlaylistPicker();
+            var p = {
+                song: song, anchor: anchor, source: source,
+                playlists: null, loadError: '', query: '',
+                busy: false, creating: false, closed: false, lastRect: null, moveQueued: false, newName: null
+            };
+
+            p.backdrop = plEl('div', 'plpick-backdrop');
+            p.box = plEl('div', 'plpick');
+            p.box.setAttribute('role', 'dialog');
+            p.box.setAttribute('aria-modal', 'true');
+            p.box.setAttribute('aria-label', 'Add to playlist');
+            var head = plEl('div', 'plpick-head');
+            head.appendChild(plEl('div', 'plpick-title', 'Add to playlist'));
+            var label = plEl('div', 'plpick-song', song.title || song.uri);
+            label.title = song.title || song.uri;
+            head.appendChild(label);
+            p.filter = plEl('input', 'plpick-filter');
+            p.filter.type = 'text';
+            p.filter.placeholder = 'Filter playlists…';
+            p.filter.setAttribute('aria-label', 'Filter playlists');
+            p.filter.autocomplete = 'off';
+            p.filter.spellcheck = false;
+            head.appendChild(p.filter);
+            p.list = plEl('ul', 'plpick-list');
+            p.error = plEl('div', 'plpick-error');
+            p.error.setAttribute('role', 'alert');
+            p.foot = plEl('div', 'plpick-foot');
+            p.box.appendChild(head);
+            p.box.appendChild(p.list);
+            p.box.appendChild(p.error);
+            p.box.appendChild(p.foot);
+            p.backdrop.appendChild(p.box);
+
+            // Outside click closes. Closing on "click" only when the press also started on the backdrop keeps a text
+            // selection that ends outside the box from closing it. No click gets past the backdrop, so the Add Music
+            // dropdown stays open under it.
+            var pressedOutside = false;
+            p.backdrop.addEventListener('mousedown', function (e) { pressedOutside = e.target === p.backdrop; });
+            p.backdrop.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (e.target === p.backdrop && pressedOutside) closePlaylistPicker(p);
+            });
+
+            p.filter.addEventListener('input', function () {
+                p.query = p.filter.value;
+                plRender();
+            });
+            p.box.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && e.target === p.filter && !e.isComposing) {
+                    // Enter in the filter adds to the first match, once something has been typed.
+                    e.preventDefault();
+                    var first = p.query.trim() ? p.list.querySelector('.plpick-item:not(:disabled)') : null;
+                    if (first && !p.busy) first.click();
+                } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && (e.target === p.filter || e.target.classList.contains('plpick-item'))) {
+                    var stops = [p.filter].concat(Array.prototype.slice.call(p.list.querySelectorAll('.plpick-item:not(:disabled)')));
+                    var at = stops.indexOf(e.target) + (e.key === 'ArrowDown' ? 1 : -1);
+                    if (stops[at]) {
+                        e.preventDefault();
+                        stops[at].focus();
+                    }
+                }
+            });
+
+            p.onKey = function (e) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closePlaylistPicker(p);
+                } else if (e.key === 'Tab') {
+                    plTrapTab(p, e);
+                }
+            };
+            p.onMove = function (e) {
+                if (e.type === 'scroll' && p.box.contains(e.target)) return;
+                if (p.moveQueued) return;
+                p.moveQueued = true;
+                requestAnimationFrame(function () {
+                    p.moveQueued = false;
+                    if (plPicker === p) plPosition();
+                });
+            };
+            document.addEventListener('keydown', p.onKey, true);
+            window.addEventListener('resize', p.onMove);
+            window.addEventListener('scroll', p.onMove, true);
+
+            document.body.appendChild(p.backdrop);
+            plPicker = p;
+            plRenderFooter();
+            plRender();
+            p.filter.focus({ preventScroll: true });
+            plLoadTree();
+        }
+
+        // `only`: close that picker, and leave a newer one alone (a slow answer can arrive after a reopen).
+        function closePlaylistPicker(only) {
+            var p = plPicker;
+            if (!p || (only && only !== p)) return;
+            plPicker = null;
+            p.closed = true;
+            document.removeEventListener('keydown', p.onKey, true);
+            window.removeEventListener('resize', p.onMove);
+            window.removeEventListener('scroll', p.onMove, true);
+            if (p.backdrop.parentNode) p.backdrop.parentNode.removeChild(p.backdrop);
+            if (p.anchor && p.anchor.isConnected) {
+                try { p.anchor.focus({ preventScroll: true }); } catch (e) {}
             }
         }
 
@@ -7133,6 +7915,7 @@
                 clearBtn.style.display = 'none';
                 return;
             }
+            plSetRowSongs('history', data.tracks);
             var hSnap = JSON.stringify(data.tracks.map(function(t) {
                 return { t: t.title || '', a: t.author || '', u: t.uri || '', d: t.durationFormatted || '', r: t.requestedBy || '' };
             }));
@@ -7146,6 +7929,7 @@
                     '<div class="history-info"><div class="history-title">' + escHtml(t.title || 'Unknown') + '</div>' +
                     '<div class="history-meta">' + escHtml(t.author || '') + (t.requestedBy ? ' &middot; ' + escHtml(t.requestedBy) : '') + '</div></div>' +
                     '<span class="history-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
+                    plAddButtonHtml('history', i) +
                     '<button class="history-replay" onclick="replayHistory(\'' + escJsAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
             }).join('');
         }
@@ -7178,6 +7962,7 @@
                 empty.style.display = '';
                 return;
             }
+            plSetRowSongs('frequent', tracks);
             var snap = tracks.map(function(t) {
                 return (t.identifier || t.uri || '') + '|' + (t.playCount || 0) + '|' + (t.title || '');
             }).join(';');
@@ -7192,6 +7977,7 @@
                     '<div class="history-meta">' + escHtml(t.author || '') + '</div></div>' +
                     '<span class="frequent-count" title="Times played">' + plays + '×</span>' +
                     '<span class="history-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
+                    plAddButtonHtml('frequent', i) +
                     '<button class="history-replay" onclick="replayHistory(\'' + escJsAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
             }).join('');
         }
