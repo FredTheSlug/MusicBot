@@ -243,6 +243,38 @@ public class PlaylistFile
         return new String(id);
     }
 
+    /** A fresh song id that is not in {@code taken}; it is added to {@code taken}, so asking again can't repeat it. */
+    public static String newSongId(Random random, Set<String> taken)
+    {
+        String id;
+        do
+        {
+            id = newSongId(random);
+        }
+        while(!taken.add(id));
+        return id;
+    }
+
+    /**
+     * A copy of {@code source} to put in a playlist: a fresh id (added to {@code takenIds}), the same
+     * uri, title, author, duration, artwork and {@code unresolved} flag, and {@code by} (may be null) and
+     * {@code at} as who added it and when. {@code source} is left as it is.
+     */
+    static Song copyForPlaylist(Song source, Set<String> takenIds, Person by, Instant at)
+    {
+        Song copy = new Song();
+        copy.setId(newSongId(RANDOM, takenIds));
+        copy.setUri(source.getUri());
+        copy.setTitle(source.getTitle());
+        copy.setAuthor(source.getAuthor());
+        copy.setDurationMs(source.getDurationMs());
+        copy.setArtworkUrl(source.getArtworkUrl());
+        copy.setUnresolved(source.isUnresolved());
+        copy.setAddedBy(by);
+        copy.setAddedAt(at);
+        return copy;
+    }
+
     /** Text cut to {@link #MAX_TEXT} characters; null stays null. */
     public static String cut(String text)
     {
@@ -267,13 +299,7 @@ public class PlaylistFile
         Song song = new Song();
         String id = text(json, "id");
         if(id == null || !ID_PATTERN.matcher(id).matches() || !usedIds.add(id))
-        {
-            do
-            {
-                id = newSongId(RANDOM);
-            }
-            while(!usedIds.add(id));
-        }
+            id = newSongId(RANDOM, usedIds);
         song.setId(id);
         song.setUri(text(json, "uri"));
         song.setTitle(text(json, "title"));

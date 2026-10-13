@@ -18,8 +18,6 @@ package com.jagrosh.jmusicbot.playlist;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile.Song;
 import com.jagrosh.jmusicbot.playlist.PlaylistStore.Legacy;
 import com.jagrosh.jmusicbot.playlist.TrackResolver.Resolved;
-import java.security.SecureRandom;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -30,14 +28,15 @@ import org.slf4j.LoggerFactory;
 /**
  * Upgrades the old {@code .txt} playlists to JSON playlists, one at a time and one network load at a
  * time. Each line is looked up by the {@link TrackResolver} (a line that fails is kept as an
- * {@code unresolved} song, never dropped); the finished playlist is written first and only then is the
+ * {@code unresolved} song, never dropped, unless the sources themselves stop answering, in which case the
+ * run pauses instead); the finished playlist is written first and only then is the
  * {@code .txt} moved to {@code Playlists/.legacy-txt/}, so a playlist is never lost and an interrupted
  * run simply picks up the rest next time. Until its turn a {@code .txt} keeps playing as it always did.
  */
 public class PlaylistConverter
 {
     private static final Logger LOG = LoggerFactory.getLogger(PlaylistConverter.class);
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final String UNREACHABLE = "YouTube looks unreachable — playlist conversion paused, will retry";
 
     private final PlaylistStore store;
     private final TrackResolver resolver;
@@ -52,7 +51,11 @@ public class PlaylistConverter
     /**
      * Converts every {@code .txt} playlist that has no {@code .json} and returns how many it converted. A
      * playlist whose conversion fails with an exception (a broken resolver, a disk error) is logged, counted
-     * as failed and left as it was, to be tried again at the next start. Stops early when the thread is interrupted.
+     * as failed and left as it was, to be tried again by the next call. When a line fails and the resolver is
+     * not {@linkplain TrackResolver#healthy() healthy}, that is an outage and not a dead line: the playlist
+     * counts as failed and is left as it was, and the run stops there, leaving the rest to the next call. A
+     * run also stops early when the thread is interrupted. A playlist found already converted meanwhile is
+     * counted as done in {@link #progress()}, but not in the number returned.
      */
     public synchronized int convertPending()
     {
@@ -62,6 +65,7 @@ public class PlaylistConverter
             LOG.info("Moved {} old playlist file(s) whose upgrade had already been saved to .legacy-txt", tidied);
 
         List<Legacy> pending = store.legacyEntries();
+        int converted = 0;
         int done = 0;
         int failed = 0;
         progress = new Progress(pending.size(), done, failed);
@@ -69,19 +73,29 @@ public class PlaylistConverter
         {
             if(Thread.currentThread().isInterrupted())
                 break;
+            boolean paused = false;
             try
             {
                 if(convert(legacy))
-                    done++;
+                    converted++;
+                done++;
+            }
+            catch(SourcesDown e)
+            {
+                failed++;
+                paused = true;
+                LOG.warn(UNREACHABLE);
             }
             catch(RuntimeException e)
             {
                 failed++;
-                LOG.warn("Could not convert '{}', it will be tried again at the next start", label(legacy), e);
+                LOG.warn("Could not convert '{}', it will be tried again later", label(legacy), e);
             }
             progress = new Progress(pending.size(), done, failed);
+            if(paused)
+                break;
         }
-        return done;
+        return converted;
     }
 
     /** How far the current (or last) {@link #convertPending} run has got; all zero before the first run. Safe to read from any thread. */
@@ -90,7 +104,10 @@ public class PlaylistConverter
         return progress;
     }
 
-    /** Looks every line up and saves the playlist; false when the store left it alone (it is already converted, or its file is gone). */
+    /**
+     * Looks every line up and saves the playlist; false when the store left it alone (it is already converted,
+     * or its file is gone). Throws {@link SourcesDown} when a line fails while the resolver is not healthy.
+     */
     private boolean convert(Legacy legacy)
     {
         List<Song> found = new ArrayList<>();
@@ -99,11 +116,14 @@ public class PlaylistConverter
             if(found.size() >= PlaylistFile.MAX_SONGS)
                 break;
             Resolved resolved = resolver.resolve(line);
-            if(resolved.getSongs().isEmpty())
+            if(gaveNothing(resolved))
             {
+                if(!resolver.healthy())
+                    throw new SourcesDown(); // not a dead line: nothing is getting through
                 LOG.debug("Could not load '{}' in '{}': {}", line, label(legacy), resolved.getError());
-                found.add(TrackResolver.unresolvedSong(line, LavaTrackResolver.identifierFor(line)));
             }
+            if(resolved.getSongs().isEmpty())
+                found.add(TrackResolver.unresolvedSong(line, LavaTrackResolver.identifierFor(line)));
             else
                 found.addAll(resolved.getSongs());
         }
@@ -118,7 +138,7 @@ public class PlaylistConverter
         int unresolved = 0;
         for(Song source : found)
         {
-            file.getSongs().add(copyOf(source, ids, legacy.getModified()));
+            file.getSongs().add(PlaylistFile.copyForPlaylist(source, ids, null, legacy.getModified()));
             if(source.isUnresolved())
                 unresolved++;
         }
@@ -132,25 +152,13 @@ public class PlaylistConverter
         return true;
     }
 
-    /** A copy for the new playlist: a fresh id, nobody as the one who added it, added when the old file was written. */
-    private static Song copyOf(Song source, Set<String> ids, Instant addedAt)
+    /** True when the line gave no song that loaded: an error, nothing, or only songs that could not be loaded. */
+    private static boolean gaveNothing(Resolved resolved)
     {
-        String id;
-        do
-        {
-            id = PlaylistFile.newSongId(RANDOM);
-        }
-        while(!ids.add(id));
-        Song copy = new Song();
-        copy.setId(id);
-        copy.setUri(source.getUri());
-        copy.setTitle(source.getTitle());
-        copy.setAuthor(source.getAuthor());
-        copy.setDurationMs(source.getDurationMs());
-        copy.setArtworkUrl(source.getArtworkUrl());
-        copy.setUnresolved(source.isUnresolved());
-        copy.setAddedAt(addedAt);
-        return copy;
+        for(Song song : resolved.getSongs())
+            if(!song.isUnresolved())
+                return false;
+        return true;
     }
 
     /** {@code Folder/Name}, or just the name at the top level. */
@@ -159,7 +167,19 @@ public class PlaylistConverter
         return legacy.getFolder().isEmpty() ? legacy.getName() : legacy.getFolder() + "/" + legacy.getName();
     }
 
-    /** A snapshot of the conversion: how many old playlists the run found, how many it converted and how many it gave up on. */
+    /** Thrown to stop the run when a line fails and the sources are not answering. */
+    private static final class SourcesDown extends RuntimeException
+    {
+        SourcesDown()
+        {
+            super(null, null, false, false);
+        }
+    }
+
+    /**
+     * A snapshot of the conversion: how many old playlists the run found, how many it converted and how many it
+     * gave up on. A run that was not cut short (by an outage or an interrupt) ends with {@code done + failed == total}.
+     */
     public static final class Progress
     {
         private final int total;
@@ -179,13 +199,13 @@ public class PlaylistConverter
             return total;
         }
 
-        /** Converted so far. */
+        /** Converted so far, including playlists found already converted by someone else. */
         public int getDone()
         {
             return done;
         }
 
-        /** Given up on so far (left as they were, tried again at the next start). */
+        /** Given up on so far (left as they were, tried again by the next run). */
         public int getFailed()
         {
             return failed;

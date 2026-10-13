@@ -42,6 +42,15 @@ public interface TrackResolver
         return r;
     }
 
+    /**
+     * Whether the sources answer right now. A caller whose line just failed asks this to tell a line that is
+     * really dead from an outage that makes every line fail. This default says yes.
+     */
+    default boolean healthy()
+    {
+        return true;
+    }
+
     /** A song that could not be loaded: {@code title} holds the original text, {@code uri} the link or {@code ytsearch:} query to try again. */
     static Song unresolvedSong(String title, String uri)
     {

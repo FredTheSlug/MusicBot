@@ -37,7 +37,12 @@ public class LavaTrackResolverTest
 
     private static AudioTrackInfo info(String title, long length, String identifier, boolean stream, String uri, String artwork)
     {
-        return new AudioTrackInfo(title, "Dr. Dre", length, identifier, stream, uri, artwork, null);
+        return info(title, length, identifier, stream, uri, artwork, "Dr. Dre");
+    }
+
+    private static AudioTrackInfo info(String title, long length, String identifier, boolean stream, String uri, String artwork, String author)
+    {
+        return new AudioTrackInfo(title, author, length, identifier, stream, uri, artwork, null);
     }
 
     /** A track that only carries its details. */
@@ -103,7 +108,74 @@ public class LavaTrackResolverTest
         assertEquals("a name that only mentions a link", "ytsearch:listen to https://x.test", LavaTrackResolver.identifierFor("listen to https://x.test"));
     }
 
+    @Test
+    public void localFilesAreLoadedAsTheyAre()
+    {
+        String[] paths = {
+            "/home/cloutkings/music/Juice/Hollywood Dreams/Analog.m4a",
+            "/home/cloutkings/music/Artist (Deluxe Edition)/01 Song (feat. Someone) [Live].mp3",
+            "C:\\Music\\Juice\\Analog.m4a",
+            "d:/Music/Juice/Analog.m4a",
+            "\\\\server\\share\\Analog.m4a",
+            "file:///home/cloutkings/music/Analog.m4a",
+        };
+        for(String path : paths)
+        {
+            assertEquals(path, LavaTrackResolver.identifierFor(path));
+            assertEquals("trimmed", path, LavaTrackResolver.identifierFor("  " + path + "\t"));
+        }
+    }
+
+    @Test
+    public void textThatOnlyLooksLikeAPathIsStillASearch()
+    {
+        assertEquals("relative: not a file we know about", "ytsearch:music/Analog.m4a", LavaTrackResolver.identifierFor("music/Analog.m4a"));
+        assertEquals("ytsearch:C is for cookie", LavaTrackResolver.identifierFor("C is for cookie"));
+        assertEquals("ytsearch:C:song", LavaTrackResolver.identifierFor("C:song"));
+    }
+
     // ---- songOf
+
+    @Test
+    public void songOfNamesAnUntaggedLocalFileAfterItsFile()
+    {
+        String path = "/home/cloutkings/music/Juice/Hollywood Dreams/Analog.m4a";
+        Song song = LavaTrackResolver.songOf(info("Unknown title", 215000, path, false, path, null, "Unknown artist"));
+
+        assertEquals("Analog", song.getTitle());
+        assertNull("no author is better than 'Unknown artist'", song.getAuthor());
+        assertEquals("the path stays the way to play it", path, song.getUri());
+        assertEquals(215000, song.getDurationMs());
+        assertNull(song.getArtworkUrl());
+
+        assertEquals("a name with parentheses and a dotted title", "01 Song (feat. Someone) [Live]",
+                LavaTrackResolver.songOf(info(null, 1, "/m/A (Deluxe)/01 Song (feat. Someone) [Live].mp3", false,
+                        "/m/A (Deluxe)/01 Song (feat. Someone) [Live].mp3", null, "Unknown artist")).getTitle());
+        assertEquals("Song (Live)", LavaTrackResolver.songOf(info("", 1, "C:\\Music\\Song (Live).mp3", false,
+                "C:\\Music\\Song (Live).mp3", null, null)).getTitle());
+        assertEquals("blank title", "Song", LavaTrackResolver.songOf(info("   ", 1, "/m/Song.flac", false, "/m/Song.flac", null, null)).getTitle());
+        assertEquals("no extension", "track", LavaTrackResolver.songOf(info("Unknown title", 1, "/m/track", false, "/m/track", null, null)).getTitle());
+        assertEquals("only the last extension goes", "a.b", LavaTrackResolver.songOf(info("Unknown title", 1, "/m/a.b.mp3", false, "/m/a.b.mp3", null, null)).getTitle());
+        assertEquals("a leading dot is not an extension", ".hidden", LavaTrackResolver.songOf(info("Unknown title", 1, "/m/.hidden", false, "/m/.hidden", null, null)).getTitle());
+    }
+
+    @Test
+    public void songOfKeepsTheTagsOfALocalFile()
+    {
+        String path = "/home/cloutkings/music/Analog.m4a";
+        Song song = LavaTrackResolver.songOf(info("Analog (Remix)", 1000, path, false, path, null, "Juice"));
+
+        assertEquals("Analog (Remix)", song.getTitle());
+        assertEquals("Juice", song.getAuthor());
+    }
+
+    @Test
+    public void songOfLeavesOtherUntitledTracksAlone()
+    {
+        assertNull("not a local file: no file name to use", LavaTrackResolver.songOf(info(null, 1, "x", false, "https://example.test/stream", null)).getTitle());
+        assertEquals("Unknown title", LavaTrackResolver.songOf(info("Unknown title", 1, "x", false, "https://example.test/a", null)).getTitle());
+        assertNull("'Unknown artist' goes for any track", LavaTrackResolver.songOf(info("t", 1, "x", false, "https://example.test/a", null, "Unknown artist")).getAuthor());
+    }
 
     @Test
     public void songOfCopiesTheTrackDetails()

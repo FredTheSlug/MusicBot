@@ -217,6 +217,70 @@ public class PlaylistFileTest
         assertTrue(seen.size() > 495);
     }
 
+    /** Draws 0 for the first 8 characters asked for (the id "aaaaaaaa"), 1 for the next 8 ("bbbbbbbb"), and so on. */
+    private static final class CountingRandom extends Random
+    {
+        private int asked;
+
+        @Override
+        public int nextInt(int bound)
+        {
+            return asked++ / 8;
+        }
+    }
+
+    @Test
+    public void newSongIdSkipsTakenIdsAndTakesTheOneItReturns()
+    {
+        Set<String> taken = new HashSet<>();
+        taken.add("aaaaaaaa");
+        taken.add("bbbbbbbb");
+
+        String id = PlaylistFile.newSongId(new CountingRandom(), taken);
+
+        assertEquals("the first two draws were taken", "cccccccc", id);
+        assertTrue("and it is now taken itself", taken.contains("cccccccc"));
+        assertEquals(3, taken.size());
+    }
+
+    @Test
+    public void copyForPlaylistGivesAFreshIdAndTheNewAdder()
+    {
+        PlaylistFile.Song source = new PlaylistFile.Song();
+        source.setId("srcsrc12");
+        source.setUri("https://example.test/a");
+        source.setTitle("Title");
+        source.setAuthor("Author");
+        source.setDurationMs(1234);
+        source.setArtworkUrl("https://img.test/a.jpg");
+        source.setUnresolved(true);
+        source.setAddedBy(new PlaylistFile.Person("1", "old"));
+        source.setAddedAt(Instant.parse("2020-01-01T00:00:00Z"));
+        Set<String> taken = new HashSet<>();
+        taken.add("srcsrc12");
+        PlaylistFile.Person by = new PlaylistFile.Person("2", "new");
+        Instant at = Instant.parse("2026-10-13T18:00:00Z");
+
+        PlaylistFile.Song copy = PlaylistFile.copyForPlaylist(source, taken, by, at);
+
+        assertNotSame(source, copy);
+        assertTrue(copy.getId(), copy.getId().matches("[a-z0-9]{8}"));
+        assertNotEquals("srcsrc12", copy.getId());
+        assertTrue("the id is now taken", taken.contains(copy.getId()));
+        assertEquals("https://example.test/a", copy.getUri());
+        assertEquals("Title", copy.getTitle());
+        assertEquals("Author", copy.getAuthor());
+        assertEquals(1234, copy.getDurationMs());
+        assertEquals("https://img.test/a.jpg", copy.getArtworkUrl());
+        assertTrue(copy.isUnresolved());
+        assertSame(by, copy.getAddedBy());
+        assertEquals(at, copy.getAddedAt());
+        assertEquals("the source is left alone", "srcsrc12", source.getId());
+        assertEquals("old", source.getAddedBy().getName());
+
+        assertNull("nobody as the adder", PlaylistFile.copyForPlaylist(source, taken, null, at).getAddedBy());
+    }
+
     @Test
     public void badMissingAndDuplicateSongIdsGetFreshOnes()
     {

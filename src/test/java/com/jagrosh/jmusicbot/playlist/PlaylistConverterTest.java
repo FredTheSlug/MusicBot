@@ -98,6 +98,15 @@ public class PlaylistConverterTest
         final Set<String> explode = new HashSet<>();
         final List<String> seen = new ArrayList<>();
         Consumer<String> onResolve = line -> { };
+        boolean healthy = true;
+        int healthChecks;
+
+        @Override
+        public boolean healthy()
+        {
+            healthChecks++;
+            return healthy;
+        }
 
         void answer(String line, Resolved resolved)
         {
@@ -363,6 +372,131 @@ public class PlaylistConverterTest
     }
 
     @Test
+    public void outageStopsTheRunAndLeavesEveryTxtAlone() throws Exception
+    {
+        Path a = txt("", "A", "a1", "a2");
+        Path b = txt("Rock", "B", "b1");
+        resolver.healthy = false; // every load fails: YouTube is not answering
+
+        assertEquals(0, converter.convertPending());
+
+        assertTrue("the .txt is still in its place", Files.isRegularFile(a));
+        assertTrue(Files.isRegularFile(b));
+        assertFalse(Files.exists(root.resolve("A.json")));
+        assertFalse(Files.exists(root.resolve("Rock").resolve("B.json")));
+        assertFalse(Files.exists(root.resolve(".legacy-txt")));
+        assertTrue("both keep playing as before", store.get("A", "").get().isLegacy() && store.get("B", "Rock").get().isLegacy());
+        assertProgress(converter.progress(), 2, 0, 1);
+        assertEquals("gave up at the first failing line; the other playlist was not tried", Collections.singletonList("a1"), resolver.seen);
+        assertEquals(1, resolver.healthChecks);
+        assertEquals(Collections.singletonList("YouTube looks unreachable — playlist conversion paused, will retry"), logged(Level.WARN));
+
+        resolver.healthy = true; // the next run, once YouTube is back
+        resolver.answerOne("a1", "A1");
+        resolver.answerOne("a2", "A2");
+        resolver.answerOne("b1", "B1");
+        assertEquals(2, converter.convertPending());
+        assertEquals(Arrays.asList("A1", "A2"), titles(store.get("A", "").get()));
+        assertEquals(Collections.singletonList("B1"), titles(store.get("B", "Rock").get()));
+    }
+
+    @Test
+    public void deadLineWhileHealthyBecomesUnresolved() throws Exception
+    {
+        txt("", "Mix", "ok1", "dead", "ok2");
+        resolver.answerOne("ok1", "One");
+        resolver.answerOne("ok2", "Two");
+
+        assertEquals(1, converter.convertPending());
+
+        assertEquals("asked once, for the line that failed", 1, resolver.healthChecks);
+        PlaylistFile file = store.get("Mix", "").get();
+        assertEquals(Arrays.asList("One", "dead", "Two"), titles(file));
+        assertEquals(Arrays.asList(false, true, false), file.getSongs().stream().map(Song::isUnresolved).collect(Collectors.toList()));
+        assertEquals("ytsearch:dead", file.getSongs().get(1).getUri());
+        assertTrue(logged(Level.WARN).isEmpty());
+    }
+
+    @Test
+    public void collectionWhereEveryQueryFailedIsAFailedLineToo() throws Exception
+    {
+        String link = "https://open.spotify.com/album/x";
+        Path original = txt("", "Sp", link);
+        List<Song> allLost = Arrays.asList(TrackResolver.unresolvedSong("A - One", "ytsearch:A - One"),
+                TrackResolver.unresolvedSong("A - Two", "ytsearch:A - Two"));
+        resolver.answer(link, Resolved.ok(allLost, "Album"));
+
+        resolver.healthy = false;
+        assertEquals("an outage looks like this too", 0, converter.convertPending());
+        assertTrue(Files.isRegularFile(original));
+        assertProgress(converter.progress(), 1, 0, 1);
+
+        resolver.healthy = true;
+        assertEquals("YouTube is fine, so the songs really are missing and are kept as they are", 1, converter.convertPending());
+        PlaylistFile file = store.get("Sp", "").get();
+        assertEquals(Arrays.asList("A - One", "A - Two"), titles(file));
+        assertEquals(Arrays.asList("ytsearch:A - One", "ytsearch:A - Two"),
+                file.getSongs().stream().map(Song::getUri).collect(Collectors.toList()));
+        assertTrue(file.getSongs().stream().allMatch(Song::isUnresolved));
+    }
+
+    @Test
+    public void collectionWithSomeSongsLoadedIsNotChecked() throws Exception
+    {
+        String link = "https://open.spotify.com/album/x";
+        txt("", "Sp", link);
+        resolver.healthy = false; // would pause the run, if it were asked
+        resolver.answer(link, Resolved.ok(Arrays.asList(song("https://example.test/a", "A"),
+                TrackResolver.unresolvedSong("B", "ytsearch:B")), "Album"));
+
+        assertEquals(1, converter.convertPending());
+
+        assertEquals(0, resolver.healthChecks);
+        assertEquals(Arrays.asList("A", "B"), titles(store.get("Sp", "").get()));
+    }
+
+    @Test
+    public void localFileLineIsAResolvedSong() throws Exception
+    {
+        String path = "/home/cloutkings/music/Juice/Hollywood Dreams/Analog.m4a";
+        txt("", "Local", path);
+        Song loaded = song(path, "Analog");
+        resolver.answer(path, Resolved.ok(Collections.singletonList(loaded), null));
+        resolver.healthy = false; // a success never asks
+
+        assertEquals(1, converter.convertPending());
+
+        assertEquals("the whole path, untouched", Collections.singletonList(path), resolver.seen);
+        assertEquals(0, resolver.healthChecks);
+        Song song = store.get("Local", "").get().getSongs().get(0);
+        assertFalse(song.isUnresolved());
+        assertEquals(path, song.getUri());
+        assertEquals("Analog", song.getTitle());
+    }
+
+    @Test
+    public void missingLocalFileKeepsItsPath() throws Exception
+    {
+        String path = "/home/cloutkings/music/Gone/Missing (Live).mp3";
+        txt("", "Local", path);
+
+        assertEquals(1, converter.convertPending());
+
+        Song song = store.get("Local", "").get().getSongs().get(0);
+        assertTrue(song.isUnresolved());
+        assertEquals(path, song.getTitle());
+        assertEquals("retried as the file, not as a YouTube search", path, song.getUri());
+    }
+
+    @Test
+    public void resolversAreHealthyUnlessTheySayOtherwise()
+    {
+        TrackResolver plain = line -> Resolved.failed("nope");
+
+        assertTrue(plain.healthy());
+    }
+
+    @Test
     public void resumesAfterRestart() throws Exception
     {
         txt("", "A", "a1");
@@ -496,7 +630,37 @@ public class PlaylistConverterTest
         assertEquals(theirs, read(json));
         assertFalse("the .txt must not come back later", Files.exists(original));
         assertTrue(Files.isRegularFile(root.resolve(".legacy-txt").resolve("Raced.txt")));
-        assertProgress(converter.progress(), 1, 0, 0);
+        assertProgress(converter.progress(), 1, 1, 0);
+    }
+
+    @Test
+    public void skippedPlaylistsCountAsDone() throws Exception
+    {
+        txt("", "A", "a1");
+        txt("", "B", "b1");
+        txt("", "C", "c1");
+        resolver.answerOne("a1", "A1");
+        resolver.answerOne("b1", "B1");
+        resolver.explode.add("c1");
+        resolver.onResolve = line ->
+        {
+            if(!line.equals("b1"))
+                return;
+            try
+            {
+                Files.write(root.resolve("B.json"), "{\"format\": 2, \"name\": \"B\", \"songs\": []}".getBytes(StandardCharsets.UTF_8));
+            }
+            catch(IOException e)
+            {
+                throw new UncheckedIOException(e);
+            }
+        };
+
+        assertEquals("only A was converted by this run", 1, converter.convertPending());
+
+        PlaylistConverter.Progress progress = converter.progress();
+        assertProgress(progress, 3, 2, 1);
+        assertEquals("a finished run accounts for every playlist", progress.getTotal(), progress.getDone() + progress.getFailed());
     }
 
     @Test
@@ -520,7 +684,7 @@ public class PlaylistConverterTest
 
         assertFalse(Files.exists(root.resolve("Gone.json")));
         assertFalse(Files.exists(root.resolve(".legacy-txt").resolve("Gone.txt")));
-        assertProgress(converter.progress(), 1, 0, 0);
+        assertProgress(converter.progress(), 1, 1, 0);
     }
 
     @Test

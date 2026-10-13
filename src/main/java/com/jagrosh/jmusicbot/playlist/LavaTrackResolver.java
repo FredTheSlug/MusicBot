@@ -39,7 +39,8 @@ import java.util.function.Supplier;
  * The real {@link TrackResolver}: loads a line through lavaplayer, one load at a time, waiting at most
  * 30 seconds for each. A link gives what it points to (a single track, or every track of an album or
  * playlist, up to {@link PlaylistFile#MAX_SONGS}; a video link that also names a list gives just that
- * video), any other text is searched on YouTube and gives its first result. A Spotify link is expanded
+ * video), a file path is loaded through lavaplayer's local source, and any other text is searched on
+ * YouTube and gives its first result. A Spotify link is expanded
  * by the {@link SpotifyResolver} into search queries, each loaded as the first YouTube result; a query
  * that finds nothing becomes an {@code unresolved} song. Only {@link #identifierFor}, {@link #songOf} and
  * {@link #fromPlaylist} are unit tested; the loading itself is checked by hand.
@@ -52,6 +53,11 @@ public class LavaTrackResolver implements TrackResolver
     private static final int BATCH_SIZE = 10;
     private static final String[] SEARCH_PREFIXES = {"ytsearch:", "ytmsearch:", "scsearch:"};
     private static final String SPOTIFY_OFF = "Spotify isn't set up on this bot";
+    /** A search that finds something whenever YouTube answers at all. */
+    private static final String HEALTH_CHECK = "ytsearch:never gonna give you up";
+    /** What lavaplayer puts in for a file without tags. */
+    private static final String UNKNOWN_TITLE = "Unknown title";
+    private static final String UNKNOWN_ARTIST = "Unknown artist";
 
     private final PlayerManager manager;
     private final SpotifyResolver spotify;
@@ -87,15 +93,23 @@ public class LavaTrackResolver implements TrackResolver
         return resolved;
     }
 
+    /** Loads one known search: true when YouTube answers with a track. */
+    @Override
+    public boolean healthy()
+    {
+        return !load(HEALTH_CHECK).getSongs().isEmpty();
+    }
+
     /**
-     * What lavaplayer is asked to load for a line: links (and {@code spotify:} URIs) and lines that already
-     * start with a search prefix as they are, anything else as a YouTube search.
+     * What lavaplayer is asked to load for a line: links, {@code spotify:} URIs, file paths (absolute ones, or a
+     * {@code file:} URI) and lines that already start with a search prefix as they are, anything else as a
+     * YouTube search.
      */
     static String identifierFor(String line)
     {
         String trimmed = line.trim();
         if(startsWithIgnoreCase(trimmed, "http://") || startsWithIgnoreCase(trimmed, "https://")
-                || startsWithIgnoreCase(trimmed, "spotify:") || hasSearchPrefix(trimmed))
+                || startsWithIgnoreCase(trimmed, "spotify:") || hasSearchPrefix(trimmed) || isLocalFile(trimmed))
             return trimmed;
         return "ytsearch:" + trimmed;
     }
@@ -105,8 +119,8 @@ public class LavaTrackResolver implements TrackResolver
     {
         Song song = new Song();
         song.setUri(info.uri);
-        song.setTitle(info.title);
-        song.setAuthor(info.author);
+        song.setTitle(titleOf(info));
+        song.setAuthor(UNKNOWN_ARTIST.equals(info.author) ? null : info.author);
         // lavaplayer reports a stream's (or an unknown) length as Long.MAX_VALUE
         song.setDurationMs(info.isStream || info.length < 0 || info.length == Long.MAX_VALUE ? 0 : info.length);
         song.setArtworkUrl(artworkOf(info));
@@ -135,6 +149,23 @@ public class LavaTrackResolver implements TrackResolver
         return Resolved.ok(Collections.singletonList(songOf(track.getInfo())), null);
     }
 
+    /** The track's title; for a local file that has none, the file name without its extension. */
+    private static String titleOf(AudioTrackInfo info)
+    {
+        String title = info.title;
+        if((title == null || title.trim().isEmpty() || UNKNOWN_TITLE.equals(title)) && isLocalFile(info.uri))
+        {
+            String path = info.uri.trim();
+            String name = path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+            int dot = name.lastIndexOf('.');
+            if(dot > 0)
+                name = name.substring(0, dot);
+            if(!name.isEmpty())
+                return name;
+        }
+        return title;
+    }
+
     /** The track's artwork; for a YouTube video without any, its standard thumbnail. */
     private static String artworkOf(AudioTrackInfo info)
     {
@@ -151,6 +182,19 @@ public class LavaTrackResolver implements TrackResolver
             if(text.startsWith(prefix))
                 return true;
         return false;
+    }
+
+    /** An absolute path (Unix, a Windows drive with a slash or backslash, or UNC) or a {@code file:} URI. */
+    private static boolean isLocalFile(String text)
+    {
+        if(text == null)
+            return false;
+        if(text.startsWith("/") || text.startsWith("\\\\") || startsWithIgnoreCase(text, "file:"))
+            return true;
+        if(text.length() < 3 || text.charAt(1) != ':' || (text.charAt(2) != '\\' && text.charAt(2) != '/'))
+            return false;
+        char drive = Character.toLowerCase(text.charAt(0));
+        return drive >= 'a' && drive <= 'z';
     }
 
     private static boolean startsWithIgnoreCase(String text, String prefix)
@@ -216,7 +260,9 @@ public class LavaTrackResolver implements TrackResolver
     private Resolved load(String identifier)
     {
         CompletableFuture<Resolved> answer = new CompletableFuture<>();
-        Future<Void> task = manager.loadItemOrdered(this, identifier, new AudioLoadResultHandler()
+        // a key of its own: lavaplayer runs the loads of one key in sequence, so one stuck in I/O that can't be
+        // interrupted would hold up every load after it until each of them timed out
+        Future<Void> task = manager.loadItemOrdered(new Object(), identifier, new AudioLoadResultHandler()
         {
             @Override
             public void trackLoaded(AudioTrack track)
@@ -249,7 +295,7 @@ public class LavaTrackResolver implements TrackResolver
         }
         catch(TimeoutException e)
         {
-            task.cancel(true); // so the next load doesn't queue up behind this one
+            task.cancel(true); // stop waiting for it; if it is stuck in I/O it ends on its own and holds nothing else up
             return Resolved.failed("Timed out after " + LOAD_SECONDS + " seconds");
         }
         catch(ExecutionException e)

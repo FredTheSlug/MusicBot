@@ -32,7 +32,6 @@ import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -86,7 +85,6 @@ public class PlaylistStore
     private static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
     private static final String FULL = "Playlist is full";
     private static final String SONG_NOT_FOUND = "Song not found";
-    private static final SecureRandom RANDOM = new SecureRandom();
     private static final Comparator<String> TEXT_ORDER =
             String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.<String>naturalOrder());
     private static final Comparator<Entry> ENTRY_ORDER =
@@ -462,25 +460,7 @@ public class PlaylistStore
             Instant now = clock.instant();
             List<Song> added = new ArrayList<>(songs.size());
             for(Song source : songs)
-            {
-                String id;
-                do
-                {
-                    id = PlaylistFile.newSongId(RANDOM);
-                }
-                while(!ids.add(id));
-                Song copy = new Song();
-                copy.setId(id);
-                copy.setUri(source.getUri());
-                copy.setTitle(source.getTitle());
-                copy.setAuthor(source.getAuthor());
-                copy.setDurationMs(source.getDurationMs());
-                copy.setArtworkUrl(source.getArtworkUrl());
-                copy.setUnresolved(source.isUnresolved());
-                copy.setAddedBy(by);
-                copy.setAddedAt(now);
-                added.add(copy);
-            }
+                added.add(PlaylistFile.copyForPlaylist(source, ids, by, now));
             list.addAll(index == null ? list.size() : Math.max(0, Math.min(index, list.size())), added);
         });
     }
@@ -951,13 +931,7 @@ public class PlaylistStore
         for(String line : legacy.getLines())
         {
             Song song = new Song();
-            String id;
-            do
-            {
-                id = PlaylistFile.newSongId(ThreadLocalRandom.current());
-            }
-            while(!ids.add(id));
-            song.setId(id);
+            song.setId(PlaylistFile.newSongId(ThreadLocalRandom.current(), ids));
             song.setUri(line);
             song.setTitle(line);
             song.setUnresolved(true);
