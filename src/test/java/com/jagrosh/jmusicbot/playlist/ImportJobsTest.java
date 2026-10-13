@@ -544,14 +544,66 @@ public class ImportJobsTest
         assertEquals(FULL, last().getError());
     }
 
+    /** What the real resolver gives for a source of more than 2000 songs: exactly 2000, with a total of 2000. */
     @Test
-    public void exactly2000SongsIsNotAnError()
+    public void sourceThatDeliversExactly2000EndsWithTheFullError()
     {
-        resolver.gives("Exact", 2000, 1000, 1000);
+        boolean[] returned = new boolean[1];
+        resolver.script = (link, batches) ->
+        {
+            for(int i = 0; i < 4; i++)
+                batches.batch(songs(1 + i * 500, 500), 2000);
+            returned[0] = true;
+            return Resolved.ok(songs(1, 2000), "Exact");
+        };
 
         jobs.start(LINK, "Exact", null, null, ALICE);
 
         assertEquals(2000, playlist("Exact", "").getSongs().size());
+        assertEquals(FULL, last().getError());
+        assertEquals(2000, last().getDone());
+        assertEquals(2000, last().getTotal());
+        assertTrue(last().isFinished());
+        assertEquals(1, finishedCount());
+        assertEquals("the playlist's last song", "Song 2000", playlist("Exact", "").getSongs().get(1999).getTitle());
+        assertFalse("the load was cut off once the playlist was full", returned[0]);
+    }
+
+    @Test
+    public void namelessSourceThatDeliversExactly2000KeepsItsTitleAndEndsWithTheFullError()
+    {
+        resolver.gives("Exact Title", 2000, 500, 500, 500, 500);
+
+        jobs.start(LINK, null, null, null, ALICE);
+
+        assertEquals(2000, playlist("Exact Title", "").getSongs().size());
+        assertEquals("Exact Title", last().getPlaylistName());
+        assertEquals(2000, last().getDone());
+        assertEquals(FULL, last().getError());
+    }
+
+    @Test
+    public void importThatFillsAnExistingPlaylistExactlyEndsWithTheFullError()
+    {
+        store.create("Almost", "", ALICE);
+        store.addSongs("Almost", "", songs(1, 1500), null, ALICE);
+        resolver.gives("Rest", 500, 250, 250);
+
+        jobs.start(LINK, null, null, "Almost", ALICE);
+
+        assertEquals(2000, playlist("Almost", "").getSongs().size());
+        assertEquals(500, last().getDone());
+        assertEquals(FULL, last().getError());
+    }
+
+    @Test
+    public void importThatStopsJustShortOf2000IsNotAnError()
+    {
+        resolver.gives("Nearly", 1999, 1000, 999);
+
+        jobs.start(LINK, "Nearly", null, null, ALICE);
+
+        assertEquals(1999, playlist("Nearly", "").getSongs().size());
         assertNull(last().getError());
     }
 

@@ -180,7 +180,7 @@ public class ImportJobs
         return forPeople && !isBlank(e.getMessage()) ? PlaylistFile.cut(e.getMessage()) : FAILED;
     }
 
-    /** Thrown from a batch to stop the resolver loading what would not fit anyway. */
+    /** Thrown from a batch to stop the resolver loading songs there is no room for. */
     private static final class Stop extends RuntimeException
     {
         Stop()
@@ -213,7 +213,7 @@ public class ImportJobs
         int heldFailed;
         /** The total the resolver last reported. */
         int reported;
-        /** True once a song did not fit. */
+        /** True once the playlist (or the songs held for it) reached {@link PlaylistFile#MAX_SONGS}. */
         boolean full;
 
         Job(String id, String user, String link, String preferred, String folder, String into, Person by)
@@ -283,29 +283,30 @@ public class ImportJobs
                 take(songs);
             publish(progress(false, null));
             if(full && !titleNeeded)
-                throw new Stop(); // the rest would not fit; with a title to wait for, the resolver is let finish
+                throw new Stop(); // no room for more; with a title to wait for, the resolver is let finish
         }
 
-        /** Puts what fits of the batch in the playlist (or holds it). */
+        /** Puts what fits of the batch in the playlist (or holds it); the job is full once that makes 2000 songs. */
         private void take(List<Song> songs)
         {
             int room = Math.max(0, PlaylistFile.MAX_SONGS - size);
             List<Song> fit = songs.size() > room ? songs.subList(0, room) : songs;
-            full = fit.size() < songs.size();
-            if(fit.isEmpty())
-                return;
             if(titleNeeded)
             {
                 held.addAll(fit);
                 heldFailed += unresolved(fit);
                 size = held.size();
-                return;
             }
-            if(name == null)
-                name = create(preferred); // not before there is something to put in it
-            size = store.addSongs(name, folder, fit, null, by).getSongs().size();
-            added += fit.size();
-            addedFailed += unresolved(fit);
+            else if(!fit.isEmpty())
+            {
+                if(name == null)
+                    name = create(preferred); // not before there is something to put in it
+                size = store.addSongs(name, folder, fit, null, by).getSongs().size();
+                added += fit.size();
+                addedFailed += unresolved(fit);
+            }
+            // a source that delivers exactly 2000 songs has been cut short too: the resolvers stop there themselves
+            full = size >= PlaylistFile.MAX_SONGS;
         }
 
         /** Makes the playlist named after the source and puts the held songs in it. */
