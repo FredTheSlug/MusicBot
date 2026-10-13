@@ -188,6 +188,9 @@ fn create_main_window(app: &AppHandle, panel_url: url::Url, origin: String, visi
         .initialization_script(bridge::init_script(&origin))
         .inner_size(1280.0, 860.0)
         .visible(visible)
+        // The panel uses HTML5 drag and drop (moving panes, dropping audio files to upload); on
+        // Windows that only reaches the page when Tauri's own drop handler is off.
+        .disable_drag_drop_handler()
         .on_navigation(move |url| {
             if allowed_navigation(url, &origin) {
                 return true;
