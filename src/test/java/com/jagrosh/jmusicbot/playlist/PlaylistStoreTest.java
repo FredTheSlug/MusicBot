@@ -43,6 +43,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.json.JSONArray;
@@ -235,6 +236,45 @@ public class PlaylistStoreTest
 
         assertEquals(Arrays.asList("Dr. Dre", "Hip Hop", "Hip Hop/West"), store.folders());
         assertEquals(Arrays.asList("|2001", "Dr. Dre|Old Mix"), names(store.tree()));
+    }
+
+    @Test
+    public void createStampsOneInstant() throws Exception
+    {
+        // a real clock moves between calls: createdAt and updatedAt must still come from one reading
+        AtomicLong reads = new AtomicLong();
+        Clock advancing = new Clock()
+        {
+            @Override
+            public ZoneId getZone()
+            {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone)
+            {
+                return this;
+            }
+
+            @Override
+            public Instant instant()
+            {
+                return T0.plusMillis(reads.incrementAndGet());
+            }
+        };
+        PlaylistStore ticking = new PlaylistStore(root, advancing);
+
+        PlaylistFile created = ticking.create("Tick", "", FRED);
+        assertEquals(created.getCreatedAt(), created.getUpdatedAt());
+        PlaylistFile loaded = ticking.get("Tick", "").get();
+        assertEquals(loaded.getCreatedAt(), loaded.getUpdatedAt());
+        assertEquals(created.getCreatedAt(), loaded.getCreatedAt());
+
+        // later changes are stamped later than the creation
+        PlaylistFile changed = ticking.update("Tick", "", f -> f.setShuffle(true));
+        assertEquals(created.getCreatedAt(), changed.getCreatedAt());
+        assertTrue(changed.getUpdatedAt().isAfter(changed.getCreatedAt()));
     }
 
     @Test

@@ -134,9 +134,8 @@ public class PlaylistStore
             PlaylistFile file = new PlaylistFile();
             file.setCreatedBy(by);
             file.setCreatedAt(now);
-            file.setUpdatedAt(now);
             file.setVersion(0); // saved as 1
-            return save(json, file);
+            return save(json, file, now);
         }
     }
 
@@ -188,7 +187,7 @@ public class PlaylistStore
         {
             PlaylistFile file = current(json);
             change.accept(file);
-            return save(json, file);
+            return save(json, file, clock.instant());
         }
     }
 
@@ -266,12 +265,12 @@ public class PlaylistStore
         throw new NoSuchElementException(NOT_FOUND);
     }
 
-    /** Bumps {@code version} and {@code updatedAt}, names the file after its path and writes it. */
-    private PlaylistFile save(Path json, PlaylistFile file)
+    /** Bumps {@code version}, stamps {@code updatedAt} with {@code now}, names the file after its path and writes it. */
+    private PlaylistFile save(Path json, PlaylistFile file, Instant now)
     {
         file.setName(baseName(json, JSON));
         file.setVersion(file.getVersion() + 1);
-        file.setUpdatedAt(clock.instant());
+        file.setUpdatedAt(now);
         write(json, file);
         return file;
     }
@@ -296,7 +295,7 @@ public class PlaylistStore
                 if(Files.exists(target) || Files.exists(txtOf(target)))
                     throw new IllegalStateException(TAKEN);
                 // the new file first: a failure part way leaves the playlist where it was, never lost
-                save(target, file);
+                save(target, file, clock.instant());
                 try
                 {
                     Files.delete(source);
