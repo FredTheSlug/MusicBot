@@ -33,9 +33,11 @@ import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import com.jagrosh.jmusicbot.utils.SpotifyUtil;
 import com.jagrosh.jmusicbot.commands.DJCommand;
 import com.jagrosh.jmusicbot.commands.MusicCommand;
-import com.jagrosh.jmusicbot.playlist.PlaylistLoader.Playlist;
+import com.jagrosh.jmusicbot.playlist.PlaylistPlayer;
+import com.jagrosh.jmusicbot.playlist.PlaylistStore.Entry;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
 import com.jagrosh.jmusicbot.utils.SoundCloudUtil;
+import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Message;
@@ -244,27 +246,40 @@ public class PlayCmd extends MusicCommand
                 event.reply(event.getClient().getError()+" Please include a playlist name.");
                 return;
             }
-            Playlist playlist = bot.getPlaylistLoader().getPlaylist(event.getArgs());
+            Entry playlist = bot.getPlaylistStore().find(event.getArgs()).orElse(null);
             if(playlist==null)
             {
-                event.replyError("I could not find `"+event.getArgs()+".txt` in the Playlists folder.");
+                event.replyError(PlaylistsCmd.missingMessage(bot.getPlaylistStore(), event.getArgs()));
                 return;
             }
-            event.getChannel().sendMessage(loadingEmoji+" Loading playlist **"+event.getArgs()+"**... ("+playlist.getItems().size()+" items)").queue(m -> 
+            int count = playlist.getSongCount();
+            event.getChannel().sendMessage(FormatUtil.filter(loadingEmoji+" Loading playlist **"+playlist.getPath()+"**... ("+count+(count==1 ? " song)" : " songs)"))).queue(m ->
             {
                 AudioHandler handler = (AudioHandler)event.getGuild().getAudioManager().getSendingHandler();
-                playlist.loadTracks(bot.getPlayerManager(), (at)->handler.addTrack(new QueuedTrack(at, RequestMetadata.fromResultHandler(at, event))), () -> {
-                    StringBuilder builder = new StringBuilder(playlist.getTracks().isEmpty() 
-                            ? event.getClient().getWarning()+" No tracks were loaded!" 
-                            : event.getClient().getSuccess()+" Loaded **"+playlist.getTracks().size()+"** tracks!");
-                    if(!playlist.getErrors().isEmpty())
-                        builder.append("\nThe following tracks failed to load:");
-                    playlist.getErrors().forEach(err -> builder.append("\n`[").append(err.getIndex()+1).append("]` **").append(err.getItem()).append("**: ").append(err.getReason()));
-                    String str = builder.toString();
-                    if(str.length()>2000)
-                        str = str.substring(0,1994)+" (...)";
-                    m.editMessage(FormatUtil.filter(str)).queue();
-                });
+                try
+                {
+                    bot.getPlaylistPlayer().load(event.getGuild(), playlist.getName(), playlist.getFolder(), PlaylistPlayer.ALL, null,
+                        (at)->handler.addTrack(new QueuedTrack(at, RequestMetadata.fromResultHandler(at, event))), (result) -> {
+                        StringBuilder builder = new StringBuilder(result.getLoaded()==0
+                                ? event.getClient().getWarning()+" No tracks were loaded!"
+                                : event.getClient().getSuccess()+" Loaded **"+result.getLoaded()+"** tracks!");
+                        if(!result.getErrors().isEmpty())
+                            builder.append("\nThe following tracks failed to load:");
+                        result.getErrors().forEach(err -> builder.append("\n`[").append(err.getIndex()+1).append("]` **").append(err.getItem()).append("**: ").append(err.getReason()));
+                        String str = builder.toString();
+                        if(str.length()>2000)
+                            str = str.substring(0,1994)+" (...)";
+                        m.editMessage(FormatUtil.filter(str)).queue();
+                    });
+                }
+                catch(NoSuchElementException e) // deleted or renamed since it was found
+                {
+                    m.editMessage(FormatUtil.filter(event.getClient().getError()+" "+PlaylistsCmd.missingMessage(bot.getPlaylistStore(), playlist.getPath()))).queue();
+                }
+                catch(RuntimeException e) // a file that can't be read
+                {
+                    m.editMessage(FormatUtil.filter(event.getClient().getError()+" Could not load playlist **"+playlist.getPath()+"**: "+e.getMessage())).queue();
+                }
             });
         }
     }

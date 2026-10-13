@@ -17,8 +17,10 @@
  */
 package com.jagrosh.jmusicbot;
 
+import java.time.Clock;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import com.jagrosh.jdautilities.commons.waiter.EventWaiter;
 import com.jagrosh.jmusicbot.audio.AloneInVoiceHandler;
 import com.jagrosh.jmusicbot.audio.AudioHandler;
@@ -26,15 +28,23 @@ import com.jagrosh.jmusicbot.audio.NowplayingHandler;
 import com.jagrosh.jmusicbot.audio.PlayerManager;
 import com.jagrosh.jmusicbot.audio.SpotifyResolver;
 import com.jagrosh.jmusicbot.gui.GUI;
+import com.jagrosh.jmusicbot.playlist.LavaTrackResolver;
+import com.jagrosh.jmusicbot.playlist.PlaylistConverter;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
+import com.jagrosh.jmusicbot.playlist.PlaylistPlayer;
+import com.jagrosh.jmusicbot.playlist.PlaylistStore;
+import com.jagrosh.jmusicbot.playlist.TrackResolver;
 import com.jagrosh.jmusicbot.settings.PlayCountStore;
 import com.jagrosh.jmusicbot.settings.SettingsManager;
+import com.jagrosh.jmusicbot.utils.OtherUtil;
 import com.jagrosh.jmusicbot.web.WebServer;
 import java.util.Objects;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.OnlineStatus;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Guild;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -42,6 +52,8 @@ import net.dv8tion.jda.api.entities.Guild;
  */
 public class Bot
 {
+    private static final Logger LOG = LoggerFactory.getLogger(Bot.class);
+
     private final EventWaiter waiter;
     private final ScheduledExecutorService threadpool;
     private final BotConfig config;
@@ -49,15 +61,20 @@ public class Bot
     private final PlayCountStore playCounts;
     private final PlayerManager players;
     private final PlaylistLoader playlists;
+    private final SpotifyResolver spotifyResolver;
+    private final PlaylistStore playlistStore;
+    private final TrackResolver trackResolver;
+    private final PlaylistConverter playlistConverter;
+    private final PlaylistPlayer playlistPlayer;
     private final NowplayingHandler nowplaying;
     private final AloneInVoiceHandler aloneInVoiceHandler;
     private final WebServer webServer;
-    private final SpotifyResolver spotifyResolver;
-    
+    private final ScheduledExecutorService playlistUpkeep;
+
     private boolean shuttingDown = false;
     private JDA jda;
     private GUI gui;
-    
+
     public Bot(EventWaiter waiter, BotConfig config, SettingsManager settings)
     {
         this.waiter = waiter;
@@ -68,14 +85,61 @@ public class Bot
         this.threadpool = Executors.newSingleThreadScheduledExecutor();
         this.players = new PlayerManager(this);
         this.players.init();
+        this.spotifyResolver = SpotifyResolver.create(config);
+        this.playlistStore = new PlaylistStore(OtherUtil.getPath(config.getPlaylistsFolder()), Clock.systemUTC());
+        this.trackResolver = new LavaTrackResolver(players, spotifyResolver);
+        this.playlistConverter = new PlaylistConverter(playlistStore, trackResolver);
+        this.playlistPlayer = new PlaylistPlayer(players, playlistStore, playlists, config);
         this.nowplaying = new NowplayingHandler(this);
         this.nowplaying.init();
         this.aloneInVoiceHandler = new AloneInVoiceHandler(this);
         this.aloneInVoiceHandler.init();
         this.webServer = new WebServer(this);
-        this.spotifyResolver = SpotifyResolver.create(config);
+        this.playlistUpkeep = startPlaylistUpkeep();
     }
-    
+
+    /**
+     * Purges the Deleted folder and converts the old {@code .txt} playlists right away, then both again every
+     * hour (a conversion that stopped for an outage picks up where it left off). On a thread of its own: a
+     * conversion can take minutes and must not hold up the shared {@link #getThreadpool() threadpool}.
+     */
+    private ScheduledExecutorService startPlaylistUpkeep()
+    {
+        ScheduledExecutorService upkeep = Executors.newSingleThreadScheduledExecutor(task ->
+        {
+            Thread thread = new Thread(task, "playlist-upkeep");
+            thread.setDaemon(true);
+            return thread;
+        });
+        upkeep.scheduleWithFixedDelay(this::runPlaylistUpkeep, 0, 1, TimeUnit.HOURS);
+        return upkeep;
+    }
+
+    /** One round of upkeep. Nothing escapes: an exception that did would end the schedule for good. */
+    private void runPlaylistUpkeep()
+    {
+        try
+        {
+            int purged = playlistStore.purgeExpired();
+            if(purged > 0)
+                LOG.info("Purged {} expired playlist(s) from the Deleted folder", purged);
+        }
+        catch(Exception e)
+        {
+            LOG.warn("Purging the Deleted folder failed; it will be tried again in an hour", e);
+        }
+        try
+        {
+            int converted = playlistConverter.convertPending();
+            if(converted > 0)
+                LOG.info("Converted {} old playlist(s)", converted);
+        }
+        catch(Exception e)
+        {
+            LOG.warn("Converting old playlists failed; it will be tried again in an hour", e);
+        }
+    }
+
     public BotConfig getConfig()
     {
         return config;
@@ -110,7 +174,27 @@ public class Bot
     {
         return playlists;
     }
-    
+
+    public PlaylistStore getPlaylistStore()
+    {
+        return playlistStore;
+    }
+
+    public TrackResolver getTrackResolver()
+    {
+        return trackResolver;
+    }
+
+    public PlaylistConverter getPlaylistConverter()
+    {
+        return playlistConverter;
+    }
+
+    public PlaylistPlayer getPlaylistPlayer()
+    {
+        return playlistPlayer;
+    }
+
     public NowplayingHandler getNowplayingHandler()
     {
         return nowplaying;
@@ -159,6 +243,7 @@ public class Bot
             return;
         shuttingDown = true;
         threadpool.shutdownNow();
+        playlistUpkeep.shutdownNow();
         if(config.isWebEnabled())
             webServer.stop();
         if(jda!=null && jda.getStatus()!=JDA.Status.SHUTTING_DOWN)

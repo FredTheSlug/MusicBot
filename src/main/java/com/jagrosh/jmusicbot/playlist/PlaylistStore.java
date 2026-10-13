@@ -123,6 +123,52 @@ public class PlaylistStore
     }
 
     /**
+     * The one playlist that text typed by a person means, as {@link #findAll} reads it; empty when it
+     * means none or more than one. Never throws for odd input: text that is no usable name finds nothing.
+     */
+    public Optional<Entry> find(String nameOrPath)
+    {
+        List<Entry> found = findAll(nameOrPath);
+        return found.size() == 1 ? Optional.of(found.get(0)) : Optional.empty();
+    }
+
+    /**
+     * The playlists that text typed by a person could mean. {@code Folder/Name} (any depth: the part after
+     * the last {@code /} is the name, the rest the folder) is that playlist; a bare name is every playlist
+     * with that name, in any folder or at the top level. Playlists that match exactly are returned if there
+     * are any; only when none does, the ones that differ in upper or lower case. More than one result
+     * means the text is ambiguous. Empty for text that names nothing, including text that is no usable name.
+     */
+    public List<Entry> findAll(String nameOrPath)
+    {
+        if(nameOrPath == null)
+            return Collections.emptyList();
+        String typed = nameOrPath.trim();
+        int slash = typed.lastIndexOf('/');
+        String folder = slash < 0 ? null : typed.substring(0, slash); // null: any folder
+        String name = typed.substring(slash + 1);
+        if(name.isEmpty())
+            return Collections.emptyList();
+        List<Entry> entries = tree();
+        List<Entry> exact = matching(entries, folder, name, false);
+        return exact.isEmpty() ? matching(entries, folder, name, true) : exact;
+    }
+
+    private static List<Entry> matching(List<Entry> entries, String folder, String name, boolean ignoreCase)
+    {
+        List<Entry> found = new ArrayList<>();
+        for(Entry entry : entries)
+            if(same(entry.getName(), name, ignoreCase) && (folder == null || same(entry.getFolder(), folder, ignoreCase)))
+                found.add(entry);
+        return found;
+    }
+
+    private static boolean same(String a, String b, boolean ignoreCase)
+    {
+        return ignoreCase ? a.equalsIgnoreCase(b) : a.equals(b);
+    }
+
+    /**
      * The playlist, or a read-only view of the old {@code .txt} when there is no {@code .json} (JSON
      * wins when both exist). Empty when missing or corrupt; throws {@link IllegalArgumentException}
      * for an invalid name or folder.
@@ -1236,6 +1282,12 @@ public class PlaylistStore
         public String getFolder()
         {
             return folder;
+        }
+
+        /** The playlist as a person types it: {@code Folder/Name}, or just the name at the top level. */
+        public String getPath()
+        {
+            return folder.isEmpty() ? name : folder + "/" + name;
         }
 
         public int getSongCount()

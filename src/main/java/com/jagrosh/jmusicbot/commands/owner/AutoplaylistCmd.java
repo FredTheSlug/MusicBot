@@ -1,6 +1,8 @@
 /*
  * Copyright 2016 John Grosh <john.a.grosh@gmail.com>.
  *
+ * Modified 2026 by Fred (https://github.com/FredTheSlug/MusicBot).
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -18,6 +20,7 @@ package com.jagrosh.jmusicbot.commands.owner;
 import com.jagrosh.jdautilities.command.CommandEvent;
 import com.jagrosh.jmusicbot.Bot;
 import com.jagrosh.jmusicbot.commands.OwnerCommand;
+import com.jagrosh.jmusicbot.commands.music.PlaylistsCmd;
 import com.jagrosh.jmusicbot.settings.Settings;
 
 /**
@@ -53,16 +56,21 @@ public class AutoplaylistCmd extends OwnerCommand
             event.reply(event.getClient().getSuccess()+" Cleared the default playlist for **"+event.getGuild().getName()+"**");
             return;
         }
-        String pname = event.getArgs().replaceAll("\\s+", "_");
-        if(bot.getPlaylistLoader().getPlaylist(pname)==null)
+        String pname = event.getArgs();
+        if(!bot.getPlaylistStore().find(pname).isPresent())
         {
-            event.reply(event.getClient().getError()+" Could not find `"+pname+".txt`!");
+            // before playlists had folders a name with spaces was typed with underscores: still accepted
+            String underscored = pname.replaceAll("\\s+", "_");
+            if(bot.getPlaylistStore().find(underscored).isPresent())
+                pname = underscored;
+            else
+            {
+                event.reply(event.getClient().getError()+" "+PlaylistsCmd.missingMessage(bot.getPlaylistStore(), pname));
+                return;
+            }
         }
-        else
-        {
-            Settings settings = event.getClient().getSettingsFor(event.getGuild());
-            settings.setDefaultPlaylist(pname);
-            event.reply(event.getClient().getSuccess()+" The default playlist for **"+event.getGuild().getName()+"** is now `"+pname+"`");
-        }
+        Settings settings = event.getClient().getSettingsFor(event.getGuild());
+        settings.setDefaultPlaylist(pname);
+        event.reply(event.getClient().getSuccess()+" The default playlist for **"+event.getGuild().getName()+"** is now `"+pname+"`");
     }
 }

@@ -17,7 +17,10 @@
  */
 package com.jagrosh.jmusicbot.audio;
 
-import com.jagrosh.jmusicbot.playlist.PlaylistLoader.Playlist;
+import com.jagrosh.jmusicbot.playlist.PlaylistFile;
+import com.jagrosh.jmusicbot.playlist.PlaylistPlayer;
+import com.jagrosh.jmusicbot.playlist.PlaylistStore;
+import com.jagrosh.jmusicbot.playlist.PlaylistStore.Entry;
 import com.jagrosh.jmusicbot.queue.AbstractQueue;
 import com.jagrosh.jmusicbot.settings.QueueType;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
@@ -183,22 +186,33 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
         Settings settings = manager.getBot().getSettingsManager().getSettings(guildId);
         if(settings==null || settings.getDefaultPlaylist()==null)
             return false;
-        
-        Playlist pl = manager.getBot().getPlaylistLoader().getPlaylist(settings.getDefaultPlaylist());
-        if(pl==null || pl.getItems().isEmpty())
+
+        try
+        {
+            Guild guild = manager.getBot().getJDA().getGuildById(guildId);
+            PlaylistStore store = manager.getBot().getPlaylistStore();
+            Entry entry = store.find(settings.getDefaultPlaylist()).orElse(null);
+            PlaylistFile pl = entry == null ? null : store.get(entry.getName(), entry.getFolder()).orElse(null);
+            if(guild==null || pl==null || !PlaylistPlayer.hasPlayable(pl))
+                return false;
+            manager.getBot().getPlaylistPlayer().load(guild, entry.getName(), entry.getFolder(), PlaylistPlayer.ALL, null, (at) ->
+            {
+                if(audioPlayer.getPlayingTrack()==null)
+                    audioPlayer.playTrack(at);
+                else
+                    defaultQueue.add(at);
+            }, (result) ->
+            {
+                if(result.getLoaded()==0 && !manager.getBot().getConfig().getStay())
+                    manager.getBot().closeAudioConnection(guildId);
+            });
+            return true;
+        }
+        catch(RuntimeException e) // this runs inside a track-end event: never let a bad playlist escape it
+        {
+            LoggerFactory.getLogger("AudioHandler").warn("Could not play the default playlist '{}'", settings.getDefaultPlaylist(), e);
             return false;
-        pl.loadTracks(manager, (at) -> 
-        {
-            if(audioPlayer.getPlayingTrack()==null)
-                audioPlayer.playTrack(at);
-            else
-                defaultQueue.add(at);
-        }, () -> 
-        {
-            if(pl.getTracks().isEmpty() && !manager.getBot().getConfig().getStay())
-                manager.getBot().closeAudioConnection(guildId);
-        });
-        return true;
+        }
     }
     
     // Audio Events

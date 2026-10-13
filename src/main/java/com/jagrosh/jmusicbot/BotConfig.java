@@ -23,8 +23,11 @@ import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.typesafe.config.*;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import net.dv8tion.jda.api.OnlineStatus;
 import net.dv8tion.jda.api.entities.Activity;
 
@@ -481,6 +484,36 @@ public class BotConfig
     public String getWebDiscordRedirectUri()
     {
         return webDiscordRedirectUri;
+    }
+
+    /**
+     * Where the web panel is, for replies in Discord: the origin ({@code scheme://host[:port]/}) of
+     * {@code webdiscordredirecturi} when that is set to a web address, else {@code http://<webhost>:<webport>/}.
+     */
+    public String getPanelUrl()
+    {
+        return panelUrl(webDiscordRedirectUri, webHost, webPort);
+    }
+
+    static String panelUrl(String redirectUri, String host, int port)
+    {
+        if(redirectUri != null && !redirectUri.trim().isEmpty())
+        {
+            try
+            {
+                URI uri = new URI(redirectUri.trim());
+                String scheme = uri.getScheme();
+                if(uri.getHost() != null && scheme != null
+                        && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https")))
+                    return scheme.toLowerCase(Locale.ROOT) + "://" + uri.getHost()
+                            + (uri.getPort() == -1 ? "" : ":" + uri.getPort()) + "/";
+            }
+            catch(URISyntaxException ignore)
+            {
+                // not a web address: fall back to the web server's own
+            }
+        }
+        return "http://" + host + ":" + port + "/";
     }
 
     public int getMaxHistorySize()
