@@ -576,4 +576,107 @@ public class PlaylistStoreSongsTest
         assertEquals("https://example.com/a\n", new String(Files.readAllBytes(txt), StandardCharsets.UTF_8));
         assertFalse(Files.exists(store.pathFor("Old", "Rap")));
     }
+
+    @Test
+    public void reinsertSongRestoresTheRemovedSongExactly() throws Exception
+    {
+        clock.set(T0.plusSeconds(60));
+        store.addSongs(NAME, FOLDER, songs("a", "b", "c"), null, ANNA);
+        Song original = songTitled(stored(), "b");
+        String id = original.getId();
+        clock.set(T0.plusSeconds(120));
+        PlaylistStore.Removed removed = store.removeSong(NAME, FOLDER, id);
+        assertEquals(1, removed.getIndex());
+        clock.set(T0.plusSeconds(180));
+
+        PlaylistFile back = store.reinsertSong(NAME, FOLDER, removed.getSong(), removed.getIndex());
+
+        assertEquals(Arrays.asList("a", "b", "c"), titles(back));
+        Song again = back.getSongs().get(1);
+        assertEquals("same id", id, again.getId());
+        assertEquals("added by the same person", "111222333444555666", again.getAddedBy().getId());
+        assertEquals("added when it was first added, not now", T0.plusSeconds(60), again.getAddedAt());
+        assertEquals(original.getUri(), again.getUri());
+        assertEquals(original.getAuthor(), again.getAuthor());
+        assertEquals(original.getDurationMs(), again.getDurationMs());
+        assertEquals(original.getArtworkUrl(), again.getArtworkUrl());
+        assertEquals("one version per change: create, add, remove, reinsert", 4, back.getVersion());
+        assertEquals(T0.plusSeconds(180), back.getUpdatedAt());
+        assertEquals("what is returned is what was stored", titles(back), titles(stored()));
+        assertEquals(id, stored().getSongs().get(1).getId());
+    }
+
+    @Test
+    public void reinsertSongClampsTheIndex() throws Exception
+    {
+        add("a", "b");
+        PlaylistStore.Removed first = store.removeSong(NAME, FOLDER, idOf(stored(), "a"));
+        PlaylistStore.Removed second = store.removeSong(NAME, FOLDER, idOf(stored(), "b"));
+        assertEquals(0, stored().getSongs().size());
+
+        assertEquals(Arrays.asList("b"), titles(store.reinsertSong(NAME, FOLDER, second.getSong(), 5)));
+        assertEquals(Arrays.asList("a", "b"), titles(store.reinsertSong(NAME, FOLDER, first.getSong(), 0)));
+        assertEquals("a negative index is the front", Arrays.asList("c", "a", "b"),
+                titles(store.reinsertSong(NAME, FOLDER, song("c"), -3)));
+        assertEquals("past the end is the end", Arrays.asList("c", "a", "b", "d"),
+                titles(store.reinsertSong(NAME, FOLDER, song("d"), 99)));
+        assertEquals(titles(stored()), Arrays.asList("c", "a", "b", "d"));
+    }
+
+    @Test
+    public void reinsertSongGivesAFreshIdOnlyWhenTheOldOneIsTaken() throws Exception
+    {
+        add("a", "b");
+        Song taken = songTitled(stored(), "a");
+        Song copy = new Song();
+        copy.setId(taken.getId()); // another song took this id in the meantime
+        copy.setUri("https://example.com/z");
+        copy.setTitle("z");
+        copy.setAddedBy(FRED);
+        copy.setAddedAt(T0.minusSeconds(5));
+
+        PlaylistFile file = store.reinsertSong(NAME, FOLDER, copy, 1);
+
+        assertEquals(Arrays.asList("a", "z", "b"), titles(file));
+        Song z = file.getSongs().get(1);
+        assertNotEquals(taken.getId(), z.getId());
+        assertTrue(z.getId().matches("[a-z0-9]{8}"));
+        assertEquals("fred", z.getAddedBy().getName());
+        assertEquals(T0.minusSeconds(5), z.getAddedAt());
+        assertEquals("the song that held the id keeps it", taken.getId(), file.getSongs().get(0).getId());
+        assertEquals("the caller's song is not touched", taken.getId(), copy.getId());
+        Set<String> ids = new HashSet<>();
+        for(Song each : file.getSongs())
+            assertTrue("unique ids", ids.add(each.getId()));
+    }
+
+    @Test
+    public void reinsertSongIntoAFullPlaylistIsRefused() throws Exception
+    {
+        List<Song> many = new ArrayList<>();
+        for(int i = 0; i < PlaylistFile.MAX_SONGS; i++)
+            many.add(song("s" + i));
+        store.addSongs(NAME, FOLDER, many, null, FRED);
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> store.reinsertSong(NAME, FOLDER, song("extra"), 0));
+
+        assertEquals("Playlist is full", e.getMessage());
+        assertEquals(PlaylistFile.MAX_SONGS, stored().getSongs().size());
+        assertEquals("nothing was written", 2, stored().getVersion());
+    }
+
+    @Test
+    public void reinsertSongRefusesWhatItCannotChange() throws Exception
+    {
+        assertThrows(IllegalArgumentException.class, () -> store.reinsertSong(NAME, FOLDER, null, 0));
+        assertThrows(NoSuchElementException.class, () -> store.reinsertSong("Nope", FOLDER, song("x"), 0));
+        assertThrows(IllegalArgumentException.class, () -> store.reinsertSong("../x", FOLDER, song("x"), 0));
+        Path txt = root.resolve("Rap").resolve("Old.txt");
+        Files.createDirectories(txt.getParent());
+        Files.write(txt, "https://example.com/a\n".getBytes(StandardCharsets.UTF_8));
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> store.reinsertSong("Old", "Rap", song("x"), 0));
+        assertEquals(UPGRADING, e.getMessage());
+    }
 }

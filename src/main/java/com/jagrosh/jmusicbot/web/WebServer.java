@@ -21,7 +21,8 @@ import com.jagrosh.jmusicbot.audio.PlayerManager;
 import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.audio.SpotifyResolver;
-import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
+import com.jagrosh.jmusicbot.playlist.ImportJobs;
+import com.jagrosh.jmusicbot.playlist.PlaylistFile;
 import com.jagrosh.jmusicbot.settings.RepeatMode;
 import com.jagrosh.jmusicbot.settings.PlayCountStore;
 import com.jagrosh.jmusicbot.settings.Settings;
@@ -56,6 +57,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -68,10 +70,13 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import io.javalin.websocket.WsContext;
+import org.json.JSONObject;
 
 public class WebServer
 {
@@ -89,6 +94,7 @@ public class WebServer
     private final Map<String, AuthSession> authSessions = new ConcurrentHashMap<>();
     private final Map<String, Long> oauthPendingStates = new ConcurrentHashMap<>();
     private volatile ScheduledFuture<?> sessionCleanupTask;
+    private volatile ExecutorService playlistImportPool;
 
     private static final class AuthSession
     {
@@ -197,18 +203,7 @@ public class WebServer
         app.post("/api/guild/{guildId}/sponsorblock", this::handleSponsorBlock);
         app.post("/api/guild/{guildId}/seek", this::handleSeek);
         app.post("/api/guild/{guildId}/upload", this::handleUpload);
-        app.get("/api/playlists", this::handleListPlaylists);
-        app.get("/api/playlist/{name}", this::handleGetPlaylist);
-        app.post("/api/playlist/{name}", this::handleSavePlaylist);
-        app.delete("/api/playlist/{name}", this::handleDeletePlaylist);
-        app.post("/api/guild/{guildId}/playplaylist/{name}", this::handlePlayPlaylist);
-        app.get("/api/playlist-folders", this::handleListFolders);
-        app.post("/api/playlist-folder", this::handleCreateFolder);
-        app.delete("/api/playlist-folder", this::handleDeleteFolder);
-        app.put("/api/playlist-move", this::handleMovePlaylist);
-        app.get("/api/playlists-tree", this::handlePlaylistsTree);
-        app.get("/api/playlist-detail/{name}", this::handleGetPlaylistDetail);
-        app.put("/api/playlist-rename/{name}", this::handleRenamePlaylist);
+        registerPlaylistRoutes();
         app.get("/api/guild/{guildId}/search", this::handleSearch);
         app.post("/api/guild/{guildId}/resolve-playlist-url", this::handleResolvePlaylistUrl);
         app.post("/api/guild/{guildId}/reorder", this::handleReorder);
@@ -252,6 +247,27 @@ public class WebServer
             app.stop();
             app = null;
         }
+        if (playlistImportPool != null)
+        {
+            playlistImportPool.shutdownNow();
+            playlistImportPool = null;
+        }
+    }
+
+    /** Builds the playlist routes over the bot's playlist store and registers them (the auth middleware is added after, and covers them). */
+    private void registerPlaylistRoutes()
+    {
+        // Imports load slowly, so they get their own threads: up to 3 run at once (ImportJobs enforces that).
+        playlistImportPool = Executors.newFixedThreadPool(3, runnable ->
+        {
+            Thread thread = new Thread(runnable, "playlist-import");
+            thread.setDaemon(true);
+            return thread;
+        });
+        ImportJobs imports = new ImportJobs(bot.getPlaylistStore(), bot.getTrackResolver(), playlistImportPool,
+                progress -> broadcastAll("playlist-import", PlaylistRoutes.importProgress(progress)));
+        new PlaylistRoutes(bot.getPlaylistStore(), bot.getPlaylistConverter(), imports, bot.getTrackResolver(),
+                this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC()).register(app);
     }
 
     /** Browsers request /favicon.ico at the site root; Jetty also ships a default one. */
@@ -312,6 +328,44 @@ public class WebServer
         payload.put("code", code);
         payload.put("message", message);
         sendToGuildWsClients(guildId, gson.toJson(payload));
+    }
+
+    /**
+     * Sends a message to every connected panel, whatever server it watches, with that client's own server id in
+     * the {@code guildId} field (the client files messages by it). Playlists are shared by all servers.
+     *
+     * @param data an {@link JSONObject} or a Map; sent as a JSON object
+     */
+    public void broadcastAll(String type, Object data)
+    {
+        List<WsContext> toRemove = new ArrayList<>();
+        wsClients.forEach((ctx, guildId) ->
+        {
+            try
+            {
+                ctx.send(broadcastMessage(type, guildId, data));
+            }
+            catch (Exception e)
+            {
+                toRemove.add(ctx);
+            }
+        });
+        toRemove.forEach(wsClients::remove);
+    }
+
+    /** The WebSocket text for one client: {@code {"type", "guildId", "data"}}, where data is real JSON, not a string of it. */
+    static String broadcastMessage(String type, String guildId, Object data)
+    {
+        return new JSONObject().put("type", type).put("guildId", guildId).put("data", JSONObject.wrap(data)).toString();
+    }
+
+    /** Who is asking, for crediting playlist changes; null when web login is off or the request has no session. */
+    PlaylistFile.Person currentUser(Context ctx)
+    {
+        if (!bot.getConfig().isWebAuthEnabled())
+            return null;
+        AuthSession session = ctx.attribute(AuthSession.CTX_KEY);
+        return session == null ? null : new PlaylistFile.Person(String.valueOf(session.discordUserId), session.displayName);
     }
 
     private void sendToGuildWsClients(String guildId, String json)
@@ -1443,112 +1497,19 @@ public class WebServer
         }, 30, TimeUnit.MINUTES);
     }
 
-    private PlaylistLoader playlistLoader()
-    {
-        return bot.getPlaylistLoader();
-    }
-
-    private void handleListPlaylists(Context ctx)
-    {
-        String folder = ctx.queryParam("folder");
-        if (folder == null) folder = "";
-        List<String> names = playlistLoader().getPlaylistNamesInFolder(folder);
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (String name : names)
-        {
-            PlaylistLoader.Playlist pl = playlistLoader().getPlaylistInFolder(name, folder);
-            Map<String, Object> p = new HashMap<>();
-            p.put("name", name);
-            p.put("folder", folder);
-            p.put("trackCount", pl != null ? pl.getItems().size() : 0);
-            p.put("items", pl != null ? pl.getItems() : List.of());
-            result.add(p);
-        }
-        ctx.json(result);
-    }
-
-    private void handleGetPlaylist(Context ctx)
-    {
-        String name = ctx.pathParam("name");
-        String folder = ctx.queryParam("folder");
-        if (folder == null) folder = "";
-        PlaylistLoader.Playlist pl = playlistLoader().getPlaylistInFolder(name, folder);
-        if (pl == null)
-        {
-            ctx.status(404).result("Playlist not found");
-            return;
-        }
-        Map<String, Object> result = new HashMap<>();
-        result.put("name", pl.getName());
-        result.put("folder", folder);
-        result.put("items", pl.getItems());
-        result.put("shuffle", pl.getItems().contains("#shuffle"));
-        ctx.json(result);
-    }
-
-    private void handleSavePlaylist(Context ctx)
-    {
-        String name = ctx.pathParam("name");
-        Map<String, Object> body = ctx.bodyAsClass(Map.class);
-        String folder = (String) body.get("folder");
-        if (folder == null) folder = "";
-        List<String> items = (List<String>) body.get("items");
-        if (items == null)
-        {
-            ctx.status(400).result("Items are required");
-            return;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (String item : items)
-        {
-            if (item != null && !item.trim().isEmpty())
-                sb.append(item.trim()).append("\n");
-        }
-        try
-        {
-            if (!playlistLoader().getPlaylistNamesInFolder(folder).contains(name))
-                playlistLoader().createPlaylistInFolder(name, folder);
-            playlistLoader().writePlaylistInFolder(name, folder, sb.toString());
-            log.info("Web playlist: saved '{}' in folder '{}'", name, folder);
-            ctx.json(Map.of("message", "Playlist saved", "name", name, "folder", folder));
-        }
-        catch (IOException e)
-        {
-            log.error("Web playlist: failed to save '{}' in folder '{}'", name, folder, e);
-            ctx.status(500).result("Failed to save playlist");
-        }
-    }
-
-    private void handleDeletePlaylist(Context ctx)
-    {
-        String name = ctx.pathParam("name");
-        String folder = ctx.queryParam("folder");
-        if (folder == null) folder = "";
-        try
-        {
-            playlistLoader().deletePlaylistInFolder(name, folder);
-            log.info("Web playlist: deleted '{}' from folder '{}'", name, folder);
-            ctx.json(Map.of("message", "Playlist deleted", "name", name));
-        }
-        catch (IOException e)
-        {
-            ctx.status(404).result("Playlist not found");
-        }
-    }
-
-    private void handlePlayPlaylist(Context ctx)
+    /**
+     * What PlaylistRoutes calls to play a playlist: joins a voice channel if the bot is in none, hands the playlist to
+     * the PlaylistPlayer, which queues its songs in order as they load, and answers the request. The playlist is checked
+     * before the bot joins anything, so a wrong name costs no voice connection.
+     */
+    private void playPlaylist(Context ctx, String guildId, String name, String folder, String mode, String songId)
     {
         Guild guild = resolveGuild(ctx);
         if (guild == null) return;
 
-        String guildId = guild.getId();
-        String name = ctx.pathParam("name");
-        String folder = ctx.queryParam("folder");
-        if (folder == null) folder = "";
-        PlaylistLoader.Playlist pl = playlistLoader().getPlaylistInFolder(name, folder);
-        if (pl == null)
+        if (bot.getPlaylistStore().get(name, folder).isEmpty())
         {
-            ctx.status(404).result("Playlist not found");
+            ctx.status(404).json(Map.of("error", "Playlist not found"));
             return;
         }
 
@@ -1578,216 +1539,19 @@ public class WebServer
             return;
         }
 
-        ctx.json(Map.of("message", "Loading playlist " + name + "..."));
-        log.info("Web playlist: loading '{}' from folder '{}' for guild {}", name, folder, guildId);
-
+        log.info("Web playlist: loading '{}' from folder '{}' ({}) for guild {}", name, folder, mode, guildId);
         final RequestMetadata playlistRequester = requestMetadataForWeb(ctx);
 
-        pl.loadTracks(manager, track ->
-        {
-            if (!bot.getConfig().isTooLong(track))
-            {
-                handler.addTrack(new QueuedTrack(track, playlistRequester));
-            }
-        }, () ->
-        {
-            broadcastUpdate(guildId, "queue");
-            broadcastUpdate(guildId, "player");
-            log.info("Web playlist: finished loading '{}'", name);
-        });
-    }
-
-    private void handleListFolders(Context ctx)
-    {
-        String parent = ctx.queryParam("parent");
-        if (parent == null) parent = "";
-        List<String> folders = playlistLoader().getFolderNamesInFolder(parent);
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (String folder : folders)
-        {
-            String path = parent.isEmpty() ? folder : parent + "/" + folder;
-            List<String> plNames = playlistLoader().getPlaylistNamesInFolder(path);
-            List<String> subFolders = playlistLoader().getFolderNamesInFolder(path);
-            Map<String, Object> f = new HashMap<>();
-            f.put("name", folder);
-            f.put("path", path);
-            f.put("playlistCount", plNames.size());
-            f.put("subFolderCount", subFolders.size());
-            result.add(f);
-        }
-        ctx.json(result);
-    }
-
-    private void handleCreateFolder(Context ctx)
-    {
-        Map<String, Object> body = ctx.bodyAsClass(Map.class);
-        String name = (String) body.get("name");
-        String parent = (String) body.get("parent");
-        if (name == null || name.trim().isEmpty())
-        {
-            ctx.status(400).result("Folder name is required");
-            return;
-        }
-        if (parent == null) parent = "";
-        String path = parent.isEmpty() ? name.trim() : parent + "/" + name.trim();
-        try
-        {
-            playlistLoader().createSubfolder(path);
-            log.info("Web playlist: created folder '{}'", path);
-            ctx.json(Map.of("message", "Folder created", "path", path));
-        }
-        catch (IOException e)
-        {
-            log.error("Web playlist: failed to create folder '{}'", path, e);
-            ctx.status(500).result("Failed to create folder");
-        }
-    }
-
-    private void handleDeleteFolder(Context ctx)
-    {
-        Map<String, Object> body = ctx.bodyAsClass(Map.class);
-        String path = (String) body.get("path");
-        if (path == null || path.trim().isEmpty())
-        {
-            ctx.status(400).result("Folder path is required");
-            return;
-        }
-        try
-        {
-            playlistLoader().deleteSubfolder(path.trim());
-            log.info("Web playlist: deleted folder '{}'", path);
-            ctx.json(Map.of("message", "Folder deleted", "path", path));
-        }
-        catch (IOException e)
-        {
-            ctx.status(404).result("Folder not found");
-        }
-    }
-
-    private void handleMovePlaylist(Context ctx)
-    {
-        Map<String, Object> body = ctx.bodyAsClass(Map.class);
-        String name = (String) body.get("name");
-        String fromFolder = (String) body.get("fromFolder");
-        String toFolder = (String) body.get("toFolder");
-        if (name == null || name.trim().isEmpty())
-        {
-            ctx.status(400).result("Playlist name is required");
-            return;
-        }
-        if (fromFolder == null) fromFolder = "";
-        if (toFolder == null) toFolder = "";
-        try
-        {
-            playlistLoader().movePlaylist(name.trim(), fromFolder, toFolder);
-            log.info("Web playlist: moved '{}' from '{}' to '{}'", name, fromFolder, toFolder);
-            ctx.json(Map.of("message", "Playlist moved", "name", name, "folder", toFolder));
-        }
-        catch (IOException e)
-        {
-            ctx.status(500).result("Failed to move playlist");
-        }
-    }
-
-    private void handlePlaylistsTree(Context ctx)
-    {
-        Map<String, Object> tree = buildFolderTree("");
-        ctx.json(tree);
-    }
-
-    private Map<String, Object> buildFolderTree(String folder)
-    {
-        Map<String, Object> node = new HashMap<>();
-        node.put("folder", folder);
-
-        List<String> plNames = playlistLoader().getPlaylistNamesInFolder(folder);
-        List<Map<String, Object>> playlists = new ArrayList<>();
-        for (String name : plNames)
-        {
-            PlaylistLoader.Playlist pl = playlistLoader().getPlaylistInFolder(name, folder);
-            Map<String, Object> p = new HashMap<>();
-            p.put("name", name);
-            p.put("folder", folder);
-            p.put("trackCount", pl != null ? pl.getItems().size() : 0);
-            p.put("items", pl != null ? pl.getItems() : List.of());
-            playlists.add(p);
-        }
-        node.put("playlists", playlists);
-        node.put("playlistCount", playlists.size());
-
-        List<String> subFolders = playlistLoader().getFolderNamesInFolder(folder);
-        List<Map<String, Object>> children = new ArrayList<>();
-        for (String sub : subFolders)
-        {
-            String subPath = folder.isEmpty() ? sub : folder + "/" + sub;
-            Map<String, Object> child = buildFolderTree(subPath);
-            child.put("name", sub);
-            children.add(child);
-        }
-        node.put("folders", children);
-        node.put("subFolderCount", children.size());
-
-        return node;
-    }
-
-    private void handleGetPlaylistDetail(Context ctx)
-    {
-        String name = ctx.pathParam("name");
-        String folder = ctx.queryParam("folder");
-        if (folder == null) folder = "";
-        PlaylistLoader.Playlist pl = playlistLoader().getPlaylistInFolder(name, folder);
-        if (pl == null)
-        {
-            ctx.status(404).result("Playlist not found");
-            return;
-        }
-        Map<String, Object> result = new HashMap<>();
-        result.put("name", pl.getName());
-        result.put("folder", folder);
-        result.put("items", pl.getItems());
-        result.put("shuffle", pl.getItems().contains("#shuffle"));
-        result.put("trackCount", pl.getItems().size());
-        ctx.json(result);
-    }
-
-    private void handleRenamePlaylist(Context ctx)
-    {
-        String oldName = ctx.pathParam("name");
-        Map<String, Object> body = ctx.bodyAsClass(Map.class);
-        String newName = (String) body.get("newName");
-        String folder = (String) body.get("folder");
-        if (newName == null || newName.trim().isEmpty())
-        {
-            ctx.status(400).result("New name is required");
-            return;
-        }
-        if (folder == null) folder = "";
-        try
-        {
-            String content = "";
-            PlaylistLoader.Playlist pl = playlistLoader().getPlaylistInFolder(oldName, folder);
-            if (pl == null)
-            {
-                ctx.status(404).result("Playlist not found");
-                return;
-            }
-            StringBuilder sb = new StringBuilder();
-            for (String item : pl.getItems())
-            {
-                sb.append(item).append("\n");
-            }
-            content = sb.toString();
-            playlistLoader().createPlaylistInFolder(newName.trim(), folder);
-            playlistLoader().writePlaylistInFolder(newName.trim(), folder, content);
-            playlistLoader().deletePlaylistInFolder(oldName, folder);
-            log.info("Web playlist: renamed '{}' to '{}' in folder '{}'", oldName, newName, folder);
-            ctx.json(Map.of("message", "Playlist renamed", "name", newName.trim(), "folder", folder));
-        }
-        catch (IOException e)
-        {
-            log.error("Web playlist: failed to rename '{}' in folder '{}'", oldName, folder, e);
-            ctx.status(500).result("Failed to rename playlist");
-        }
+        // Not found / bad mode are thrown here, before anything is written to the response.
+        bot.getPlaylistPlayer().load(guild, name, folder, mode, songId,
+                track -> handler.addTrack(new QueuedTrack(track, playlistRequester)),
+                result ->
+                {
+                    broadcastUpdate(guildId, "queue");
+                    broadcastUpdate(guildId, "player");
+                    log.info("Web playlist: finished loading '{}': {} queued, {} failed", name, result.getLoaded(), result.getErrors().size());
+                });
+        ctx.json(Map.of("message", "Loading playlist " + name + "..."));
     }
 
     private void handleResolvePlaylistUrl(Context ctx)

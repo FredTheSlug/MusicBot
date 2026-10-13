@@ -457,6 +457,50 @@ public class PlaylistTrashTest
     }
 
     @Test
+    public void restoreWithFolderReportsWhereThePlaylistLanded() throws Exception
+    {
+        store.create("Deep", "A/B", FRED);
+        PlaylistStore.Deleted deep = store.delete("Deep", "A/B", FRED);
+        Files.delete(root.resolve("A").resolve("B"));
+        Files.delete(root.resolve("A"));
+        PlaylistStore.Restored back = store.restoreWithFolder(deep.getId());
+        assertEquals("Deep", back.getPlaylist().getName());
+        assertEquals("A/B", back.getFolder());
+        assertTrue(Files.isRegularFile(root.resolve("A").resolve("B").resolve("Deep.json")));
+
+        clock.advance(Duration.ofSeconds(1));
+        store.create("Top", "", FRED);
+        PlaylistStore.Deleted top = store.delete("Top", "", FRED);
+        PlaylistStore.Restored topBack = store.restoreWithFolder(top.getId());
+        assertEquals("", topBack.getFolder());
+        assertEquals("Top", topBack.getPlaylist().getName());
+
+        clock.advance(Duration.ofSeconds(1));
+        PlaylistStore.Deleted again = store.delete("Deep", "A/B", FRED);
+        store.create("Deep", "A/B", FRED);
+        PlaylistStore.Restored clash = store.restoreWithFolder(again.getId());
+        assertEquals("A/B", clash.getFolder());
+        assertEquals("Deep (restored)", clash.getPlaylist().getName());
+        assertEquals("Deep (restored)", store.get("Deep (restored)", "A/B").get().getName());
+        assertTrue(store.deleted().isEmpty());
+    }
+
+    @Test
+    public void restoreWithFolderNamesTheTopLevelWhenTheFolderIsUnusable() throws Exception
+    {
+        store.create("Lost", "", FRED);
+        PlaylistStore.Deleted gone = store.delete("Lost", "", FRED);
+        editTrash(gone.getId(), "originalFolder", "../escape");
+
+        PlaylistStore.Restored restored = store.restoreWithFolder(gone.getId());
+
+        assertEquals("", restored.getFolder());
+        assertTrue(Files.isRegularFile(root.resolve("Lost.json")));
+        assertThrows(NoSuchElementException.class, () -> store.restoreWithFolder(gone.getId()));
+        assertThrows(IllegalArgumentException.class, () -> store.restoreWithFolder("../x.json"));
+    }
+
+    @Test
     public void namesWithDotsRestoreToo() throws Exception
     {
         store.create("Wait...", "", FRED);

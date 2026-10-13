@@ -82,7 +82,8 @@ public class PlaylistStore
     static final String NOT_FOUND = "Playlist not found";
     private static final String FOLDER_NOT_FOUND = "Folder not found";
     private static final String DELETED_NOT_FOUND = "Deleted playlist not found";
-    static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
+    /** The message of every change refused because the playlist is still an old {@code .txt}. */
+    public static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
     private static final String FULL = "Playlist is full";
     private static final String SONG_NOT_FOUND = "Song not found";
     private static final Comparator<String> TEXT_ORDER =
@@ -317,6 +318,12 @@ public class PlaylistStore
      */
     public PlaylistFile restore(String deletedId)
     {
+        return restoreWithFolder(deletedId).getPlaylist();
+    }
+
+    /** As {@link #restore}, and also says which folder the playlist landed in (it may differ from its original folder). */
+    public Restored restoreWithFolder(String deletedId)
+    {
         Path trash = trashFile(deletedId);
         while(true)
         {
@@ -324,7 +331,7 @@ public class PlaylistStore
             Path target = restoreTarget(trash, file);
             PlaylistFile restored = restoreInto(trash, target, file);
             if(restored != null)
-                return restored;
+                return new Restored(restored, folderOf(target.getParent()));
             // the name was taken while this waited for the locks: look for the next free one
         }
     }
@@ -530,6 +537,32 @@ public class PlaylistStore
             song[0] = f.getSongs().remove(index[0]);
         });
         return new Removed(song[0], index[0], file);
+    }
+
+    /**
+     * Puts a song that was taken out by {@link #removeSong} back exactly as it was: same {@code addedBy} and
+     * {@code addedAt}, and the same id unless another song has taken it since (then it gets a fresh one). It goes
+     * to {@code index} (clamped to the list). A playlist already at {@link PlaylistFile#MAX_SONGS} refuses it.
+     * {@code song} is copied; the caller's object is left as it is.
+     */
+    public PlaylistFile reinsertSong(String name, String folder, Song song, int index)
+    {
+        if(song == null)
+            throw new IllegalArgumentException("No song to put back");
+        return update(name, folder, file ->
+        {
+            List<Song> list = file.getSongs();
+            if(list.size() >= PlaylistFile.MAX_SONGS)
+                throw new IllegalStateException(FULL);
+            Set<String> ids = new HashSet<>();
+            for(Song existing : list)
+                ids.add(existing.getId());
+            boolean idFree = song.getId() != null && !ids.contains(song.getId());
+            Song copy = PlaylistFile.copyForPlaylist(song, ids, song.getAddedBy(), song.getAddedAt());
+            if(idFree)
+                copy.setId(song.getId());
+            list.add(Math.max(0, Math.min(index, list.size())), copy);
+        });
     }
 
     /** Moves the song so that it ends up at {@code toIndex} (clamped to the list). */
@@ -1380,6 +1413,31 @@ public class PlaylistStore
         public int getDaysLeft()
         {
             return daysLeft;
+        }
+    }
+
+    /** What {@link #restoreWithFolder} brought back: the playlist (under its final name) and the folder it is in now. */
+    public static final class Restored
+    {
+        private final PlaylistFile playlist;
+        private final String folder;
+
+        Restored(PlaylistFile playlist, String folder)
+        {
+            this.playlist = playlist;
+            this.folder = folder;
+        }
+
+        /** The playlist as saved by the restore; its name carries {@code (restored)} when the old one was taken. */
+        public PlaylistFile getPlaylist()
+        {
+            return playlist;
+        }
+
+        /** The folder path it landed in, {@code ""} for the top level. */
+        public String getFolder()
+        {
+            return folder;
         }
     }
 

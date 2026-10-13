@@ -18,6 +18,7 @@ package com.jagrosh.jmusicbot.web;
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import java.util.HashMap;
 import java.util.Map;
+import org.json.JSONObject;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -52,6 +53,23 @@ public class WebPayloadsTest
         assertEquals("233362518045753345", me.get("id"));
         assertEquals("fred", me.get("name"));
         assertEquals("https://cdn.discordapp.com/avatars/1/a.png", me.get("avatarUrl"));
+    }
+
+    @Test
+    public void broadcastMessageCarriesTheClientsGuildAndRealJson()
+    {
+        JSONObject data = new JSONObject().put("name", "Mix").put("folder", "Rock").put("version", 3);
+        JSONObject message = new JSONObject(WebServer.broadcastMessage("playlists", "123", data));
+        assertEquals("playlists", message.getString("type"));
+        assertEquals("123", message.getString("guildId"));
+        assertEquals("an object, not a string of one", 3, message.getJSONObject("data").getInt("version"));
+        assertEquals("Mix", message.getJSONObject("data").getString("name"));
+        assertEquals("456", new JSONObject(WebServer.broadcastMessage("playlists", "456", data)).getString("guildId"));
+
+        Map<String, Object> map = new HashMap<>();
+        map.put("tree", true);
+        assertTrue(new JSONObject(WebServer.broadcastMessage("playlists", "123", map)).getJSONObject("data").getBoolean("tree"));
+        assertTrue("no data is still valid", new JSONObject(WebServer.broadcastMessage("playlists", "123", null)).has("data"));
     }
 
     @Test
