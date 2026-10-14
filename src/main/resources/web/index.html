@@ -2489,6 +2489,89 @@
         .get-app-btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; }
         .get-app-btn[hidden] { display: none !important; }
 
+        /* "What's new": the header button with its dot while something is unseen, and the patch-notes dialog. */
+        .wn-btn { display: inline-flex; align-items: center; white-space: nowrap; }
+        .wn-dot {
+            flex-shrink: 0;
+            width: 7px;
+            height: 7px;
+            margin-left: 7px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 6px var(--accent-glow);
+        }
+        .wn-dot[hidden] { display: none; }
+
+        .wn-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 1200; /* above the playlist picker (1000) and toasts (1100), below the login overlay (9999) */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(var(--login-overlay-blur));
+            -webkit-backdrop-filter: blur(var(--login-overlay-blur));
+        }
+        .wn-backdrop[hidden] { display: none; }
+
+        .wn-dialog {
+            display: flex;
+            flex-direction: column;
+            width: min(520px, 100%);
+            max-height: min(640px, 100%);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-login-box);
+            box-shadow: var(--login-shadow);
+            overflow: hidden;
+            animation: fadeSlideIn 0.2s ease;
+        }
+
+        .wn-head { flex-shrink: 0; padding: 20px 24px 12px; }
+        .wn-title { font-size: 1.15rem; font-weight: 700; }
+
+        /* The text always wraps, so no sideways scrolling. The scrollbar's room is always reserved (hence the 18px on
+           the right): a scrollbar appearing must not change the width the text wraps at. */
+        .wn-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; padding: 4px 18px 12px 24px; }
+        .wn-body:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .wn-body::-webkit-scrollbar { width: 6px; }
+        .wn-body::-webkit-scrollbar-track { background: transparent; }
+        .wn-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+        .wn-note + .wn-note { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+        .wn-note-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+        .wn-note-title { min-width: 0; font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
+        .wn-note-date { flex-shrink: 0; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+
+        .wn-group { margin-top: 12px; }
+        .wn-area {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: var(--accent-glow);
+            color: var(--accent-light);
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .wn-items { list-style: none; margin-top: 4px; }
+        .wn-items li { position: relative; margin-top: 6px; padding-left: 14px; font-size: 0.88rem; line-height: 1.45; overflow-wrap: anywhere; }
+        .wn-items li::before { content: ''; position: absolute; left: 2px; top: 0.6em; width: 4px; height: 4px; border-radius: 50%; background: var(--text-tertiary); }
+        .wn-empty { padding: 12px 0; font-size: 0.88rem; color: var(--text-secondary); }
+
+        .wn-foot { flex-shrink: 0; display: flex; justify-content: flex-end; padding: 12px 24px 20px; border-top: 1px solid var(--border); }
+
+        @media (max-width: 640px) {
+            .wn-head { padding: 16px 18px 10px; }
+            .wn-body { padding: 4px 12px 10px 18px; }
+            .wn-foot { padding: 10px 18px 16px; }
+            .wn-foot .btn-sm { width: 100%; padding-top: 10px; padding-bottom: 10px; }
+        }
+
         @media (max-width: 900px) {
             .main-layout {
                 padding: 16px max(12px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
@@ -5160,6 +5243,7 @@
                     <option value="revival">Revival ✦</option>
                 </select>
             </div>
+            <button type="button" class="logout-btn wn-btn" id="whatsNewBtn" title="See what's new">What's new<span class="wn-dot" id="whatsNewDot" hidden aria-hidden="true"></span></button>
             <a class="logout-btn get-app-btn" id="getAppBtn" hidden
                href="https://github.com/FredTheSlug/MusicBot/releases/download/desktop-updates/CloutKingsMusicBot-Setup.exe"
                title="Windows app: mini-player, media keys, lyrics, send your Spotify song. It isn't code-signed yet, so on first run choose More info, then Run anyway.">&#11015; Get the app</a>
@@ -5337,6 +5421,16 @@
     </div>
 
     <div id="plToasts" class="pl-toasts" role="status" aria-live="polite"></div>
+
+    <div id="whatsNewBackdrop" class="wn-backdrop" hidden>
+        <div class="wn-dialog" role="dialog" aria-modal="true" aria-labelledby="whatsNewTitle">
+            <div class="wn-head"><h2 class="wn-title" id="whatsNewTitle">What's new</h2></div>
+            <div class="wn-body" id="whatsNewBody" tabindex="0"></div>
+            <div class="wn-foot"><button type="button" class="btn-sm pl-primary" id="whatsNewDone">Got it</button></div>
+        </div>
+    </div>
+
+    <script src="/web/whats-new.js"></script>
 
     <script>
         let currentGuild = localStorage.getItem('defaultGuild') || '';
@@ -6636,6 +6730,7 @@
                     guildSelect.value = currentGuild;
                 }
                 ensureWebSocket();
+                wnStart();
             } catch(e) {
                 if (e.message === 'unauthorized') {
                     authRequired = true;
@@ -8068,6 +8163,7 @@
         }
 
         function showLoginOverlay() {
+            wnHide(); // the What's new dialog never stays open over the login screen
             document.getElementById('loginOverlay').style.display = '';
             document.getElementById('logoutBtn').style.display = 'none';
             var dBtn = document.getElementById('discordLoginBtn');
@@ -10544,6 +10640,215 @@
             if (e.key === 'Enter') savePlaylistFromQueue();
             if (e.key === 'Escape') hideSaveDialog();
         });
+
+        // ---- What's new: patch notes ---------------------------------------------------------------------------
+        // /web/patch-notes.json is fetched once after login. The newest id the person has seen is kept in
+        // localStorage; whats-new.js decides what is unseen. All text goes in with textContent. Nothing here ever
+        // opens over the login overlay. window.openWhatsNew() is also called by the desktop app (mini-player menu).
+        var WN_SEEN_KEY = 'jmusicbot_seen_notes_v1';
+        var wnBtn = document.getElementById('whatsNewBtn');
+        var wnDot = document.getElementById('whatsNewDot');
+        var wnBackdrop = document.getElementById('whatsNewBackdrop');
+        var wnBody = document.getElementById('whatsNewBody');
+        var wnDone = document.getElementById('whatsNewDone');
+        var wnNotes = null;      // the "notes" array, once it has loaded
+        var wnLoading = null;    // the request in flight, shared by every caller
+        var wnStarted = false;
+        var wnMode = 'history';  // 'unseen': the entries above the seen marker, "Got it" stores it. 'history': everything.
+        var wnReturnFocus = null;
+        var wnStorageOk = wnProbeStorage();
+        var wnSeenId = wnStorageOk ? wnReadSeen() : null;
+
+        // One probe decides whether the seen marker can last. Without it nothing auto-shows and there is no dot.
+        function wnProbeStorage() {
+            try {
+                localStorage.setItem(WN_SEEN_KEY + '_probe', '1');
+                localStorage.removeItem(WN_SEEN_KEY + '_probe');
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function wnReadSeen() {
+            try { return localStorage.getItem(WN_SEEN_KEY); } catch (e) { return null; }
+        }
+
+        function wnWriteSeen(id) {
+            try { localStorage.setItem(WN_SEEN_KEY, id); } catch (e) {}
+        }
+
+        function wnLoginUp() {
+            var overlay = document.getElementById('loginOverlay');
+            return !!overlay && overlay.style.display !== 'none';
+        }
+
+        function wnLoad() {
+            if (wnNotes) return Promise.resolve(wnNotes);
+            if (!wnLoading) {
+                wnLoading = fetch('/web/patch-notes.json', { cache: 'no-cache' })
+                    .then(function (resp) { return resp.ok ? resp.json() : null; })
+                    .then(function (data) { return data && Array.isArray(data.notes) ? data.notes : null; })
+                    .catch(function () { return null; })
+                    .then(function (notes) {
+                        wnLoading = null;
+                        if (notes) wnNotes = notes;
+                        return notes;
+                    });
+            }
+            return wnLoading;
+        }
+
+        function wnUnseen() {
+            return WhatsNew.unseenNotes(wnNotes, wnSeenId);
+        }
+
+        function wnUpdateDot() {
+            var on = WhatsNew.shouldAutoShow(wnStorageOk, wnUnseen());
+            wnDot.hidden = !on;
+            if (on) wnBtn.setAttribute('aria-label', "What's new (there are updates you haven't seen)");
+            else wnBtn.removeAttribute('aria-label');
+        }
+
+        // The newest entry counts as seen: "Got it", or opening the full history.
+        function wnMarkSeen() {
+            var newest = WhatsNew.unseenNotes(wnNotes, null)[0];
+            if (!newest) return;
+            wnSeenId = newest.id;
+            if (wnStorageOk) wnWriteSeen(newest.id);
+            wnUpdateDot();
+        }
+
+        // YYYY-MM-DD as a local calendar date ("Oct 14, 2026"); anything else is shown as it is.
+        function wnFormatDate(s) {
+            if (typeof s !== 'string') return '';
+            var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+            if (!m) return s;
+            return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+                .toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        // [{area, texts[]}] in the order the areas first appear in the entry.
+        function wnGroupItems(items) {
+            var groups = [];
+            var byArea = Object.create(null);
+            (Array.isArray(items) ? items : []).forEach(function (it) {
+                if (!it || typeof it.text !== 'string' || !it.text) return;
+                var area = typeof it.area === 'string' && it.area ? it.area : 'Other';
+                var g = byArea[area];
+                if (!g) {
+                    g = byArea[area] = { area: area, texts: [] };
+                    groups.push(g);
+                }
+                g.texts.push(it.text);
+            });
+            return groups;
+        }
+
+        function wnRender(entries) {
+            wnBody.textContent = '';
+            var shown = 0;
+            entries.forEach(function (n) {
+                if (!n || typeof n !== 'object') return;
+                shown++;
+                var note = plEl('section', 'wn-note');
+                var head = plEl('div', 'wn-note-head');
+                head.appendChild(plEl('h3', 'wn-note-title', typeof n.title === 'string' ? n.title : ''));
+                head.appendChild(plEl('span', 'wn-note-date', wnFormatDate(n.date)));
+                note.appendChild(head);
+                wnGroupItems(n.items).forEach(function (g) {
+                    var group = plEl('div', 'wn-group');
+                    group.appendChild(plEl('span', 'wn-area', g.area));
+                    var list = plEl('ul', 'wn-items');
+                    g.texts.forEach(function (text) { list.appendChild(plEl('li', '', text)); });
+                    group.appendChild(list);
+                    note.appendChild(group);
+                });
+                wnBody.appendChild(note);
+            });
+            if (!shown) wnBody.appendChild(plEl('p', 'wn-empty', 'No patch notes to show right now.'));
+            wnBody.scrollTop = 0;
+        }
+
+        function wnShow(entries, mode) {
+            var wasOpen = !wnBackdrop.hidden;
+            wnMode = mode;
+            wnRender(entries);
+            wnDone.textContent = mode === 'unseen' ? 'Got it' : 'Close';
+            wnBackdrop.hidden = false;
+            if (!wasOpen) {
+                wnReturnFocus = document.activeElement;
+                document.addEventListener('keydown', wnOnKey, true);
+                wnDone.focus({ preventScroll: true });
+            }
+        }
+
+        function wnHide() {
+            if (!wnBackdrop || wnBackdrop.hidden) return;
+            wnBackdrop.hidden = true;
+            document.removeEventListener('keydown', wnOnKey, true);
+            var back = wnReturnFocus;
+            wnReturnFocus = null;
+            if (back && back.isConnected && typeof back.focus === 'function') {
+                try { back.focus({ preventScroll: true }); } catch (e) {}
+            }
+        }
+
+        // Escape closes without marking anything seen; Tab stays inside the dialog (its scroll area and button).
+        function wnOnKey(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                wnHide();
+            } else if (e.key === 'Tab') {
+                var inside = wnBackdrop.contains(document.activeElement);
+                if (!inside) {
+                    e.preventDefault();
+                    (e.shiftKey ? wnDone : wnBody).focus();
+                } else if (e.shiftKey && document.activeElement === wnBody) {
+                    e.preventDefault();
+                    wnDone.focus();
+                } else if (!e.shiftKey && document.activeElement === wnDone) {
+                    e.preventDefault();
+                    wnBody.focus();
+                }
+            }
+        }
+
+        // The full history, any time (header button, desktop app). It marks everything as seen.
+        function wnOpenHistory() {
+            if (wnLoginUp()) return;
+            wnLoad().then(function (notes) {
+                if (wnLoginUp()) return;
+                wnShow(notes || [], 'history');
+                if (notes) wnMarkSeen();
+            });
+        }
+
+        // Called once, when the panel has loaded after login: the dot, and the dialog if something is unseen.
+        function wnStart() {
+            if (wnStarted) return;
+            wnStarted = true;
+            wnLoad().then(function (notes) {
+                if (!notes) return;
+                wnUpdateDot();
+                var unseen = wnUnseen();
+                if (WhatsNew.shouldAutoShow(wnStorageOk, unseen) && !wnLoginUp() && wnBackdrop.hidden) wnShow(unseen, 'unseen');
+            });
+        }
+
+        wnBtn.addEventListener('click', wnOpenHistory);
+        wnDone.addEventListener('click', function () {
+            if (wnMode === 'unseen') wnMarkSeen();
+            wnHide();
+        });
+        // A press that starts inside the dialog and ends on the backdrop (a text selection) must not close it.
+        var wnPressedOutside = false;
+        wnBackdrop.addEventListener('mousedown', function (e) { wnPressedOutside = e.target === wnBackdrop; });
+        wnBackdrop.addEventListener('click', function (e) {
+            if (e.target === wnBackdrop && wnPressedOutside) wnHide();
+        });
+        window.openWhatsNew = wnOpenHistory;
 
         plRenderTree();
         plLoadPaneTree();
