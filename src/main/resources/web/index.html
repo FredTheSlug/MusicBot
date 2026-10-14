@@ -2599,6 +2599,7 @@
                 padding-top: max(12px, env(safe-area-inset-top, 0));
                 gap: 10px;
             }
+            .header-actions { flex-wrap: wrap; justify-content: center; }
             .guild-selector select { min-width: 100%; }
             .track-title { font-size: 1.2rem; }
             .ctrl-btn {
@@ -10710,7 +10711,7 @@
             else wnBtn.removeAttribute('aria-label');
         }
 
-        // The newest entry counts as seen: "Got it", or opening the full history.
+        // The newest entry counts as seen: the person closed the unseen dialog, or opened the full history.
         function wnMarkSeen() {
             var newest = WhatsNew.unseenNotes(wnNotes, null)[0];
             if (!newest) return;
@@ -10794,12 +10795,19 @@
             }
         }
 
-        // Escape closes without marking anything seen; Tab stays inside the dialog (its scroll area and button).
+        // The person closing the dialog (Got it, Escape, a click outside) counts as seen, so it pops only once. Not
+        // wnHide() itself: that also runs when the login overlay appears, which says nothing about having read it.
+        function wnDismiss() {
+            if (wnMode === 'unseen') wnMarkSeen();
+            wnHide();
+        }
+
+        // Escape dismisses; Tab stays inside the dialog (its scroll area and button).
         function wnOnKey(e) {
             if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
-                wnHide();
+                wnDismiss();
             } else if (e.key === 'Tab') {
                 var inside = wnBackdrop.contains(document.activeElement);
                 if (!inside) {
@@ -10838,15 +10846,12 @@
         }
 
         wnBtn.addEventListener('click', wnOpenHistory);
-        wnDone.addEventListener('click', function () {
-            if (wnMode === 'unseen') wnMarkSeen();
-            wnHide();
-        });
+        wnDone.addEventListener('click', wnDismiss);
         // A press that starts inside the dialog and ends on the backdrop (a text selection) must not close it.
         var wnPressedOutside = false;
         wnBackdrop.addEventListener('mousedown', function (e) { wnPressedOutside = e.target === wnBackdrop; });
         wnBackdrop.addEventListener('click', function (e) {
-            if (e.target === wnBackdrop && wnPressedOutside) wnHide();
+            if (e.target === wnBackdrop && wnPressedOutside) wnDismiss();
         });
         window.openWhatsNew = wnOpenHistory;
 
