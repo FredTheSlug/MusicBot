@@ -1,0 +1,51 @@
+{
+  "notes": [
+    {
+      "id": "2026-10-14",
+      "date": "2026-10-14",
+      "title": "Playlists, rebuilt",
+      "app": "0.4.0",
+      "items": [
+        { "area": "Panel", "text": "Playlists now show real songs, with artwork, artist and length. Your old playlists were upgraded for you automatically." },
+        { "area": "Panel", "text": "Add to playlist is now on the song that's playing, the queue, History, Most played and search results." },
+        { "area": "Panel", "text": "Drag songs to put them in a different order." },
+        { "area": "Panel", "text": "Removed a song by mistake? Press Undo to put it back." },
+        { "area": "Panel", "text": "A song that couldn't load now has a Retry button." },
+        { "area": "Panel", "text": "Paste a YouTube, Spotify or SoundCloud playlist or album link to turn it into a playlist." },
+        { "area": "Panel", "text": "Deleted playlists wait in a Deleted folder for 7 days, so you can restore one if you change your mind." },
+        { "area": "Panel", "text": "Friends can edit the same playlist at the same time." },
+        { "area": "Panel", "text": "Start a playlist from any song you pick, not just the first one." },
+        { "area": "Mini-player", "text": "The mini-player has an add-to-playlist button too, and shows the real number of songs in each playlist." },
+        { "area": "Discord", "text": "In Discord, play a playlist with \"play playlist Folder/Name\". Editing playlists now happens in the panel instead." }
+      ]
+    },
+    {
+      "id": "2026-10-13",
+      "date": "2026-10-13",
+      "title": "Move panes in the app",
+      "app": "0.3.1",
+      "items": [
+        { "area": "App", "text": "Drag the panel's panes around to rearrange them in the app, just like in the browser." },
+        { "area": "App", "text": "Drop audio files onto the app to upload them." }
+      ]
+    },
+    {
+      "id": "2026-10-11",
+      "date": "2026-10-11",
+      "title": "Autoplay, skip non-music and a bigger mini-player",
+      "app": "0.3.0",
+      "items": [
+        { "area": "Panel", "text": "Autoplay keeps the music going with related songs when the queue runs out. Turn it on with the Autoplay button, or type autoplay in Discord." },
+        { "area": "Panel", "text": "Skip non-music jumps over intros and talking in YouTube videos (SponsorBlock). It's on by default; turn it off with the Skip non-music button or the sponsorblock command in Discord." },
+        { "area": "Mini-player", "text": "Up Next shows what's queued, right in the mini-player." },
+        { "area": "Mini-player", "text": "Shuffle and repeat buttons are now in the mini-player." },
+        { "area": "Mini-player", "text": "Drag the progress bar to jump to any spot in a song." },
+        { "area": "Mini-player", "text": "Recent, Most played and Playlists tabs make it quick to find something to play." },
+        { "area": "Mini-player", "text": "A sleep timer pauses the music after 15, 30 or 60 minutes, or at the end of the current song." },
+        { "area": "Mini-player", "text": "The mini-player hides itself while a fullscreen game is running on its monitor." },
+        { "area": "Mini-player", "text": "Optional hotkeys let you control the music from any app. They're off until you switch them on in the menu." },
+        { "area": "Mini-player", "text": "Compact mode makes the mini-player smaller." }
+      ]
+    }
+  ]
+}
