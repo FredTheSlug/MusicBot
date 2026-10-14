@@ -15,6 +15,7 @@ mod state;
 mod theme;
 mod tray;
 mod updates;
+mod whats_new;
 
 use settings::Settings;
 use std::collections::HashMap;
@@ -228,10 +229,21 @@ fn main() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .setup(|app| {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
-            let settings = settings::load(&settings_path);
+            // Read before anything below writes the file: a fresh install has none yet.
+            let settings_existed = settings_path.exists();
+            let mut settings = settings::load(&settings_path);
             let (Some(panel_url), Some(origin)) = (settings.panel_url(), settings.server_origin()) else {
                 return Err(format!("serverUrl in {} is not a valid URL", settings_path.display()).into());
             };
+            // The same version the updater compares against.
+            let version = app.package_info().version.to_string();
+            let show_whats_new = whats_new::just_updated(settings.last_run_version.as_deref(), &version, settings_existed);
+            if settings.last_run_version.as_deref() != Some(version.as_str()) {
+                settings.last_run_version = Some(version);
+                if let Err(e) = settings::save(&settings_path, &settings) {
+                    log::warn!("could not save the app version: {e}");
+                }
+            }
             let start_with_windows = settings.start_with_windows;
             app.manage(AppState {
                 settings: Mutex::new(settings),
@@ -260,6 +272,10 @@ fn main() {
             start_media_keys(app.handle());
             tray::build(app.handle())?;
             mini_player::create(app.handle())?;
+            if show_whats_new {
+                // Just updated: the panel's "What's new" dialog is in this window.
+                show_main(app.handle());
+            }
             spawn_ticker(app.handle().clone());
             sleep::spawn_worker(app.handle().clone());
             fullscreen::spawn_worker(app.handle().clone());
@@ -289,6 +305,7 @@ fn main() {
             mini_player::mini_get_state,
             mini_player::mini_command,
             mini_player::mini_open_panel,
+            mini_player::mini_show_whats_new,
             mini_player::mini_hide,
             mini_player::mini_spotify_now,
             mini_player::mini_send_spotify,

@@ -365,6 +365,16 @@ pub fn mini_open_panel(app: AppHandle) {
     show_main(&app);
 }
 
+/// Shows the panel window and asks the page to open its "What's new" history. Showing the window is
+/// the part that matters: a page that isn't loaded yet has nothing to ask, which is not an error.
+#[tauri::command]
+pub fn mini_show_whats_new(app: AppHandle) {
+    show_main(&app);
+    if let Err(e) = bridge::send_command(&app, BotCommand::ShowWhatsNew) {
+        log::info!("could not ask the panel for its patch notes: {e}");
+    }
+}
+
 #[tauri::command]
 pub fn mini_hide(app: AppHandle) {
     hide(&app);

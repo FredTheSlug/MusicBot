@@ -7,6 +7,7 @@ fn main() {
             "mini_get_state",
             "mini_command",
             "mini_open_panel",
+            "mini_show_whats_new",
             "mini_hide",
             "mini_spotify_now",
             "mini_send_spotify",

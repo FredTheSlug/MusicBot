@@ -40,6 +40,8 @@ pub struct Settings {
     pub hotkeys: Hotkeys,
     /// The mini-player as a slim bar instead of the full card.
     pub mini_player_compact: bool,
+    /// The app version that last ran: a different one at start means the app was just updated.
+    pub last_run_version: Option<String>,
 }
 
 impl Default for Settings {
@@ -58,6 +60,7 @@ impl Default for Settings {
             hide_in_fullscreen: true,
             hotkeys: Hotkeys::default(),
             mini_player_compact: false,
+            last_run_version: None,
         }
     }
 }
@@ -132,6 +135,19 @@ mod tests {
         let old = load(&path);
         assert!(!old.notify_up_next && old.mini_player_match_panel);
         assert_eq!(old.mini_player_opacity, 1.0);
+    }
+
+    #[test]
+    fn last_run_version_is_stored_as_last_run_version() {
+        assert_eq!(Settings::default().last_run_version, None);
+
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        fs::write(&path, r#"{"lastRunVersion": "0.4.0"}"#).unwrap();
+        assert_eq!(load(&path).last_run_version.as_deref(), Some("0.4.0"));
+
+        save(&path, &Settings { last_run_version: Some("0.5.0".into()), ..Settings::default() }).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains(r#""lastRunVersion": "0.5.0""#));
     }
 
     #[test]

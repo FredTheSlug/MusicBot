@@ -9,6 +9,7 @@
     "allow-mini-get-state",
     "allow-mini-command",
     "allow-mini-open-panel",
+    "allow-mini-show-whats-new",
     "allow-mini-hide",
     "allow-mini-spotify-now",
     "allow-mini-send-spotify",

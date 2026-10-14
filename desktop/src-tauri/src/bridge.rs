@@ -59,6 +59,8 @@ pub enum BotCommand {
     PlaylistsTreeV2,
     AddToPlaylist { name: String, folder: Option<String>, song: PlaylistSong },
     CreatePlaylist { name: String, folder: Option<String> },
+    /// The page opens its "What's new" history; needs no server selected and sends nothing to the bot.
+    ShowWhatsNew,
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,6 +211,14 @@ mod tests {
     fn bot_command_json_shape() {
         assert_eq!(serde_json::to_string(&BotCommand::Skip).unwrap(), r#"{"type":"Skip"}"#);
         assert_eq!(serde_json::to_string(&BotCommand::SetVolume(80)).unwrap(), r#"{"type":"SetVolume","value":80}"#);
+    }
+
+    #[test]
+    fn show_whats_new_serializes() {
+        // A unit variant: no "value" key, which is what bridge.js looks for by "type" alone.
+        assert_eq!(serde_json::to_string(&BotCommand::ShowWhatsNew).unwrap(), r#"{"type":"ShowWhatsNew"}"#);
+        let back: BotCommand = serde_json::from_str(r#"{"type":"ShowWhatsNew"}"#).unwrap();
+        assert_eq!(back, BotCommand::ShowWhatsNew);
     }
 
     #[test]

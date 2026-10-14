@@ -173,6 +173,9 @@
   });
   el('close').addEventListener('click', function () { invoke('mini_hide'); });
   el('openPanel').addEventListener('click', function () { invoke('mini_open_panel'); });
+  el('whatsNewBtn').addEventListener('click', function () {
+    invoke('mini_show_whats_new').catch(function (e) { showStatus(String(e)); });
+  });
 
   // ---- Spotify: the logo queues Spotify's current song; links can also be dropped on the window ----
   function renderSpotify(status) {

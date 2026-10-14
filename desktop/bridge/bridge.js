@@ -155,6 +155,12 @@
     function result(ok, message, data) {
       report({ type: 'result', id: id, ok: ok, message: message || null, data: data === undefined ? null : data });
     }
+    // Asks the page itself, not the bot: it works with no server picked, and sends no request.
+    if (cmd.type === 'ShowWhatsNew') {
+      if (typeof window.openWhatsNew === 'function') window.openWhatsNew();
+      result(true);
+      return;
+    }
     if (!guildId) { result(false, 'Pick a server in the panel first'); return; }
     var req = core.commandToRequest(guildId, cmd, core.toBotState(snap));
     if (!req) { result(true); return; }
