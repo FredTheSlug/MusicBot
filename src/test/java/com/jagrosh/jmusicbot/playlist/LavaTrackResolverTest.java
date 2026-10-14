@@ -211,6 +211,25 @@ public class LavaTrackResolverTest
     }
 
     @Test
+    public void youtubeIdOfReadsTheVideoOutOfALink()
+    {
+        assertEquals(VIDEO_ID, LavaTrackResolver.youtubeIdOf(VIDEO_URL));
+        assertEquals(VIDEO_ID, LavaTrackResolver.youtubeIdOf("https://m.youtube.com/watch?v=" + VIDEO_ID + "&t=30s"));
+        assertEquals("the video wins over the list", VIDEO_ID,
+                LavaTrackResolver.youtubeIdOf("https://www.youtube.com/watch?list=PLx&index=2&v=" + VIDEO_ID));
+        assertEquals(VIDEO_ID, LavaTrackResolver.youtubeIdOf("https://youtu.be/" + VIDEO_ID + "?si=abc"));
+        assertEquals(VIDEO_ID, LavaTrackResolver.youtubeIdOf("https://www.youtube.com/shorts/" + VIDEO_ID));
+        assertEquals(VIDEO_ID, LavaTrackResolver.youtubeIdOf("HTTPS://WWW.YOUTUBE.COM/embed/" + VIDEO_ID));
+        assertNull("a list is no video", LavaTrackResolver.youtubeIdOf("https://www.youtube.com/playlist?list=PLalbum"));
+        assertNull("not eleven characters", LavaTrackResolver.youtubeIdOf("https://www.youtube.com/watch?v=" + VIDEO_ID + "x"));
+        assertNull(LavaTrackResolver.youtubeIdOf("https://www.youtube.com/watch?v=short"));
+        assertNull("another site", LavaTrackResolver.youtubeIdOf("https://notyoutube.com/watch?v=" + VIDEO_ID));
+        assertNull(LavaTrackResolver.youtubeIdOf("https://youtube.com.evil.test/watch?v=" + VIDEO_ID));
+        assertNull(LavaTrackResolver.youtubeIdOf("ytsearch:" + VIDEO_ID));
+        assertNull(LavaTrackResolver.youtubeIdOf(null));
+    }
+
+    @Test
     public void songOfHasNoDurationForStreamsOrUnknownLengths()
     {
         assertEquals("a stream", 0, LavaTrackResolver.songOf(info("live", 123456, VIDEO_ID, true, VIDEO_URL, null)).getDurationMs());

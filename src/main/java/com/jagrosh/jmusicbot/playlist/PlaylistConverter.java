@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
 public class PlaylistConverter
 {
     private static final Logger LOG = LoggerFactory.getLogger(PlaylistConverter.class);
-    private static final String UNREACHABLE = "YouTube looks unreachable — playlist conversion paused, will retry";
+    private static final String UNKNOWN_REASON = "unknown reason";
 
     private final PlaylistStore store;
     private final TrackResolver resolver;
@@ -54,6 +54,7 @@ public class PlaylistConverter
      * as failed and left as it was, to be tried again by the next call. When a line fails and the resolver is
      * not {@linkplain TrackResolver#healthy() healthy}, that is an outage and not a dead line: the playlist
      * counts as failed and is left as it was, and the run stops there, leaving the rest to the next call. A
+     * line that is a file on disk is never checked: a missing file is dead whatever the sources are doing. A
      * run also stops early when the thread is interrupted. A playlist found already converted meanwhile is
      * counted as done in {@link #progress()}, but not in the number returned.
      */
@@ -84,7 +85,8 @@ public class PlaylistConverter
             {
                 failed++;
                 paused = true;
-                LOG.warn(UNREACHABLE);
+                LOG.warn("YouTube looks unreachable while converting '{}' (line: {}) — playlist conversion paused, will retry",
+                        label(legacy), e.line);
             }
             catch(RuntimeException e)
             {
@@ -118,9 +120,10 @@ public class PlaylistConverter
             Resolved resolved = resolver.resolve(line);
             if(gaveNothing(resolved))
             {
-                if(!resolver.healthy())
-                    throw new SourcesDown(); // not a dead line: nothing is getting through
-                LOG.debug("Could not load '{}' in '{}': {}", line, label(legacy), resolved.getError());
+                if(!LavaTrackResolver.isLocalFile(line.trim()) && !resolver.healthy())
+                    throw new SourcesDown(line); // not a dead line: nothing is getting through
+                LOG.info("Could not load '{}' in '{}': {}", line, label(legacy),
+                        resolved.getError() == null ? UNKNOWN_REASON : resolved.getError());
             }
             if(resolved.getSongs().isEmpty())
                 found.add(TrackResolver.unresolvedSong(line, LavaTrackResolver.identifierFor(line)));
@@ -167,12 +170,15 @@ public class PlaylistConverter
         return legacy.getFolder().isEmpty() ? legacy.getName() : legacy.getFolder() + "/" + legacy.getName();
     }
 
-    /** Thrown to stop the run when a line fails and the sources are not answering. */
+    /** Thrown to stop the run when a line fails and the sources are not answering; {@code line} is the one that failed. */
     private static final class SourcesDown extends RuntimeException
     {
-        SourcesDown()
+        final String line;
+
+        SourcesDown(String line)
         {
             super(null, null, false, false);
+            this.line = line;
         }
     }
 

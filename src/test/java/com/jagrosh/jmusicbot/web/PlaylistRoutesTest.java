@@ -1068,6 +1068,38 @@ public class PlaylistRoutesTest
     }
 
     @Test
+    public void youtubeSongWithoutArtworkGetsItsThumbnail() throws Exception
+    {
+        ok(post("/api/playlists", target("Thumbs", "")));
+        JSONArray songs = new JSONArray()
+                .put(new JSONObject().put("uri", "https://www.youtube.com/watch?v=dQw4w9WgXcQ").put("title", "watch"))
+                .put(new JSONObject().put("uri", "https://youtu.be/9bZkp7q19f0?t=5").put("title", "short link"))
+                .put(new JSONObject().put("uri", "https://music.youtube.com/watch?list=PLx&v=kJQP7kiw5Fk&feature=share").put("title", "music"))
+                .put(new JSONObject().put("uri", "https://www.youtube.com/watch?v=dQw4w9WgXcQ").put("title", "bad art")
+                        .put("artworkUrl", "javascript:alert(1)"))
+                .put(new JSONObject().put("uri", "https://www.youtube.com/watch?v=dQw4w9WgXcQ").put("title", "own art")
+                        .put("artworkUrl", "https://example.com/own.png"))
+                .put(new JSONObject().put("uri", "https://www.youtube.com/playlist?list=PLalbum").put("title", "a list"))
+                .put(new JSONObject().put("uri", "https://soundcloud.com/artist/track").put("title", "soundcloud"))
+                .put(new JSONObject().put("uri", "https://example.com/watch?v=dQw4w9WgXcQ").put("title", "elsewhere"))
+                .put(new JSONObject().put("uri", "ytsearch:Dr Dre - Still").put("title", "search"));
+        ok(post("/api/playlists/songs/add", target("Thumbs", "").put("songs", songs)));
+
+        JSONArray stored = item("Thumbs", "").getJSONArray("songs");
+        assertEquals("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", stored.getJSONObject(0).getString("artworkUrl"));
+        assertEquals("a youtu.be link too", "https://i.ytimg.com/vi/9bZkp7q19f0/hqdefault.jpg", stored.getJSONObject(1).getString("artworkUrl"));
+        assertEquals("the video of a link that also names a list", "https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg",
+                stored.getJSONObject(2).getString("artworkUrl"));
+        assertEquals("a refused artwork link is replaced", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+                stored.getJSONObject(3).getString("artworkUrl"));
+        assertEquals("the client's own artwork wins", "https://example.com/own.png", stored.getJSONObject(4).getString("artworkUrl"));
+        assertTrue("a list link is no video", stored.getJSONObject(5).isNull("artworkUrl"));
+        assertTrue("a SoundCloud link stays without", stored.getJSONObject(6).isNull("artworkUrl"));
+        assertTrue("so does a look-alike on another site", stored.getJSONObject(7).isNull("artworkUrl"));
+        assertTrue("and a search", stored.getJSONObject(8).isNull("artworkUrl"));
+    }
+
+    @Test
     public void songListsAreBounded() throws Exception
     {
         ok(post("/api/playlists", target("Bounded", "")));

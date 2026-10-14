@@ -389,7 +389,8 @@ public class PlaylistConverterTest
         assertProgress(converter.progress(), 2, 0, 1);
         assertEquals("gave up at the first failing line; the other playlist was not tried", Collections.singletonList("a1"), resolver.seen);
         assertEquals(1, resolver.healthChecks);
-        assertEquals(Collections.singletonList("YouTube looks unreachable — playlist conversion paused, will retry"), logged(Level.WARN));
+        assertEquals(Collections.singletonList("YouTube looks unreachable while converting 'A' (line: a1) — playlist conversion paused, will retry"),
+                logged(Level.WARN));
 
         resolver.healthy = true; // the next run, once YouTube is back
         resolver.answerOne("a1", "A1");
@@ -398,6 +399,59 @@ public class PlaylistConverterTest
         assertEquals(2, converter.convertPending());
         assertEquals(Arrays.asList("A1", "A2"), titles(store.get("A", "").get()));
         assertEquals(Collections.singletonList("B1"), titles(store.get("B", "Rock").get()));
+    }
+
+    @Test
+    public void pauseWarningNamesThePlaylistAndTheLine() throws Exception
+    {
+        txt("Rock", "Chronic", "Dr Dre - Still");
+        resolver.healthy = false;
+
+        assertEquals(0, converter.convertPending());
+
+        assertEquals(Collections.singletonList("YouTube looks unreachable while converting 'Rock/Chronic' (line: Dr Dre - Still)"
+                + " — playlist conversion paused, will retry"), logged(Level.WARN));
+        assertTrue("a paused line is not an unresolved one", logged(Level.INFO).isEmpty());
+    }
+
+    @Test
+    public void unresolvedLineIsLoggedWithItsReason() throws Exception
+    {
+        String link = "https://open.spotify.com/album/x";
+        txt("Rock", "Mix", "ok", "dead", link);
+        resolver.answerOne("ok", "Ok");
+        resolver.answer(link, Resolved.ok(Arrays.asList(TrackResolver.unresolvedSong("A - One", "ytsearch:A - One"),
+                TrackResolver.unresolvedSong("A - Two", "ytsearch:A - Two")), "Album"));
+
+        assertEquals(1, converter.convertPending());
+
+        assertEquals(Arrays.asList("Could not load 'dead' in 'Rock/Mix': No matches found",
+                "Could not load '" + link + "' in 'Rock/Mix': unknown reason",
+                "Converted 'Rock/Mix': 4 songs, 3 couldn't be loaded"), logged(Level.INFO));
+        assertTrue(logged(Level.WARN).isEmpty());
+    }
+
+    @Test
+    public void missingLocalFileIsDeadWhateverYouTubeIsDoing() throws Exception
+    {
+        String gone = "/home/cloutkings/music/Juice/Hollywood Dreams/Renamed.m4a";
+        String windows = "C:\\Music\\Gone.mp3";
+        txt("Rock", "Local", gone, "ok", windows);
+        resolver.answerOne("ok", "Ok");
+        resolver.healthy = false; // YouTube is slow right now; a file on disk has nothing to do with it
+
+        assertEquals("the run is not paused", 1, converter.convertPending());
+
+        assertEquals("not asked once", 0, resolver.healthChecks);
+        assertEquals(Arrays.asList(gone, "ok", windows), resolver.seen);
+        PlaylistFile file = store.get("Local", "Rock").get();
+        assertFalse("written, not left as a .txt", file.isLegacy());
+        assertEquals(Arrays.asList(gone, "Ok", windows), titles(file));
+        assertEquals(Arrays.asList(true, false, true), file.getSongs().stream().map(Song::isUnresolved).collect(Collectors.toList()));
+        assertEquals("kept as the file, to retry", gone, file.getSongs().get(0).getUri());
+        assertProgress(converter.progress(), 1, 1, 0);
+        assertTrue(logged(Level.WARN).isEmpty());
+        assertEquals("Could not load '" + gone + "' in 'Rock/Local': No matches found", logged(Level.INFO).get(0));
     }
 
     @Test
@@ -722,7 +776,8 @@ public class PlaylistConverterTest
         converter.convertPending();
 
         assertEquals(Arrays.asList("Converted 'Odd': 2 songs, 1 couldn't be loaded",
-                "Converted 'Rock/Chronic': 2 songs"), logged(Level.INFO).stream().sorted().collect(Collectors.toList()));
+                "Converted 'Rock/Chronic': 2 songs"), logged(Level.INFO).stream().filter(line -> line.startsWith("Converted "))
+                .sorted().collect(Collectors.toList()));
         List<ILoggingEvent> warnings = log.list.stream().filter(e -> e.getLevel() == Level.WARN).collect(Collectors.toList());
         assertEquals(1, warnings.size());
         assertTrue(warnings.get(0).getFormattedMessage().contains("'Broken'"));

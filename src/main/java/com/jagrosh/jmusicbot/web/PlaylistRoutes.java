@@ -16,6 +16,7 @@
 package com.jagrosh.jmusicbot.web;
 
 import com.jagrosh.jmusicbot.playlist.ImportJobs;
+import com.jagrosh.jmusicbot.playlist.LavaTrackResolver;
 import com.jagrosh.jmusicbot.playlist.PlaylistConverter;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile.Person;
@@ -645,7 +646,9 @@ public class PlaylistRoutes
             Object duration = entry.opt("durationMs");
             song.setDurationMs(duration instanceof Number ? Math.max(0L, ((Number) duration).longValue()) : 0L);
             String artwork = text(entry, "artworkUrl");
-            song.setArtworkUrl(artwork != null && isWebLink(artwork.trim()) ? artwork.trim() : null);
+            // the queue, search and history rows carry no artwork: a YouTube video gets its standard thumbnail
+            song.setArtworkUrl(artwork != null && isWebLink(artwork.trim()) ? artwork.trim()
+                    : LavaTrackResolver.youtubeThumbnail(LavaTrackResolver.youtubeIdOf(uri), uri));
             songs.add(song);
         }
         return songs;

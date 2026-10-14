@@ -34,6 +34,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The real {@link TrackResolver}: loads a line through lavaplayer, one load at a time, waiting at most
@@ -58,6 +60,8 @@ public class LavaTrackResolver implements TrackResolver
     /** What lavaplayer puts in for a file without tags. */
     private static final String UNKNOWN_TITLE = "Unknown title";
     private static final String UNKNOWN_ARTIST = "Unknown artist";
+    private static final Pattern YOUTUBE_VIDEO = Pattern.compile("^https?://(?:(?:www\\.|m\\.|music\\.)?youtube\\.com/"
+            + "(?:watch\\?(?:[^#]*&)?v=|shorts/|embed/|live/)|youtu\\.be/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])", Pattern.CASE_INSENSITIVE);
 
     private final PlayerManager manager;
     private final SpotifyResolver spotify;
@@ -171,9 +175,27 @@ public class LavaTrackResolver implements TrackResolver
     {
         if(info.artworkUrl != null && !info.artworkUrl.trim().isEmpty())
             return info.artworkUrl;
-        if(Autoplay.isYoutubeId(info.identifier) && info.uri != null && info.uri.contains("youtu"))
-            return "https://i.ytimg.com/vi/" + info.identifier + "/hqdefault.jpg";
+        return youtubeThumbnail(info.identifier, info.uri);
+    }
+
+    /** The standard thumbnail of a YouTube video, from its id and its link; null when they aren't a YouTube video. */
+    public static String youtubeThumbnail(String identifier, String uri)
+    {
+        if(Autoplay.isYoutubeId(identifier) && uri != null && uri.contains("youtu"))
+            return "https://i.ytimg.com/vi/" + identifier + "/hqdefault.jpg";
         return null;
+    }
+
+    /**
+     * The video a YouTube link points to ({@code watch?v=}, {@code youtu.be/}, {@code /shorts/}, {@code /embed/} or
+     * {@code /live/}; a link that also names a list gives its video); null for anything else, a list link included.
+     */
+    public static String youtubeIdOf(String uri)
+    {
+        if(uri == null)
+            return null;
+        Matcher matcher = YOUTUBE_VIDEO.matcher(uri.trim());
+        return matcher.find() ? matcher.group(1) : null;
     }
 
     private static boolean hasSearchPrefix(String text)
@@ -185,7 +207,7 @@ public class LavaTrackResolver implements TrackResolver
     }
 
     /** An absolute path (Unix, a Windows drive with a slash or backslash, or UNC) or a {@code file:} URI. */
-    private static boolean isLocalFile(String text)
+    static boolean isLocalFile(String text)
     {
         if(text == null)
             return false;

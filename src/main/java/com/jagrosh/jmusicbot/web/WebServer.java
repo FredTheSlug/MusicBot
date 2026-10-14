@@ -546,6 +546,7 @@ public class WebServer
             t.put("title", at.getInfo().title);
             t.put("author", at.getInfo().author);
             t.put("uri", at.getInfo().uri);
+            t.put("artworkUrl", resolveArtworkUrl(at));
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();
@@ -577,6 +578,7 @@ public class WebServer
             t.put("title", at.getInfo().title);
             t.put("author", at.getInfo().author);
             t.put("uri", at.getInfo().uri);
+            t.put("artworkUrl", resolveArtworkUrl(at));
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();
@@ -700,6 +702,7 @@ public class WebServer
             t.put("title", at.getInfo().title);
             t.put("author", at.getInfo().author);
             t.put("uri", at.getInfo().uri);
+            t.put("artworkUrl", resolveArtworkUrl(at));
             t.put("identifier", at.getIdentifier());
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
@@ -1887,6 +1890,7 @@ public class WebServer
         t.put("title", track.getInfo().title);
         t.put("author", track.getInfo().author);
         t.put("uri", track.getInfo().uri);
+        t.put("artworkUrl", resolveArtworkUrl(track));
         t.put("identifier", track.getIdentifier());
         t.put("duration", track.getDuration());
         t.put("durationFormatted", TimeUtil.formatTime(track.getDuration()));
@@ -2128,6 +2132,7 @@ public class WebServer
             t.put("title", at.getInfo().title);
             t.put("author", at.getInfo().author);
             t.put("uri", at.getInfo().uri);
+            t.put("artworkUrl", resolveArtworkUrl(at));
             t.put("duration", at.getDuration());
             t.put("durationFormatted", TimeUtil.formatTime(at.getDuration()));
             RequestMetadata rm = qt.getRequestMetadata();

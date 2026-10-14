@@ -6682,6 +6682,7 @@
             ws = new WebSocket(wsUrl);
             ws.onopen = function() {
                 refreshAll();
+                plRefreshAfterReconnect();
             };
             ws.onmessage = function(e) {
                 try {
@@ -8665,6 +8666,14 @@
             plLoadMigration();
         }
 
+        // The WebSocket (re)opened, after a bot restart or a dropped connection, say, and missed every "playlists"
+        // message meanwhile: reload the tree, the open page and the upgrade banner. The page goes the live-refresh way,
+        // so a drag under way holds it back (plPageBusy, page.deferred) and it is not redrawn under the hand.
+        function plRefreshAfterReconnect() {
+            plScheduleRefresh({ tree: true, page: true, force: true });
+            plLoadMigration();
+        }
+
         // folders (flat paths) and playlists (each with its folder) -> nested nodes, sorted.
         function plTreeNodes(tree) {
             var root = { path: '', name: '', children: [], playlists: [] };
@@ -10153,7 +10162,8 @@
         async function plImportIntoPage(page, link) {
             var started = await plStartImport({ kind: 'into', link: link, into: page.name, folder: page.folder, page: page });
             var add = page.add;
-            if (started && add && plImport) {
+            // `started`, not `plImport`: the job's "finished" message can beat the answer, and has cleared plImport by now
+            if (started && add) {
                 // the link is being imported: do not leave its button there to be pressed twice
                 add.seq++;
                 add.input.value = '';
