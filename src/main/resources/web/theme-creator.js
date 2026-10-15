@@ -356,10 +356,14 @@
         return lookFields(base, BASE_PALETTES[base].colors, BASE_PALETTES[base].font, true, 100);
     }
 
+    /* Effects default to on. The server stores false for any theme with a picture (a picture forces them off), so
+       that false says nothing about what the person wants once the picture is gone. */
+    function effectsOf(theme) {
+        return theme.background ? true : theme.effects !== false;
+    }
+
     function themeLook(theme) {
-        // a picture switched the effects off for good; without the picture they are back
-        var effects = theme.background ? true : theme.effects !== false;
-        return lookFields(theme.base, theme.colors, theme.font, effects, theme.radiusScale);
+        return lookFields(theme.base, theme.colors, theme.font, effectsOf(theme), theme.radiusScale);
     }
 
     function withFields(state, fields) {
@@ -380,7 +384,7 @@
 
     /* The state for editing a theme of the list. */
     function fromTheme(theme) {
-        var state = withFields(blankState(), lookFields(theme.base, theme.colors, theme.font, theme.effects === true, theme.radiusScale));
+        var state = withFields(blankState(), themeLook(theme));
         var version = Number(theme.version);
         state.id = typeof theme.id === 'string' ? theme.id : null;
         state.version = isFinite(version) ? Math.floor(version) : 0;

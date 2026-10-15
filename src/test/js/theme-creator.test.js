@@ -243,7 +243,7 @@ test('editingFillsTheStateFromTheSavedTheme', () => {
   assert.equal(s.visibility, 'public');
   assert.equal(s.hiddenByOwner, false);
   assert.equal(s.base, 'ember');
-  assert.equal(s.effects, false);
+  assert.equal(s.effects, true, 'the server stores false for a theme with a picture; that is not a choice');
   assert.deepEqual(s.colors, COLORS);
   assert.equal(s.mainColor, '#7c5cff');
   assert.equal(s.pageColor, '#0b0d14');
@@ -257,6 +257,26 @@ test('editingFillsTheStateFromTheSavedTheme', () => {
   assert.equal(s.blur, 4);
   assert.equal(s.fit, 'contain');
   assert.deepEqual(s.mini, { colors: P.mini(COLORS), useImage: true, dim: 55 });
+});
+
+test('removingThePictureOfAnEmberThemeBringsItsEffectsBack', () => {
+  // saved with a picture, so the server holds effects:false
+  const saved = savedTheme({ base: 'ember', effects: false });
+  const s = C.fromTheme(saved);
+  assert.equal(C.buildValues(s).effects, false, 'while the picture is on, effects are off');
+  const without = C.withoutPicture(s);
+  assert.equal(C.buildValues(without).effects, true);
+  const req = C.saveRequest(without);
+  assert.equal(req.removeBackground, true);
+  assert.equal(req.values.effects, true);
+  // the person can still switch them off afterwards
+  assert.equal(C.buildValues(C.setEffects(without, false)).effects, false);
+});
+
+test('aThemeSavedWithoutAPictureAndWithEffectsOffKeepsThemOff', () => {
+  const s = C.fromTheme(savedTheme({ background: null, mini: null, base: 'neon', effects: false }));
+  assert.equal(s.effects, false);
+  assert.equal(C.buildValues(s).effects, false);
 });
 
 test('editingAThemeWithoutAPictureOrMini', () => {
@@ -1043,4 +1063,12 @@ test('aLocalPictureLinkReachesTheBackdropOnlyThroughTheCreatorsOwnVariable', () 
   // only the creator ever sets it, and only to what ThemeApply.localPicture gave back (or null)
   const sets = [...INDEX.matchAll(/themeLocalPicture = ([^;]+);/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(sets)].sort(), ['local', 'null'].sort());
+});
+
+test('whileTheCreatorStandsAsideItTakesNoKeysSoThePagesOwnDialogsKeepTheirEscape', () => {
+  const fn = /function tcOnKey\(e\) \{([\s\S]*?)\n        \}\n/.exec(INDEX);
+  assert.ok(fn, 'tcOnKey not found');
+  assert.match(fn[1], /^\s*var s = themeCreator;\s*if \(!s \|\| s\.aside\) return;/);
+  // and nothing in it brings the creator back from aside: that is the pill's job
+  assert.doesNotMatch(fn[1], /tcSetAside\(/);
 });

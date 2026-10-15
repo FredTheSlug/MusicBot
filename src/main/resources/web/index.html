@@ -7388,19 +7388,19 @@
             });
         }
 
-        // Escape cancels, Tab stays inside the window.
+        // Escape cancels, Tab stays inside the window. While the window is stepped aside it takes no key at all: the
+        // page is in use (a "Delete this theme?" bar closes on Escape) and the way back is the pill.
         function tcOnKey(e) {
             var s = themeCreator;
-            if (!s) return;
+            if (!s || s.aside) return;
             var news = document.getElementById('whatsNewBackdrop');
             if (news && !news.hidden) return; // the patch notes have their own keys
             if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
-                if (s.aside) tcSetAside(s, '');
-                else if (s.confirmEl) tcCloseConfirm(s, true);
+                if (s.confirmEl) tcCloseConfirm(s, true);
                 else tcCancel(s);
-            } else if (e.key === 'Tab' && !s.aside && !s.saving) {
+            } else if (e.key === 'Tab' && !s.saving) {
                 var items = tcFocusable(s);
                 if (!items.length) return;
                 var first = items[0], last = items[items.length - 1];
