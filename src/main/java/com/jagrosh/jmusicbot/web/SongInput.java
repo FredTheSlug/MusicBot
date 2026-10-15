@@ -20,11 +20,10 @@ import com.jagrosh.jmusicbot.playlist.LikesStore;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile.Song;
 import com.jagrosh.jmusicbot.playlist.PlaylistStore;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.json.JSONObject;
 
@@ -87,16 +86,17 @@ final class SongInput
 
     /**
      * The "already stored" check of one request: true when a song of some playlist in {@code playlists} has this uri,
-     * or {@code storedInLikes} says someone liked it. The playlists are read when first asked, and then not again; the
-     * likes are asked about a uri no playlist has, once per uri. Uris compare as they are stored (cut to size). Make a
-     * new one for every request, so that it sees the stores as they are.
+     * or someone liked it ({@code likedUris} gives every liked uri, as {@link LikesStore#allUris} does). Each store is
+     * read once, when first needed (the likes only for a uri no playlist has); after that it is all lookups, however
+     * many uris one request asks about. Uris compare as they are stored (cut to size). Make a new one for every
+     * request, so that it sees the stores as they are.
      */
-    static Predicate<String> storedIn(PlaylistStore playlists, Predicate<String> storedInLikes)
+    static Predicate<String> storedIn(PlaylistStore playlists, Supplier<Set<String>> likedUris)
     {
         return new Predicate<String>()
         {
             private Set<String> inPlaylists;
-            private final Map<String, Boolean> inLikes = new HashMap<>();
+            private Set<String> inLikes;
 
             @Override
             public boolean test(String uri)
@@ -104,15 +104,13 @@ final class SongInput
                 String wanted = PlaylistFile.cut(uri);
                 if(inPlaylists == null)
                     inPlaylists = urisIn(playlists);
-                return inPlaylists.contains(wanted) || inLikes.computeIfAbsent(wanted, storedInLikes::test);
+                if(inPlaylists.contains(wanted))
+                    return true;
+                if(inLikes == null)
+                    inLikes = likedUris.get();
+                return inLikes.contains(wanted);
             }
         };
-    }
-
-    /** True for a uri that someone has liked; every person's likes are read each time it is asked. */
-    static Predicate<String> likedByAnyone(LikesStore likes)
-    {
-        return uri -> !likes.whoLiked(uri, null).isEmpty();
     }
 
     /** The uris of every song in every playlist. */

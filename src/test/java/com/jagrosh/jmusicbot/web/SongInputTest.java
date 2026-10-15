@@ -24,10 +24,12 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import org.json.JSONObject;
 import org.junit.Rule;
 import org.junit.Test;
@@ -159,7 +161,7 @@ public class SongInputTest
     }
 
     @Test
-    public void storedInReadsThePlaylistsOnceAndOnlyWhenAsked()
+    public void storedInReadsEachStoreOnceAndOnlyWhenAsked()
     {
         CountingStore playlists = new CountingStore(tmp.getRoot().toPath().resolve("Playlists"));
         playlists.create("Library", "Rock", ANNA);
@@ -170,44 +172,47 @@ public class SongInputTest
         playlists.create("Gone", "", ANNA);
         playlists.addSongs("Gone", "", List.of(song("/home/cloutkings/music/gone.m4a")), null, ANNA);
         playlists.delete("Gone", "", ANNA);
-        List<String> askedLikes = new ArrayList<>();
-        Predicate<String> inLikes = uri ->
+        AtomicInteger likesReads = new AtomicInteger();
+        Supplier<Set<String>> likedUris = () ->
         {
-            askedLikes.add(uri);
-            return "/home/cloutkings/music/liked.m4a".equals(uri);
+            likesReads.incrementAndGet();
+            return new HashSet<>(List.of("/home/cloutkings/music/liked.m4a"));
         };
 
-        Predicate<String> stored = SongInput.storedIn(playlists, inLikes);
-        assertEquals("nothing is read before it is asked", 0, playlists.reads.get());
+        Predicate<String> stored = SongInput.storedIn(playlists, likedUris);
+        assertEquals("nothing is read before it is asked", 0, playlists.reads.get() + likesReads.get());
         assertTrue(SongInput.allowed("https://example.com/a", stored));
-        assertEquals("a web link reads nothing", 0, playlists.reads.get());
+        assertTrue(SongInput.allowed("ytsearch:lofi", stored));
+        assertEquals("a link or a search reads nothing", 0, playlists.reads.get() + likesReads.get());
 
         assertTrue("in a playlist", stored.test(LOCAL));
         assertTrue("compared as it was stored (cut)", stored.test(longPath.toString()));
+        assertEquals("the likes are not read for what a playlist has", 0, likesReads.get());
         assertTrue("in someone's likes", stored.test("/home/cloutkings/music/liked.m4a"));
-        assertTrue("asked twice", stored.test("/home/cloutkings/music/liked.m4a"));
         assertFalse("a deleted playlist's songs don't count", stored.test("/home/cloutkings/music/gone.m4a"));
-        assertFalse(stored.test("/etc/passwd"));
-        assertFalse(stored.test("/etc/passwd"));
+        for(int i = 0; i < 1000; i++)
+            assertFalse(stored.test("/home/cloutkings/music/made-up-" + i + ".m4a"));
         assertEquals("the playlists are read once", 1, playlists.reads.get());
-        assertEquals("the likes are asked only about what no playlist has, once each",
-                List.of("/home/cloutkings/music/liked.m4a", "/home/cloutkings/music/gone.m4a", "/etc/passwd"), askedLikes);
+        assertEquals("and the likes once, however many uris are asked about", 1, likesReads.get());
 
-        assertFalse("a fresh one reads again", SongInput.storedIn(playlists, inLikes).test("/nope"));
+        assertFalse("a fresh one reads again", SongInput.storedIn(playlists, likedUris).test("/nope"));
         assertEquals(2, playlists.reads.get());
+        assertEquals(2, likesReads.get());
     }
 
     @Test
-    public void likedByAnyoneLooksInEveryonesLikes()
+    public void storedInSeesEveryonesLikes()
     {
-        LikesStore likes = new LikesStore(tmp.getRoot().toPath().resolve("Playlists").resolve(".liked"), CLOCK);
-        Predicate<String> liked = SongInput.likedByAnyone(likes);
-        assertFalse("nobody has liked anything yet", liked.test(LOCAL));
+        Path root = tmp.getRoot().toPath().resolve("Playlists");
+        PlaylistStore playlists = new PlaylistStore(root, CLOCK);
+        LikesStore likes = new LikesStore(root.resolve(".liked"), CLOCK);
+        assertFalse("nobody has liked anything yet", SongInput.storedIn(playlists, likes::allUris).test(LOCAL));
         likes.like(ANNA, song(LOCAL));
-        likes.like(new Person("2", "fred"), song("https://example.com/b"));
-        assertTrue(liked.test(LOCAL));
-        assertTrue(liked.test("https://example.com/b"));
-        assertFalse(liked.test("/home/cloutkings/music/other.m4a"));
+        likes.like(new Person("2", "fred"), song("/home/cloutkings/music/fred.m4a"));
+        Predicate<String> stored = SongInput.storedIn(playlists, likes::allUris);
+        assertTrue(stored.test(LOCAL));
+        assertTrue(stored.test("/home/cloutkings/music/fred.m4a"));
+        assertFalse(stored.test("/home/cloutkings/music/other.m4a"));
     }
 
     // ---- fixtures ----------------------------------------------------------------------------------------------

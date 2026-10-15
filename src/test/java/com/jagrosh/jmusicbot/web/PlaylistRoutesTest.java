@@ -55,6 +55,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.json.JSONArray;
@@ -91,6 +92,9 @@ public class PlaylistRoutesTest
     private final List<Broadcast> broadcasts = Collections.synchronizedList(new ArrayList<Broadcast>());
     private final List<Play> plays = Collections.synchronizedList(new ArrayList<Play>());
     private final AtomicReference<RuntimeException> playFails = new AtomicReference<>();
+    /** The uris someone has liked, as the likes store would give them, and how often they were asked for. */
+    private final Set<String> liked = Collections.synchronizedSet(new HashSet<String>());
+    private final AtomicInteger likesReads = new AtomicInteger();
     private Javalin app;
     private final HttpClient http = HttpClient.newHttpClient();
     private final Map<String, Level> savedLevels = new LinkedHashMap<>();
@@ -127,7 +131,13 @@ public class PlaylistRoutesTest
     private PlaylistRoutes routes()
     {
         return new PlaylistRoutes(store, converter, imports, resolver, ctx -> user.get(),
-                (type, data) -> broadcasts.add(new Broadcast(type, (JSONObject) data)), this::recordPlay, clock, uri -> false);
+                (type, data) -> broadcasts.add(new Broadcast(type, (JSONObject) data)), this::recordPlay, clock, this::likedUris);
+    }
+
+    private Set<String> likedUris()
+    {
+        likesReads.incrementAndGet();
+        return new HashSet<>(liked);
     }
 
     private void recordPlay(Context ctx, String guildId, String name, String folder, String mode, String songId)
@@ -1030,6 +1040,36 @@ public class PlaylistRoutesTest
         error(post("/api/playlists/songs/add", target("Target", "").put("songs",
                 new JSONArray().put(new JSONObject().put("uri", doomed).put("title", "doomed")))), 400);
         assertEquals(2, store.get("Target", "").get().getSongs().size());
+
+        // one that someone liked is taken too
+        String liked = "/home/cloutkings/music/Artist/liked.m4a";
+        this.liked.add(liked);
+        ok(post("/api/playlists/songs/add", target("Target", "").put("songs",
+                new JSONArray().put(new JSONObject().put("uri", liked).put("title", "liked")))));
+        assertTrue(storedUris("Target", "").contains(liked));
+    }
+
+    @Test
+    public void manyUnknownLocalFilesReadTheLikesOnce() throws Exception
+    {
+        JSONArray items = new JSONArray();
+        for(int i = 0; i < 500; i++)
+            items.put("/home/cloutkings/music/made-up-" + i + ".m4a");
+        items.put("https://example.com/real");
+        JSONObject saved = ok(post("/api/playlist/Bulk", new JSONObject().put("items", items)));
+        assertEquals(500, saved.getInt("skipped"));
+        assertEquals(1, store.get("Bulk", "").get().getSongs().size());
+        assertEquals("everyone's likes are read once for the whole request", 1, likesReads.get());
+
+        JSONArray songs = new JSONArray();
+        for(int i = 0; i < 3; i++)
+            songs.put(new JSONObject().put("uri", "/home/cloutkings/music/liked-" + i + ".m4a"));
+        for(int i = 0; i < 3; i++)
+            liked.add("/home/cloutkings/music/liked-" + i + ".m4a");
+        ok(post("/api/playlists/songs/add", target("Bulk", "").put("songs", songs)));
+        assertEquals("once per request", 2, likesReads.get());
+        ok(add("Bulk", "", "x", "y"));
+        assertEquals("links and searches read nothing", 2, likesReads.get());
     }
 
     @Test

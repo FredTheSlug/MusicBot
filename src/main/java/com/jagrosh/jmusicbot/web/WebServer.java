@@ -79,7 +79,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import io.javalin.websocket.WsContext;
 import org.json.JSONObject;
@@ -277,10 +277,10 @@ public class WebServer
         ImportJobs imports = new ImportJobs(bot.getPlaylistStore(), bot.getTrackResolver(), playlistImportPool,
                 progress -> broadcastAll("playlist-import", PlaylistRoutes.importProgress(progress)));
         // a local file may go into a playlist or the likes when it is already in one or the other
-        Predicate<String> inLikes = SongInput.likedByAnyone(bot.getLikesStore());
+        Supplier<Set<String>> likedUris = bot.getLikesStore()::allUris;
         new PlaylistRoutes(bot.getPlaylistStore(), bot.getPlaylistConverter(), imports, bot.getTrackResolver(),
-                this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC(), inLikes).register(app);
-        new LikeRoutes(bot.getLikesStore(), uri -> SongInput.storedIn(bot.getPlaylistStore(), inLikes).test(uri),
+                this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC(), likedUris).register(app);
+        new LikeRoutes(bot.getLikesStore(), uri -> SongInput.storedIn(bot.getPlaylistStore(), likedUris).test(uri),
                 this::currentUser, this::broadcastAll, this::playLikes, Clock.systemUTC()).register(app);
     }
 

@@ -35,9 +35,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -79,7 +81,7 @@ public class PlaylistRoutes
     private final Function<Context, Person> currentUser;
     private final BiConsumer<String, Object> broadcastAll;
     private final PlayHook play;
-    private final Predicate<String> storedInLikes;
+    private final Supplier<Set<String>> likedUris;
     /** Removed songs that can still be put back. */
     private final UndoTokens<Removal> undos;
 
@@ -88,12 +90,12 @@ public class PlaylistRoutes
      * @param broadcastAll sends a message of this type with this data (an {@link JSONObject}) to every connected panel
      * @param play queues a playlist on a server; it answers the request itself
      * @param clock times the Undo window
-     * @param storedInLikes whether someone has liked a song with this uri: a local file in someone's likes may be
-     *        added to a playlist, as one in another playlist may
+     * @param likedUris every uri someone has liked, read at most once per request: a local file in someone's likes may
+     *        be added to a playlist, as one in another playlist may
      */
     public PlaylistRoutes(PlaylistStore store, PlaylistConverter converter, ImportJobs imports, TrackResolver resolver,
             Function<Context, Person> currentUser, BiConsumer<String, Object> broadcastAll, PlayHook play, Clock clock,
-            Predicate<String> storedInLikes)
+            Supplier<Set<String>> likedUris)
     {
         this.store = store;
         this.converter = converter;
@@ -102,7 +104,7 @@ public class PlaylistRoutes
         this.currentUser = currentUser;
         this.broadcastAll = broadcastAll;
         this.play = play;
-        this.storedInLikes = storedInLikes;
+        this.likedUris = likedUris;
         this.undos = new UndoTokens<>(clock);
     }
 
@@ -655,7 +657,7 @@ public class PlaylistRoutes
     /** For one request: whether a uri is stored in some playlist or someone's likes (a local file may then be added). */
     private Predicate<String> storedUris()
     {
-        return SongInput.storedIn(store, storedInLikes);
+        return SongInput.storedIn(store, likedUris);
     }
 
     /** The songs of a listed playlist; none for one that has gone since, or whose name the store would not open. */

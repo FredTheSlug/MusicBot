@@ -245,6 +245,20 @@ public class LikesStore
     }
 
     /**
+     * Every uri anyone has liked, as stored (cut to size), from one read of each list; lists that can't be read are
+     * skipped, as in {@link #people}. For telling many uris apart at once, such as the local files of one request.
+     */
+    public Set<String> allUris()
+    {
+        Set<String> uris = new HashSet<>();
+        for(PlaylistFile list : lists())
+            for(Song song : list.getSongs())
+                if(song.getUri() != null)
+                    uris.add(song.getUri());
+        return uris;
+    }
+
+    /**
      * Every person's likes in one list: the lists in the order of {@link #people}, only the first song of each uri
      * (the one from the earliest list, newest first), then shuffled with {@code random} and cut to {@code cap}
      * songs, so that whose songs make the cut doesn't depend on the order of the names. The songs are the copies

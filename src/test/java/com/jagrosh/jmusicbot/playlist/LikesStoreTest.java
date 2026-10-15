@@ -470,6 +470,23 @@ public class LikesStoreTest
     }
 
     @Test
+    public void allUrisHasEveryLikeOfEveryReadableList() throws Exception
+    {
+        assertTrue("nothing liked yet", likes.allUris().isEmpty());
+        likes.like(ANNA, song("u1"));
+        likes.like(ANNA, song("u2"));
+        likes.like(BOB, song("u1"));
+        likes.like(FRED, song("u3"));
+        likes.unlike(FRED, uri("u3"));
+        likes.like(FRED, song("u4"));
+        write(dir.resolve("444.json"), "{oops");
+        log.list.clear();
+
+        assertEquals(new HashSet<>(Arrays.asList(uri("u1"), uri("u2"), uri("u4"))), likes.allUris());
+        assertEquals("each list is read once: the broken one is warned about once", 1, warnings().size());
+    }
+
+    @Test
     public void everyoneMergesWithoutDuplicates() throws Exception
     {
         likes.like(ANNA, song("s1"));

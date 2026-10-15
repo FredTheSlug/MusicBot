@@ -50,7 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.json.JSONArray;
@@ -112,14 +112,14 @@ public class LikeRoutesTest
         likes = new LikesStore(likesDir, clock);
         app = Javalin.create();
         // wired as WebServer wires them: a local file stored in a playlist or in someone's likes may go into either
-        Predicate<String> inLikes = SongInput.likedByAnyone(likes);
+        Supplier<Set<String>> likedUris = likes::allUris;
         TrackResolver resolver = line -> TrackResolver.Resolved.failed("nothing is looked up in these tests");
         new PlaylistRoutes(playlists, new PlaylistConverter(playlists, resolver), new ImportJobs(playlists, resolver, Runnable::run, progress -> { }),
                 resolver, ctx -> user.get(), this::broadcast, (ctx, guildId, name, folder, mode, songId) ->
                 {
                     throw new AssertionError("no playlist is played in these tests");
-                }, clock, inLikes).register(app);
-        routes(inLikes).register(app);
+                }, clock, likedUris).register(app);
+        routes(likedUris).register(app);
         app.start("127.0.0.1", 0);
     }
 
@@ -131,9 +131,9 @@ public class LikeRoutesTest
             ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(saved.getKey())).setLevel(saved.getValue());
     }
 
-    private LikeRoutes routes(Predicate<String> inLikes)
+    private LikeRoutes routes(Supplier<Set<String>> likedUris)
     {
-        return new LikeRoutes(likes, uri -> SongInput.storedIn(playlists, inLikes).test(uri), ctx -> user.get(), this::broadcast,
+        return new LikeRoutes(likes, uri -> SongInput.storedIn(playlists, likedUris).test(uri), ctx -> user.get(), this::broadcast,
                 this::recordPlay, clock);
     }
 
@@ -973,7 +973,7 @@ public class LikeRoutesTest
             if(type == HandlerType.GET || type == HandlerType.POST || type == HandlerType.PUT || type == HandlerType.DELETE)
                 seen.add(type + " " + info.getPath());
         })));
-        routes(SongInput.likedByAnyone(likes)).register(guarded);
+        routes(likes::allUris).register(guarded);
         guarded.before("/api/*", new WebServer(null)::authMiddleware); // after the routes, as WebServer does
         guarded.start("127.0.0.1", 0);
         try
