@@ -5855,7 +5855,8 @@
         }
 
         // Loads the picture first: one that fails to load shows nothing at all (no dark veil over an empty page), and
-        // with Reduce motion a GIF or WebP is drawn to a canvas so that only its first frame is ever shown.
+        // with Reduce motion a GIF, WebP or PNG (any of them may be animated) is drawn to a canvas so that only its
+        // first frame is ever shown.
         function renderThemeBackdrop() {
             var seq = ++themeBackdropSeq;
             var back = themeBackdropData;

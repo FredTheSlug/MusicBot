@@ -107,13 +107,16 @@ test('pictureUrlOnlyAcceptsTheSecretLinks', () => {
   for (const url of bad) assert.equal(ThemeApply.pictureUrl(url), null, String(url));
 });
 
-test('onlyGifAndWebpPicturesCanMove', () => {
+test('everyPictureTypeButJpegMayMove', () => {
   const hex = '0123456789abcdef0123456789abcdef';
   assert.equal(ThemeApply.canAnimate('/theme-images/' + hex + '.gif'), true);
   assert.equal(ThemeApply.canAnimate('/theme-images/' + hex + '.webp'), true);
+  // the server keeps any PNG as .png, an animated one (APNG) included
+  assert.equal(ThemeApply.canAnimate('/theme-images/' + hex + '.png'), true);
   assert.equal(ThemeApply.canAnimate('/theme-images/' + hex + '.jpg'), false);
-  assert.equal(ThemeApply.canAnimate('/theme-images/' + hex + '.png'), false);
   assert.equal(ThemeApply.canAnimate(null), false);
+  assert.equal(ThemeApply.canAnimate(undefined), false);
+  assert.equal(ThemeApply.canAnimate(42), false);
 });
 
 test('backdropMapsFitDimAndBlurToStyleValues', () => {

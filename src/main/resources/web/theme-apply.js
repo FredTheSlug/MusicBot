@@ -43,7 +43,8 @@
     var COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
     /* The secret link of a theme's picture, exactly as the server makes it. Anything else is not used. */
     var PICTURE_URL = /^\/theme-images\/[0-9a-f]{32}\.(?:jpg|png|webp|gif)$/;
-    var ANIMATED_URL = /\.(?:gif|webp)$/;
+    /* Any type but JPEG may move: GIF, animated WebP, and an animated PNG (APNG), which the server stores as .png. */
+    var ANIMATED_URL = /\.(?:gif|webp|png)$/;
 
     /* Direction controls: they could reorder the text around a name, so they are never shown. */
     var BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
@@ -65,7 +66,7 @@
         return typeof url === 'string' && PICTURE_URL.test(url) ? url : null;
     }
 
-    /* Can this picture move (GIF, WebP)? Reduce motion shows those as their first frame. */
+    /* Can this picture move (GIF, WebP, PNG)? Reduce motion shows those as their first frame. */
     function canAnimate(url) {
         return typeof url === 'string' && ANIMATED_URL.test(url);
     }
