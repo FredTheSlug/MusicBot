@@ -26,6 +26,9 @@ import com.jagrosh.jmusicbot.playlist.PlaylistFile;
 import com.jagrosh.jmusicbot.settings.RepeatMode;
 import com.jagrosh.jmusicbot.settings.PlayCountStore;
 import com.jagrosh.jmusicbot.settings.Settings;
+import com.jagrosh.jmusicbot.theme.ThemeImages;
+import com.jagrosh.jmusicbot.theme.ThemeStore;
+import com.jagrosh.jmusicbot.utils.OtherUtil;
 import com.jagrosh.jmusicbot.utils.SoundCloudUtil;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
@@ -204,6 +207,7 @@ public class WebServer
         app.post("/api/guild/{guildId}/seek", this::handleSeek);
         app.post("/api/guild/{guildId}/upload", this::handleUpload);
         registerPlaylistRoutes();
+        registerThemeRoutes();
         app.get("/api/guild/{guildId}/search", this::handleSearch);
         app.post("/api/guild/{guildId}/resolve-playlist-url", this::handleResolvePlaylistUrl);
         app.post("/api/guild/{guildId}/reorder", this::handleReorder);
@@ -268,6 +272,27 @@ public class WebServer
                 progress -> broadcastAll("playlist-import", PlaylistRoutes.importProgress(progress)));
         new PlaylistRoutes(bot.getPlaylistStore(), bot.getPlaylistConverter(), imports, bot.getTrackResolver(),
                 this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC()).register(app);
+    }
+
+    /**
+     * Builds the theme routes over a {@code Themes} folder next to the playlists folder, with the pictures in its
+     * {@code images} folder, and registers them. {@code /theme-images/{name}} is outside {@code /api/} on purpose,
+     * so the auth middleware (added after) covers the {@code /api/themes} routes and not the pictures.
+     */
+    private void registerThemeRoutes()
+    {
+        Path themes = themesFolder(bot.getConfig().getPlaylistsFolder());
+        ThemeImages images = new ThemeImages(themes.resolve("images"));
+        ThemeStore store = new ThemeStore(themes, images, Clock.systemUTC());
+        new ThemeRoutes(store, images, this::currentUser, bot.getConfig()::getOwnerId, this::broadcastAll).register(app);
+    }
+
+    /** The {@code Themes} folder: next to the playlists folder, in the same place as the bot resolves that one. */
+    static Path themesFolder(String playlistsFolder)
+    {
+        Path playlists = OtherUtil.getPath(playlistsFolder).toAbsolutePath().normalize();
+        Path parent = playlists.getParent();
+        return (parent == null ? playlists : parent).resolve("Themes");
     }
 
     /** Browsers request /favicon.ico at the site root; Jetty also ships a default one. */
