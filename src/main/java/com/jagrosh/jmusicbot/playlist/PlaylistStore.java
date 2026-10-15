@@ -17,11 +17,10 @@ package com.jagrosh.jmusicbot.playlist;
 
 import com.jagrosh.jmusicbot.playlist.PlaylistFile.Person;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile.Song;
+import com.jagrosh.jmusicbot.utils.AtomicFiles;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessDeniedException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
@@ -30,7 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
@@ -73,7 +71,6 @@ public class PlaylistStore
     private static final String[] RESERVED = {DELETED_DIR, LEGACY_DIR};
     private static final char BYTE_ORDER_MARK = 0xFEFF;
     private static final int MAX_NAME_BYTES = 200;
-    private static final int MOVE_ATTEMPTS = 6;
     /** How long a deleted playlist can be restored. */
     private static final Duration RETENTION = Duration.ofDays(7);
     /** A trash file name: {@code <epochMillis>-<name>}, plus {@code -2}, {@code -3}… when that name was taken. */
@@ -628,7 +625,7 @@ public class PlaylistStore
             Files.createDirectories(dir);
             Files.write(temp, file.toJson().getBytes(StandardCharsets.UTF_8),
                     StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            moveIntoPlace(temp, target);
+            AtomicFiles.replace(temp, target);
             moved = true;
         }
         catch(IOException e)
@@ -639,41 +636,6 @@ public class PlaylistStore
         {
             if(!moved)
                 deleteQuietly(temp);
-        }
-    }
-
-    /** Atomic move over the target; plain replace on file systems without atomic moves. */
-    private static void moveIntoPlace(Path temp, Path target) throws IOException
-    {
-        for(int attempt = 1; ; attempt++)
-        {
-            try
-            {
-                try
-                {
-                    Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
-                }
-                catch(AtomicMoveNotSupportedException e)
-                {
-                    Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-                return;
-            }
-            catch(AccessDeniedException e)
-            {
-                // Windows refuses to replace a file while a reader has it open, for a few milliseconds
-                if(attempt == MOVE_ATTEMPTS)
-                    throw e;
-                try
-                {
-                    Thread.sleep(10L * attempt);
-                }
-                catch(InterruptedException interrupted)
-                {
-                    Thread.currentThread().interrupt();
-                    throw e;
-                }
-            }
         }
     }
 

@@ -34,9 +34,11 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
@@ -546,7 +548,8 @@ public class ThemeStoreTest
         assertEquals(Arrays.asList("Loud"), names(store.visibleTo(BOB.getId())));
 
         clock.set(T0.plusSeconds(60));
-        ThemeFile hidden = store.hide(theme.getId(), true, true);
+        store.hide(theme.getId(), true, true);
+        ThemeFile hidden = store.get(theme.getId(), ALICE.getId()).get();
         assertTrue(hidden.isHiddenByOwner());
         assertEquals("private", hidden.getVisibility());
         assertEquals(2, hidden.getVersion());
@@ -561,12 +564,14 @@ public class ThemeStoreTest
         assertEquals("private", seen.getVisibility());
 
         // hiding it again changes nothing (no new version)
-        assertEquals(2, store.hide(theme.getId(), true, true).getVersion());
+        store.hide(theme.getId(), true, true);
+        assertEquals(2, store.get(theme.getId(), ALICE.getId()).get().getVersion());
         assertEquals(hidden.toJson(), read(fileOf(theme)));
 
         // un-hiding clears the flag but leaves it private; the creator can then share it again
         clock.set(T0.plusSeconds(120));
-        ThemeFile shown = store.hide(theme.getId(), true, false);
+        store.hide(theme.getId(), true, false);
+        ThemeFile shown = store.get(theme.getId(), ALICE.getId()).get();
         assertFalse(shown.isHiddenByOwner());
         assertEquals("private", shown.getVisibility());
         assertEquals(3, shown.getVersion());
@@ -575,7 +580,8 @@ public class ThemeStoreTest
         assertEquals("public", again.getVisibility());
         assertEquals(Arrays.asList("Loud"), names(store.visibleTo(BOB.getId())));
         // un-hiding something that is not hidden changes nothing
-        assertEquals(4, store.hide(theme.getId(), true, false).getVersion());
+        store.hide(theme.getId(), true, false);
+        assertEquals(4, store.get(theme.getId(), ALICE.getId()).get().getVersion());
     }
 
     @Test
@@ -592,7 +598,8 @@ public class ThemeStoreTest
     public void creatorCannotRepublishHidden() throws Exception
     {
         ThemeFile theme = createPublic(ALICE, "Loud");
-        ThemeFile hidden = store.hide(theme.getId(), true, true);
+        store.hide(theme.getId(), true, true);
+        ThemeFile hidden = store.get(theme.getId(), ALICE.getId()).get();
         String before = read(fileOf(theme));
 
         ThemeForbiddenException e = assertThrows(ThemeForbiddenException.class,
@@ -629,8 +636,11 @@ public class ThemeStoreTest
         assertEquals(new ArrayList<String>(), names(store.visibleTo(null)));
         assertFalse(store.get(theme.getId(), BOB.getId()).isPresent());
         assertFalse(store.get(theme.getId(), null).isPresent());
-        assertThrows(NoSuchElementException.class, () -> store.delete(theme.getId(), OWNER, true));
+        assertThrows(NoSuchElementException.class, () -> store.delete(theme.getId(), BOB.getId(), false));
+        assertThrows(NoSuchElementException.class, () -> store.delete(theme.getId(), null, false));
         assertThrows(NoSuchElementException.class, () -> store.update(theme.getId(), BOB.getId(), 1, values("x", "public"), null, false));
+        // the bot owner finds it among the themes he hid, by name only
+        assertEquals(Arrays.asList("Edited by hand"), hiddenNames());
 
         // its creator sees it as private and hidden, and still counts it
         ThemeFile mine = store.get(theme.getId(), ALICE.getId()).get();
@@ -642,10 +652,12 @@ public class ThemeStoreTest
         // and can't publish it
         assertThrows(ThemeForbiddenException.class, () -> store.update(theme.getId(), ALICE.getId(), 1, values("Edited by hand", "public"), null, false));
         // un-hiding it leaves it private on disk too
-        ThemeFile shown = store.hide(theme.getId(), true, false);
+        store.hide(theme.getId(), true, false);
+        ThemeFile shown = store.get(theme.getId(), ALICE.getId()).get();
         assertFalse(shown.isHiddenByOwner());
         assertEquals("private", shown.getVisibility());
         assertTrue(read(fileOf(theme)).contains("\"visibility\": \"private\""));
+        assertEquals(new ArrayList<String>(), hiddenNames());
         assertEquals(new ArrayList<String>(), names(store.visibleTo(BOB.getId())));
     }
 
@@ -706,14 +718,129 @@ public class ThemeStoreTest
         assertThrows(NoSuchElementException.class, () -> store.delete(secret.getId(), null, false));
         assertTrue(Files.exists(fileOf(secret)));
 
-        // a hidden theme is private to its creator: the owner no longer reaches it either
+        // a hidden theme is private to its creator: nobody else reaches it (only the bot owner, who hid it: see ownerDeletesAHiddenTheme)
         ThemeFile loud = createPublic(BOB, "Loud");
         store.hide(loud.getId(), true, true);
-        assertThrows(NoSuchElementException.class, () -> store.delete(loud.getId(), OWNER, true));
+        assertThrows(NoSuchElementException.class, () -> store.delete(loud.getId(), ALICE.getId(), false));
+        assertThrows(NoSuchElementException.class, () -> store.delete(loud.getId(), null, false));
         assertTrue(Files.exists(fileOf(loud)));
         // but the creator can
         store.delete(loud.getId(), BOB.getId(), false);
         assertFalse(Files.exists(fileOf(loud)));
+    }
+
+    /** The names of the themes the bot owner sees in his list of hidden ones. */
+    private List<String> hiddenNames()
+    {
+        return store.hiddenByOwner(true).stream().map(ThemeStore.HiddenEntry::getName).collect(Collectors.toList());
+    }
+
+    @Test
+    public void hidingTellsTheOwnerNothingAboutTheTheme() throws Exception
+    {
+        // a theme that has gone private must not come back to the owner: not on hiding, not on un-hiding
+        assertEquals(void.class, ThemeStore.class.getMethod("hide", String.class, boolean.class, boolean.class).getReturnType());
+    }
+
+    @Test
+    public void ownerListsHiddenThemesWithOnlyIdNameAndCreator() throws Exception
+    {
+        ThemeFile loud = createWithPicture(ALICE, "Loud", "public", 1);
+        ThemeFile quiet = createPublic(BOB, "bobs quiet one");
+        createPublic(BOB, "Open");
+        createPrivate(ALICE, "Secret");
+        assertEquals(new ArrayList<String>(), hiddenNames());
+
+        store.hide(loud.getId(), true, true);
+        store.hide(quiet.getId(), true, true);
+        // its creator keeps working on it while it is hidden: a new picture, another name
+        store.update(loud.getId(), ALICE.getId(), 2, valuesWithBackground("Loud, renamed", "private"), upload(png(2)), false);
+
+        List<ThemeStore.HiddenEntry> hidden = store.hiddenByOwner(true);
+        assertEquals(2, hidden.size());
+        // by name without regard to case
+        assertEquals(quiet.getId(), hidden.get(0).getId());
+        assertEquals("bobs quiet one", hidden.get(0).getName());
+        assertEquals("bob", hidden.get(0).getCreatorName());
+        assertEquals(loud.getId(), hidden.get(1).getId());
+        assertEquals("Loud, renamed", hidden.get(1).getName());
+        assertEquals("alice", hidden.get(1).getCreatorName());
+
+        // and nothing else: no colors, values, picture name or creator id
+        Set<String> fields = new HashSet<>();
+        for(java.lang.reflect.Field field : ThemeStore.HiddenEntry.class.getDeclaredFields())
+            fields.add(field.getName());
+        assertEquals(new HashSet<>(Arrays.asList("id", "name", "creatorName")), fields);
+        Set<String> methods = new HashSet<>();
+        for(java.lang.reflect.Method method : ThemeStore.HiddenEntry.class.getDeclaredMethods())
+            if(java.lang.reflect.Modifier.isPublic(method.getModifiers()))
+                methods.add(method.getName());
+        assertEquals(new HashSet<>(Arrays.asList("getId", "getName", "getCreatorName")), methods);
+
+        // un-hidden and deleted themes drop off the list
+        store.hide(quiet.getId(), true, false);
+        assertEquals(Arrays.asList("Loud, renamed"), hiddenNames());
+        store.delete(loud.getId(), OWNER, true);
+        assertEquals(new ArrayList<String>(), hiddenNames());
+    }
+
+    @Test
+    public void onlyTheOwnerListsHiddenThemes()
+    {
+        ThemeFile loud = createPublic(ALICE, "Loud");
+        store.hide(loud.getId(), true, true);
+
+        ThemeForbiddenException e = assertThrows(ThemeForbiddenException.class, () -> store.hiddenByOwner(false));
+        assertEquals("Only the bot owner can do that", e.getMessage());
+    }
+
+    @Test
+    public void ownerDeletesAHiddenTheme() throws Exception
+    {
+        ThemeFile loud = createWithPicture(ALICE, "Loud", "public", 1);
+        store.hide(loud.getId(), true, true);
+        // its creator swaps the picture while it is hidden
+        store.update(loud.getId(), ALICE.getId(), 2, valuesWithBackground("Loud", "private"), upload(png(2)), false);
+        assertEquals(1, pictures().size());
+
+        // nobody else reaches it; nobody logged in is no owner
+        assertThrows(NoSuchElementException.class, () -> store.delete(loud.getId(), BOB.getId(), false));
+        assertThrows(NoSuchElementException.class, () -> store.delete(loud.getId(), null, true));
+        assertTrue(Files.exists(fileOf(loud)));
+
+        store.delete(loud.getId(), OWNER, true);
+
+        assertFalse(Files.exists(fileOf(loud)));
+        assertEquals(new ArrayList<String>(), pictures());
+        assertFalse(store.get(loud.getId(), ALICE.getId()).isPresent());
+        assertEquals(0, store.countOwnedBy(ALICE.getId()));
+        assertEquals(new ArrayList<String>(), hiddenNames());
+    }
+
+    @Test
+    public void ownerStillCannotSeeOrDeleteAPrivateThemeHeDidNotHide() throws Exception
+    {
+        ThemeFile secret = createWithPicture(ALICE, "Secret", "private", 1);
+        assertThrows(NoSuchElementException.class, () -> store.delete(secret.getId(), OWNER, true));
+        assertThrows(NoSuchElementException.class, () -> store.hide(secret.getId(), true, true));
+        assertThrows(NoSuchElementException.class, () -> store.hide(secret.getId(), true, false));
+        assertEquals(new ArrayList<String>(), hiddenNames());
+        assertTrue(Files.exists(fileOf(secret)));
+        assertEquals(1, pictures().size());
+
+        // a theme he hid and then un-hid is an ordinary private theme again
+        ThemeFile loud = createPublic(BOB, "Loud");
+        store.hide(loud.getId(), true, true);
+        store.hide(loud.getId(), true, false);
+        assertThrows(NoSuchElementException.class, () -> store.delete(loud.getId(), OWNER, true));
+        assertThrows(NoSuchElementException.class, () -> store.hide(loud.getId(), true, true));
+        assertEquals(new ArrayList<String>(), hiddenNames());
+        assertTrue(Files.exists(fileOf(loud)));
+
+        // the owner's own private theme is his like anybody's
+        ThemeFile mine = store.create(values("Mine", "private"), new Person(OWNER, "the owner"), null);
+        store.delete(mine.getId(), OWNER, true);
+        assertFalse(Files.exists(fileOf(mine)));
     }
 
     @Test

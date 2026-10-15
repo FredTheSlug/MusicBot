@@ -17,18 +17,16 @@ package com.jagrosh.jmusicbot.theme;
 
 import com.jagrosh.jmusicbot.theme.ThemeFile.Background;
 import com.jagrosh.jmusicbot.theme.ThemeFile.Person;
+import com.jagrosh.jmusicbot.utils.AtomicFiles;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessDeniedException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -51,7 +49,8 @@ import org.slf4j.LoggerFactory;
  * Owns every read and write of the {@code Themes/} folder: {@code <id>.json} files (format 1) and, through
  * {@link ThemeImages}, the background pictures. It also decides who may see and change what: public themes
  * are everybody's to use, private ones only their creator's, only the creator edits or deletes, the bot
- * owner may delete or hide public ones, and nobody has more than {@value #MAX_PER_USER} themes. Each
+ * owner may delete or hide public ones (and delete or un-hide the ones he hid, which he finds with
+ * {@link #hiddenByOwner}, by name only), and nobody has more than {@value #MAX_PER_USER} themes. Each
  * change runs under a per-theme lock and is written atomically; reads take no lock. A theme the bot owner
  * hid is private wherever it is read, whatever its file says. Files that can't be read as a theme are
  * skipped with a log warning and left alone.
@@ -76,7 +75,6 @@ public class ThemeStore
     private static final String TEMP_GLOB = ".theme-*.tmp";
     /** A temp file older than this belongs to no write that is still going. */
     private static final Duration STALE_TEMP = Duration.ofHours(1);
-    private static final int MOVE_ATTEMPTS = 6;
     private static final Comparator<ThemeFile> NAME_ORDER = Comparator.comparing(ThemeFile::getName, String.CASE_INSENSITIVE_ORDER)
             .thenComparing(ThemeFile::getName).thenComparing(ThemeFile::getId);
 
@@ -124,6 +122,36 @@ public class ThemeStore
         {
             this.in = Objects.requireNonNull(in);
             this.declaredSize = declaredSize;
+        }
+    }
+
+    /** What the bot owner is told about a theme he hid: its id, name and the creator's name, and nothing more. */
+    public static final class HiddenEntry
+    {
+        private final String id;
+        private final String name;
+        private final String creatorName;
+
+        private HiddenEntry(String id, String name, String creatorName)
+        {
+            this.id = id;
+            this.name = name;
+            this.creatorName = creatorName;
+        }
+
+        public String getId()
+        {
+            return id;
+        }
+
+        public String getName()
+        {
+            return name;
+        }
+
+        public String getCreatorName()
+        {
+            return creatorName;
         }
     }
 
@@ -268,8 +296,8 @@ public class ThemeStore
     }
 
     /**
-     * Deletes the theme and its picture, for its creator, or for the bot owner when the theme is public (a
-     * private or hidden theme doesn't exist for the owner). A viewer of {@code null} is nobody.
+     * Deletes the theme and its picture, for its creator, or for the bot owner when the theme is public or one he
+     * hid. Any other private theme doesn't exist for the owner. A viewer of {@code null} is nobody.
      *
      * @throws NoSuchElementException when the theme doesn't exist or isn't visible to the viewer
      * @throws ThemeForbiddenException when the viewer can see the theme but may not delete it
@@ -280,10 +308,13 @@ public class ThemeStore
         synchronized(lockFor(themeLocks, id))
         {
             ThemeFile theme = stored(id).orElseThrow(() -> new NoSuchElementException(NOT_FOUND));
-            if(!canSee(theme, viewerId))
+            boolean creator = isCreator(theme, viewerId);
+            // somebody not logged in is no owner
+            boolean moderator = viewerIsOwner && viewerId != null;
+            if(!creator && !canSee(theme, viewerId) && !(moderator && theme.isHiddenByOwner()))
                 throw new NoSuchElementException(NOT_FOUND);
-            // seen but not made by the viewer means public, which is the bot owner's to moderate (somebody not logged in is no owner)
-            if(!isCreator(theme, viewerId) && !(viewerIsOwner && viewerId != null))
+            // what is left is a public theme, or one the owner hid, and those are the bot owner's to moderate
+            if(!creator && !moderator)
                 throw new ThemeForbiddenException(ONLY_CREATOR_DELETES);
             try
             {
@@ -302,12 +333,13 @@ public class ThemeStore
      * For the bot owner: hides a public theme (it becomes private to its creator, flagged {@code hiddenByOwner}, and
      * its creator can't make it public) or, with {@code hidden} false, clears the flag from a hidden one, which stays
      * private. Nothing changes, and no new version is made, when it is already so. Plain private themes are not the
-     * owner's to see.
+     * owner's to see. Returns nothing on purpose: once a theme is private, what its creator has put in it (a new
+     * picture, say) is none of the owner's business.
      *
      * @throws ThemeForbiddenException when {@code viewerIsOwner} is false
      * @throws NoSuchElementException when the theme doesn't exist or is private (and not hidden)
      */
-    public ThemeFile hide(String id, boolean viewerIsOwner, boolean hidden)
+    public void hide(String id, boolean viewerIsOwner, boolean hidden)
     {
         if(!viewerIsOwner)
             throw new ThemeForbiddenException(ONLY_BOT_OWNER);
@@ -318,14 +350,35 @@ public class ThemeStore
             if(!ThemeFile.PUBLIC.equals(theme.getVisibility()) && !theme.isHiddenByOwner())
                 throw new NoSuchElementException(NOT_FOUND);
             if(theme.isHiddenByOwner() == hidden)
-                return theme;
+                return;
             theme.setHiddenByOwner(hidden);
             theme.setVisibility(ThemeFile.PRIVATE);
             theme.setVersion(theme.getVersion() + 1);
             theme.setUpdatedAt(clock.instant());
             write(json, theme);
-            return theme;
         }
+    }
+
+    /**
+     * For the bot owner: the themes he hid, so that he can un-hide or delete them, by name (as their creators
+     * last left it) and creator only, sorted by name without regard to case. Nothing else of a hidden theme
+     * leaves the store.
+     *
+     * @throws ThemeForbiddenException when {@code viewerIsOwner} is false
+     */
+    public List<HiddenEntry> hiddenByOwner(boolean viewerIsOwner)
+    {
+        if(!viewerIsOwner)
+            throw new ThemeForbiddenException(ONLY_BOT_OWNER);
+        List<ThemeFile> hidden = new ArrayList<>();
+        for(ThemeFile theme : readAll())
+            if(theme.isHiddenByOwner())
+                hidden.add(theme);
+        hidden.sort(NAME_ORDER);
+        List<HiddenEntry> entries = new ArrayList<>();
+        for(ThemeFile theme : hidden)
+            entries.add(new HiddenEntry(theme.getId(), theme.getName(), theme.getOwner().getName()));
+        return entries;
     }
 
     // ---- access rules
@@ -511,7 +564,7 @@ public class ThemeStore
         {
             Files.createDirectories(dir);
             Files.write(temp, theme.toJson().getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            moveIntoPlace(temp, target);
+            AtomicFiles.replace(temp, target);
             moved = true;
         }
         catch(IOException e)
@@ -522,41 +575,6 @@ public class ThemeStore
         {
             if(!moved)
                 deleteQuietly(temp);
-        }
-    }
-
-    /** Atomic move over the target; plain replace on file systems without atomic moves. */
-    private static void moveIntoPlace(Path temp, Path target) throws IOException
-    {
-        for(int attempt = 1; ; attempt++)
-        {
-            try
-            {
-                try
-                {
-                    Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
-                }
-                catch(AtomicMoveNotSupportedException e)
-                {
-                    Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-                }
-                return;
-            }
-            catch(AccessDeniedException e)
-            {
-                // Windows refuses to replace a file while a reader has it open, for a few milliseconds
-                if(attempt == MOVE_ATTEMPTS)
-                    throw e;
-                try
-                {
-                    Thread.sleep(10L * attempt);
-                }
-                catch(InterruptedException interrupted)
-                {
-                    Thread.currentThread().interrupt();
-                    throw e;
-                }
-            }
         }
     }
 
