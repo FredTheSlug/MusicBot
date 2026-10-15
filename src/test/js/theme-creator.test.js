@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const vm = require('node:vm');
 const path = require('node:path');
 const ThemeCreator = require('../../main/resources/web/theme-creator.js');
 const ThemeApply = require('../../main/resources/web/theme-apply.js');
@@ -211,7 +212,7 @@ test('startingFromABuiltInTakesItsColorsFontAndEffects', () => {
   assert.equal(s.pageColor, C.BASE_PALETTES.ember.colors.bgPrimary);
   assert.equal(s.mode, 'dark');
   assert.equal(s.picture, 'none');
-  assert.equal(s.mini, null);
+  assert.deepEqual(s.mini, { colors: P.mini(s.colors), useImage: false, dim: 40 }, 'a new theme starts with a mini-player version made from its colors');
   assert.equal(s.name, '');
   assert.equal(s.visibility, 'public');
   assert.equal(s.id, null);
@@ -220,15 +221,16 @@ test('startingFromABuiltInTakesItsColorsFontAndEffects', () => {
   assert.notEqual(C.startState('ember').colors, C.BASE_PALETTES.ember.colors, 'a copy, so tweaks never change the table');
 });
 
-test('startingFromACommunityThemeTakesItsLookButNotItsPictureNameOrMini', () => {
-  const s = C.startFromTheme(savedTheme({ mine: false, owner: { id: '9', name: 'sam' } }));
+test('startingFromACommunityThemeTakesItsLookButNotItsPictureNameOrItsOwnMiniPlayerColors', () => {
+  const theirs = Object.assign(P.mini(COLORS), { accent: '#ff7a00', accentLight: '#ff9a40' });
+  const s = C.startFromTheme(savedTheme({ mine: false, owner: { id: '9', name: 'sam' }, mini: { colors: theirs, useImage: true, dim: 70 } }));
   assert.equal(s.base, 'ember');
   assert.deepEqual(s.colors, COLORS);
   assert.equal(s.font, 'Outfit');
   assert.equal(s.radiusScale, 80);
   assert.equal(s.effects, true, 'its picture forced effects off; without the picture they are back');
   assert.equal(s.picture, 'none');
-  assert.equal(s.mini, null);
+  assert.deepEqual(s.mini, { colors: P.mini(COLORS), useImage: false, dim: 40 }, 'its look, made into a mini-player version of our own');
   assert.equal(s.id, null);
   assert.equal(s.name, '');
   assert.equal(C.startFromTheme(savedTheme({ background: null, effects: false })).effects, false);
@@ -609,7 +611,8 @@ const SHARED_KEYS = ['base', 'colors', 'effects', 'font', 'name', 'radiusScale',
 test('theValuesAreExactlyWhatTheServerTakes', () => {
   const s = Object.assign(C.startState('nebula'), { name: '  Neon Nights  ' });
   const v = C.buildValues(s);
-  assert.deepEqual(Object.keys(v).sort(), SHARED_KEYS);
+  assert.deepEqual(Object.keys(v).sort(), SHARED_KEYS.concat('mini').sort(), 'a new theme carries its mini-player version');
+  assert.deepEqual(Object.keys(C.buildValues(C.skipMini(s))).sort(), SHARED_KEYS, 'unless it was skipped');
   assert.equal(v.name, 'Neon Nights');
   assert.equal(v.visibility, 'public');
   assert.equal(v.base, 'nebula');
@@ -676,7 +679,7 @@ test('backgroundNumbersAreWholeAndInRange', () => {
 });
 
 test('theMiniPlayerVersionIsSentOnlyWhenOneIsSet', () => {
-  assert.equal('mini' in C.buildValues(C.startState('nebula')), false);
+  assert.equal('mini' in C.buildValues(C.skipMini(C.startState('nebula'))), false);
   const mini = { colors: P.mini(COLORS), useImage: true, dim: 55 };
   const withPicture = C.buildValues(Object.assign(C.fromTheme(savedTheme()), { mini }));
   assert.deepEqual(withPicture.mini, mini);
@@ -1016,7 +1019,7 @@ function withPicture(state, dim) {
 }
 
 test('aThemeWithoutAMiniPlayerVersionSendsNone', () => {
-  const s = C.startState('nebula');
+  const s = C.skipMini(C.startState('nebula'));
   assert.equal(s.mini, null);
   assert.equal('mini' in C.buildValues(s), false);
   assert.deepEqual(C.miniView(s), { made: false });
@@ -1030,7 +1033,7 @@ test('theStepSaysWhatToDoInPlainWords', () => {
 });
 
 test('makingAMiniPlayerVersionGeneratesItFromTheThemesColorsWithoutGlass', () => {
-  const before = C.startState('ember');
+  const before = C.skipMini(C.startState('ember'));
   const s = C.makeMini(before);
   assert.deepEqual(s.mini.colors, P.mini(before.colors));
   assert.deepEqual(Object.keys(s.mini.colors), P.MINI_SLOTS.slice());
@@ -1056,7 +1059,10 @@ test('aThemeWithAPictureStartsItsMiniPlayerVersionOnThePictureAtTheSameDarkening
   const s = C.makeMini(withPicture(C.startState('nebula'), 62));
   assert.equal(s.mini.useImage, true);
   assert.equal(s.mini.dim, 62);
-  assert.equal(C.makeMini(C.startState('nebula')).mini.dim, 40, 'without a picture, the usual start');
+  assert.equal(C.makeMini(C.skipMini(C.startState('nebula'))).mini.dim, 40, 'without a picture, the usual start');
+  const late = C.makeMini(withPicture(C.skipMini(C.startState('nebula')), 62));
+  assert.equal(late.mini.useImage, true, 'made after the picture: on it from the start');
+  assert.equal(late.mini.dim, 62);
   const view = C.miniView(s);
   assert.equal(view.hasPicture, true);
   assert.equal(view.useImage, true);
@@ -1081,8 +1087,8 @@ test('takingThePictureAwayTakesItAwayFromTheMiniPlayerToo', () => {
   assert.equal(C.miniView(s).hasPicture, false);
   assert.equal(C.buildValues(s).mini.useImage, false);
   assert.equal('background' in C.buildValues(s), false);
-  // choosing another picture does not switch it back on behind the person's back
-  assert.equal(withPicture(s).mini.useImage, false);
+  // a picture that comes after takes the place of the one that went (see aMiniPlayerVersionMadeBeforeThePictureTakesItUp)
+  assert.equal(withPicture(s).mini.useImage, true);
 });
 
 test('theMiniPlayerPictureIsDarkenedFromZeroToNinetyInWholeNumbers', () => {
@@ -1094,7 +1100,7 @@ test('theMiniPlayerPictureIsDarkenedFromZeroToNinetyInWholeNumbers', () => {
   assert.equal(C.setMiniDim(s, 33.6).mini.dim, 34);
   assert.equal(C.setMiniDim(s, '45').mini.dim, 45);
   assert.equal(C.setMiniDim(s, 'x').mini.dim, s.mini.dim, 'not a number: as it was');
-  assert.equal(C.setMiniDim(C.startState('nebula'), 10).mini, null, 'no mini-player version, nothing to set');
+  assert.equal(C.setMiniDim(C.skipMini(C.startState('nebula')), 10).mini, null, 'no mini-player version, nothing to set');
   const odd = C.buildValues(Object.assign(withPicture(C.startState('nebula')), {
     mini: { colors: P.mini(C.startState('nebula').colors), useImage: true, dim: 140.4 }
   }));
@@ -1177,7 +1183,7 @@ test('updateToMatchTheThemeBringsTheOwnColorsBackToTheThemesAndFollowingAgain', 
   assert.equal(matched.mini.useImage, s.mini.useImage);
   assert.equal(matched.mini.dim, s.mini.dim);
   assert.equal(C.setMain(matched, '#ec4899').mini.colors.accent, '#ec4899', 'and it follows from then on');
-  assert.equal(C.matchMini(C.startState('nebula')).mini, null);
+  assert.equal(C.matchMini(C.skipMini(C.startState('nebula'))).mini, null);
 });
 
 test('editingAThemeWhoseMiniPlayerVersionWasGeneratedFromItFollowsTheNewColors', () => {
@@ -1259,7 +1265,7 @@ test('aColorThatIsNotAColorChangesNothingInTheMiniPlayer', () => {
     assert.equal(C.setMiniMain(s, bad), s, String(bad));
     assert.equal(C.setMiniPage(s, bad), s, String(bad));
   }
-  const none = C.startState('nebula');
+  const none = C.skipMini(C.startState('nebula'));
   assert.equal(C.setMiniMain(none, '#ff0000'), none);
   assert.equal(C.setMiniPage(none, '#ff0000'), none);
   assert.equal(C.fixMini(none), none);
@@ -1365,6 +1371,75 @@ test('everyStateTransitionLeavesTheOneItWasGivenAlone', () => {
   assert.equal(JSON.stringify(base), frozen);
 });
 
+// ---- a new theme is made with a mini-player version unless the person skips it
+
+test('aNewThemeCarriesAGeneratedReadableMiniPlayerVersionFromTheStart', () => {
+  for (const base of ThemeApply.BUILT_IN) {
+    const s = C.startState(base);
+    assert.deepEqual(s.mini.colors, P.mini(s.colors), base);
+    assert.equal(Object.keys(s.mini.colors).length, 14, base);
+    assert.equal('glass' in s.mini.colors, false, base);
+    assert.equal(s.mini.useImage, false, base);
+    assert.equal(C.miniFollows(s), true, base);
+    assert.equal(C.miniView(s).made, true, base);
+    assert.equal(C.miniView(s).report.ok, true, base);
+  }
+});
+
+test('aNewThemeSavedWithoutEverVisitingTheMiniPlayerStepSendsAGeneratedMini', () => {
+  let s = C.setName(C.startState('aurora'), 'Quick one');
+  s = C.setMain(s, '#22c55e');
+  const v = C.saveRequest(s).values;
+  assert.deepEqual(Object.keys(v.mini).sort(), ['colors', 'dim', 'useImage']);
+  assert.deepEqual(v.mini.colors, P.mini(s.colors), 'made from the colors it was saved with');
+  assert.equal(v.mini.colors.accent, '#22c55e');
+  assert.equal(v.mini.useImage, false);
+  assert.equal(v.mini.dim, 40);
+  assert.equal('glass' in v.mini.colors, false);
+  // starting from a community theme works the same
+  const community = C.startFromTheme(savedTheme({ mine: false, mini: null, background: null }));
+  assert.deepEqual(C.buildValues(community).mini.colors, P.mini(COLORS));
+});
+
+test('skippingStaysSkippedWhateverIsChangedAfterwards', () => {
+  let s = C.skipMini(C.startState('nebula'));
+  s = C.chooseBase(C.setMain(C.setPage(s, '#102030'), '#ff7a00'), 'dawn');
+  s = C.withNewPicture(s, 50);
+  assert.equal(s.mini, null);
+  assert.equal('mini' in C.buildValues(s), false);
+  // and it can be made again
+  assert.deepEqual(C.makeMini(s).mini, { colors: P.mini(s.colors), useImage: true, dim: 50 });
+});
+
+test('editingKeepsWhateverTheThemeHasAndSavingAsANewThemeKeepsItToo', () => {
+  const without = C.fromTheme(savedTheme({ mini: null }));
+  assert.equal(without.mini, null, 'a theme saved without one is not given one');
+  assert.equal('mini' in C.buildValues(without), false);
+  assert.equal(C.asNewTheme(without).mini, null);
+  const own = Object.assign(P.mini(COLORS), { accent: '#ff7a00' });
+  const withOwn = C.fromTheme(savedTheme({ mini: { colors: own, useImage: false, dim: 20 } }));
+  assert.deepEqual(withOwn.mini.colors, own);
+  assert.deepEqual(C.asNewTheme(withOwn).mini.colors, own);
+  assert.equal('mini' in C.buildValues(C.asNewTheme(without)), false);
+});
+
+test('aMiniPlayerVersionMadeBeforeThePictureTakesItUpAtThePicturesDarkening', () => {
+  const start = C.startState('nebula');
+  assert.equal(start.mini.useImage, false);
+  const s = withPicture(start, 62);
+  assert.equal(s.mini.useImage, true, 'the same start as making one after the picture');
+  assert.equal(s.mini.dim, 62);
+  assert.deepEqual(s.mini, C.makeMini(withPicture(C.skipMini(start), 62)).mini);
+  assert.equal(C.buildValues(s).mini.useImage, true);
+  // a different picture while one is on changes nothing the person set
+  const off = C.setMiniDim(C.setMiniPicture(s, false), 77);
+  const another = C.withNewPicture(off, 30);
+  assert.equal(another.mini.useImage, false);
+  assert.equal(another.mini.dim, 77);
+  // a state without a mini-player version has nothing to take it up
+  assert.equal(withPicture(C.skipMini(start)).mini, null);
+});
+
 // ---- the page side
 
 const CREATOR_CODE = (() => {
@@ -1407,7 +1482,216 @@ test('theMiniPlayerPreviewGetsItsColorsOnItsOwnElementAndNeverOnThePage', () => 
   assert.doesNotMatch(CREATOR_CODE, /documentElement\.style\.setProperty/);
   // the picture is the creator's validated one, and goes in as an <img>, never as CSS text
   assert.match(CREATOR_CODE, /themeKit\.backdrop\(\{ url: src, dim: view\.dim/);
-  assert.match(CREATOR_CODE, /pic\.src = back\.url/);
+  assert.match(CREATOR_CODE, /tcSetPicture\(pic, back\.url,/);
+});
+
+test('everyPictureTheCreatorShowsGoesThroughTheOneHelperThatHonoursReduceMotion', () => {
+  // the two previews use it, and nothing sets an <img> source by itself
+  assert.match(CREATOR_CODE, /tcSetPicture\(pic, back\.url,/);
+  assert.match(CREATOR_CODE, /tcSetPicture\(thumb, src,/);
+  assert.equal([...CREATOR_CODE.matchAll(/\bthumb\.src\b|\bpic\.src\b/g)].length, 0);
+  const fn = /function tcSetPicture\(img, url, done\) \{([\s\S]*?)\n        \}\n/.exec(CREATOR_CODE);
+  assert.ok(fn, 'tcSetPicture not found');
+  assert.match(fn[1], /readReduceMotion\(\) && themeKit\.canAnimate\(url, themeLocalPicture\)/);
+  assert.match(fn[1], /firstFrameOf\(url, probe\)/);
+  assert.match(fn[1], /img\.src = src/);
+  // the panel's own freeze and the creator's are one function
+  assert.match(INDEX, /async function firstFrameOf\(url, img\)/);
+  assert.equal([...INDEX.matchAll(/function firstFrameOf\(/g)].length, 1);
+});
+
+test('switchingReduceMotionWhileTheCreatorIsOpenShowsItsPicturesAgain', () => {
+  const fn = /function setReduceMotion\(on\) \{([\s\S]*?)\n        \}\n/.exec(INDEX);
+  assert.ok(fn, 'setReduceMotion not found');
+  assert.match(fn[1], /if \(themeCreator\) themeCreator\.refresh\(\);/);
+});
+
+/* The helper itself, run against stand-ins for the page: an <img>, `new Image()`, the first-frame drawing, Reduce motion. */
+function pictureHarness(reduce, local) {
+  const probes = [];
+  const frames = [];
+  class FakeImage {
+    constructor() { this.src = ''; probes.push(this); }
+  }
+  const ctx = {
+    WeakMap, Image: FakeImage, themeKit: ThemeApply, themeLocalPicture: local || null,
+    readReduceMotion: () => reduce.on,
+    firstFrameOf: (url, img) => new Promise((resolve) => frames.push({ url, img, resolve }))
+  };
+  const code = /var tcPictureState = [^\n]*\n\s*function tcSetPicture\(img, url, done\) \{[\s\S]*?\n        \}\n/.exec(CREATOR_CODE);
+  assert.ok(code, 'tcSetPicture not found');
+  vm.runInNewContext(code[0], ctx);
+  const img = () => ({
+    _src: '', sets: [], onload: null, onerror: null,
+    get src() { return this._src; },
+    set src(value) { this._src = value; this.sets.push(value); },
+    removeAttribute(name) { if (name === 'src') { this._src = ''; this.sets.push(''); } },
+    getAttribute(name) { return name === 'src' ? this._src : null; }
+  });
+  return { set: ctx.tcSetPicture, probes, frames, img };
+}
+
+const GIF = '/theme-images/' + '9f2c'.repeat(8) + '.gif';
+const JPG = '/theme-images/' + '3a4b'.repeat(8) + '.jpg';
+const FIRST_FRAME = 'data:image/jpeg;base64,AAAA';
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+test('withReduceMotionOffEveryPictureIsShownAsItIs', () => {
+  const h = pictureHarness({ on: false });
+  const img = h.img();
+  h.set(img, GIF, null);
+  assert.equal(img.src, GIF);
+  assert.equal(h.probes.length, 0, 'nothing to load first');
+  h.set(img, JPG, null);
+  assert.equal(img.src, JPG);
+});
+
+test('withReduceMotionOnAPictureThatCanMoveIsShownAsItsFirstFrameAndNeverAsItself', async () => {
+  const h = pictureHarness({ on: true });
+  const img = h.img();
+  const seen = [];
+  h.set(img, GIF, (ok) => seen.push(ok));
+  assert.equal(img.src, '', 'not the moving picture while the first frame is made');
+  assert.equal(h.probes.length, 1);
+  assert.equal(h.probes[0].src, GIF);
+  h.probes[0].onload();
+  await tick();
+  assert.equal(h.frames.length, 1);
+  assert.equal(h.frames[0].url, GIF);
+  assert.equal(h.frames[0].img, h.probes[0], 'the loaded copy is the fallback, as in the panel');
+  h.frames[0].resolve(FIRST_FRAME);
+  await tick();
+  assert.equal(img.src, FIRST_FRAME);
+  assert.ok(!img.sets.includes(GIF), 'the moving picture was never the source');
+  img.onload();
+  assert.deepEqual(seen, [true]);
+});
+
+test('withReduceMotionOnAStillPictureIsShownAsItIs', () => {
+  const h = pictureHarness({ on: true });
+  const img = h.img();
+  h.set(img, JPG, null);
+  assert.equal(img.src, JPG);
+  assert.equal(h.probes.length, 0);
+});
+
+test('aPictureChosenOnThisComputerIsFrozenOnlyWhenItCanMove', async () => {
+  const blob = 'blob:https://music.example.org/3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70';
+  const moving = pictureHarness({ on: true }, ThemeApply.localPicture(blob, true));
+  const a = moving.img();
+  moving.set(a, blob, null);
+  assert.equal(a.src, '');
+  assert.equal(moving.probes.length, 1);
+  const still = pictureHarness({ on: true }, ThemeApply.localPicture(blob, false));
+  const b = still.img();
+  still.set(b, blob, null);
+  assert.equal(b.src, blob);
+  assert.equal(still.probes.length, 0);
+});
+
+test('anAnswerThatArrivesAfterANewerPictureWasChosenIsIgnored', async () => {
+  // the first frame is being drawn when another picture is chosen
+  const h = pictureHarness({ on: true });
+  const img = h.img();
+  h.set(img, GIF, null);
+  h.probes[0].onload();
+  await tick();
+  assert.equal(h.frames.length, 1);
+  h.set(img, JPG, null);
+  assert.equal(img.src, JPG);
+  h.frames[0].resolve(FIRST_FRAME);
+  await tick();
+  assert.equal(img.src, JPG, 'the old first frame does not overwrite the new picture');
+  // the old picture only loads after the new one was chosen: no first frame is made for it
+  const other = pictureHarness({ on: true });
+  const img2 = other.img();
+  other.set(img2, GIF, null);
+  other.set(img2, JPG, null);
+  other.probes[0].onload();
+  await tick();
+  assert.equal(other.frames.length, 0, 'nobody wants it any more');
+  assert.equal(img2.src, JPG);
+  // the old picture failing, with a caller waiting for the new one
+  const third = pictureHarness({ on: true });
+  const img3 = third.img();
+  let called = 0;
+  third.set(img3, GIF, () => called++);
+  third.set(img3, JPG, () => called++);
+  third.probes[0].onerror();
+  assert.equal(img3.src, JPG);
+  assert.equal(called, 0, 'only the new picture reports, and it has not loaded yet');
+  // the old picture finishing its load while the new one's first frame is still being made
+  const reduce = { on: false };
+  const fourth = pictureHarness(reduce);
+  const img4 = fourth.img();
+  const heard = [];
+  fourth.set(img4, JPG, (ok) => heard.push('jpg:' + ok));
+  reduce.on = true;
+  fourth.set(img4, GIF, (ok) => heard.push('gif:' + ok));
+  img4.onload();
+  assert.deepEqual(heard, [], 'that was not the picture asked for last');
+});
+
+test('theSamePictureAgainDoesNotLoadItAgainButAChangeOfReduceMotionDoes', async () => {
+  const reduce = { on: true };
+  const h = pictureHarness(reduce);
+  const img = h.img();
+  h.set(img, GIF, null);
+  h.probes[0].onload();
+  await tick();
+  h.frames[0].resolve(FIRST_FRAME);
+  await tick();
+  assert.equal(img.src, FIRST_FRAME);
+  h.set(img, GIF, null);
+  h.set(img, GIF, null);
+  assert.equal(h.probes.length, 1, 'a slider tick or a redraw is no new work');
+  reduce.on = false;
+  h.set(img, GIF, null);
+  assert.equal(img.src, GIF, 'Reduce motion switched off: the picture moves again');
+  assert.equal(h.probes.length, 1);
+  reduce.on = true;
+  h.set(img, GIF, null);
+  assert.equal(h.probes.length, 2, 'and switched on again: a new first frame');
+});
+
+test('aPictureThatCannotBeDrawnOrLoadedIsNotShownAndTheCallerIsTold', async () => {
+  const failing = pictureHarness({ on: true });
+  const a = failing.img();
+  const told = [];
+  failing.set(a, GIF, (ok) => told.push(ok));
+  failing.probes[0].onerror();
+  assert.equal(a.src, '');
+  assert.deepEqual(told, [false]);
+  const blank = pictureHarness({ on: true });
+  const b = blank.img();
+  const told2 = [];
+  blank.set(b, GIF, (ok) => told2.push(ok));
+  blank.probes[0].onload();
+  await tick();
+  blank.frames[0].resolve('');
+  await tick();
+  assert.equal(b.src, '');
+  assert.deepEqual(told2, [false]);
+  // no link at all
+  const none = pictureHarness({ on: false });
+  const c = none.img();
+  const told3 = [];
+  none.set(c, '', (ok) => told3.push(ok));
+  assert.deepEqual(told3, [false]);
+});
+
+test('theCallerHearsWhenTheShownPictureHasLoadedOrFailed', () => {
+  const h = pictureHarness({ on: false });
+  const img = h.img();
+  const told = [];
+  h.set(img, JPG, (ok) => told.push(ok));
+  img.onload();
+  assert.deepEqual(told, [true]);
+  const other = h.img();
+  const told2 = [];
+  h.set(other, GIF, (ok) => told2.push(ok));
+  other.onerror();
+  assert.deepEqual(told2, [false]);
 });
 
 test('theMiniPlayerPreviewStylesUseOnlyTheSixteenMiniVariables', () => {

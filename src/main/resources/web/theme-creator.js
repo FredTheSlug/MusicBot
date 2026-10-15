@@ -323,8 +323,10 @@
      *   picture   'none' | 'saved' (the theme's own picture on the server) | 'new' (a file chosen here, sent on save)
      *   hadPicture, savedPictureUrl  whether the edited theme has a picture on the server, and its link
      *   dim, blur, fit               the picture's settings
-     *   mini                         null or {colors{14}, useImage, dim}; whether its colors follow the theme is not kept
-     *                                apart: they do exactly when they are the ones the theme's colors make (miniFollows)
+     *   mini                         null (skipped) or {colors{14}, useImage, dim}; a new theme starts with one made from
+     *                                its colors (startState), an edit keeps whatever the theme has. Whether its colors follow
+     *                                the theme is not kept apart: they do exactly when they are the ones the theme's colors
+     *                                make (miniFollows)
      */
     function blankState() {
         return {
@@ -383,14 +385,17 @@
         return fields.colors ? keepMiniFollowing(state, next) : next;
     }
 
-    /* A new theme starting from a built-in theme. */
+    /* A new theme starting from a built-in theme, with a mini-player version made from its colors (Skip on step 5 drops it). */
     function startState(baseId) {
-        return withFields(blankState(), baseLook(baseId));
+        return makeMini(withFields(blankState(), baseLook(baseId)));
     }
 
-    /* A new theme starting from somebody's community theme: its look, but not its picture, name or mini-player version. */
+    /*
+     * A new theme starting from somebody's community theme: its look, but not its picture, name or the mini-player
+     * version it has (ours is made from the look it starts with, as for any new theme).
+     */
     function startFromTheme(theme) {
-        return withFields(blankState(), themeLook(theme));
+        return makeMini(withFields(blankState(), themeLook(theme)));
     }
 
     /* The state for editing a theme of the list. */
@@ -587,9 +592,18 @@
 
     /* ---- step 3: the picture ---- */
 
-    /* A file chosen here. Its darkening starts at `dim` (suggested from its brightness) when that is a number. */
+    /*
+     * A file chosen here. Its darkening starts at `dim` (suggested from its brightness) when that is a number. A theme that
+     * had no picture and has a mini-player version gets the picture there too, at the same darkening, just as a mini-player
+     * version made after the picture would (step 5 comes after step 3, but a new theme has its version from the start).
+     */
     function withNewPicture(state, dim) {
-        return withFields(state, { picture: 'new', dim: clampInt(dim, 0, 90, state.dim) });
+        var next = withFields(state, { picture: 'new', dim: clampInt(dim, 0, 90, state.dim) });
+        if (next.mini && !hasPicture(state)) {
+            next.mini.useImage = true;
+            next.mini.dim = next.dim;
+        }
+        return next;
     }
 
     /* No picture: for a theme that had one on the server this means removing it. The mini-player has none to use then. */

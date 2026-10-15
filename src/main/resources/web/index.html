@@ -6373,6 +6373,7 @@
             reduceMotion = !!on;
             try { localStorage.setItem(REDUCE_MOTION_STORAGE_KEY, reduceMotion ? '1' : '0'); } catch (e) {}
             if (themeBackdropData && themeKit.canAnimate(themeBackdropData.url, themeLocalPicture)) renderThemeBackdrop();
+            if (themeCreator) themeCreator.refresh(); // its own pictures (step 3, the mini-player preview) follow too
         }
 
         // The switch row at the foot of the Panels menu (the menu is rebuilt each time it opens).
@@ -7025,6 +7026,44 @@
             return themeKit.pictureUrl(url, themeLocalPicture) || '';
         }
 
+        // A picture in one of the creator's own <img> (step 3's thumbnail, the mini-player preview) follows Reduce motion
+        // the way the panel's background does: when it is on and the picture can move (GIF, WebP, PNG), the <img> gets the
+        // first frame (firstFrameOf) and never the moving picture; else the link itself. The last picture asked for wins
+        // over an older answer still on its way. done(ok) hears whether what is now in the <img> has loaded or can't be
+        // shown. Asking again for the same link in the same mode does nothing, so a redraw costs no work.
+        var tcPictureState = new WeakMap();
+        function tcSetPicture(img, url, done) {
+            var freeze = !!url && readReduceMotion() && themeKit.canAnimate(url, themeLocalPicture);
+            var was = tcPictureState.get(img);
+            if (was && was.url === url && was.freeze === freeze) return;
+            var now = { url: url, freeze: freeze };
+            tcPictureState.set(img, now);
+            function show(src) {
+                if (tcPictureState.get(img) !== now) return;
+                if (!src) {
+                    img.removeAttribute('src');
+                    if (done) done(false);
+                    return;
+                }
+                img.onload = function () { if (tcPictureState.get(img) === now && done) done(true); };
+                img.onerror = function () { if (tcPictureState.get(img) === now && done) done(false); };
+                img.src = src;
+            }
+            if (!url) {
+                show('');
+            } else if (!freeze) {
+                show(url);
+            } else {
+                var probe = new Image();
+                probe.onload = async function () {
+                    if (tcPictureState.get(img) !== now) return;
+                    show(await firstFrameOf(url, probe));
+                };
+                probe.onerror = function () { show(''); };
+                probe.src = url;
+            }
+        }
+
         function tcStepPicture(s) {
             var TC = window.ThemeCreator;
             s.body.appendChild(plEl('p', 'tc-help', 'Put your own picture behind the whole page. This is optional: skip it to keep just your colors.'));
@@ -7074,6 +7113,7 @@
             // a picture is chosen
             var picked = plEl('div');
             var thumb = plEl('img', 'tc-thumb');
+            var thumbShown = true;     // false after a picture that could not be shown, until the next one loads
             thumb.alt = 'A preview of your picture';
             picked.appendChild(thumb);
             var pickedRow = plEl('div', 'tc-row');
@@ -7118,8 +7158,11 @@
                 removal.hidden = !(st.picture === 'none' && st.hadPicture);
                 if (!has) return;
                 var src = tcPictureSrc(s);
-                if (src && thumb.getAttribute('src') !== src) thumb.src = src;
-                thumb.hidden = !src;
+                thumb.hidden = !src || !thumbShown;
+                tcSetPicture(thumb, src, function (ok) {
+                    thumbShown = ok;
+                    thumb.hidden = !ok;
+                });
                 dim.input.value = String(st.dim);
                 dim.out.textContent = st.dim + '%';
                 blur.input.value = String(st.blur);
@@ -7365,20 +7408,12 @@
             el.appendChild(info);
 
             var back = null;      // what ThemeApply.backdrop made of the picture, or null
-            var loaded = '';      // the link of the picture that has loaded
+            var loaded = false;   // the picture in the <img> has loaded (and is not one that failed)
             function draw() {
-                var on = !!back && loaded === back.url;
+                var on = !!back && loaded;
                 pic.hidden = !on;
                 dim.hidden = !on;
             }
-            pic.addEventListener('load', function () {
-                loaded = pic.getAttribute('src') || '';
-                draw();
-            });
-            pic.addEventListener('error', function () {
-                loaded = '';
-                draw();
-            });
 
             return {
                 el: el,
@@ -7388,10 +7423,10 @@
                     back = view.useImage && src ? themeKit.backdrop({ url: src, dim: view.dim, blur: 0, fit: 'cover' }, themeLocalPicture) : null;
                     if (back) {
                         dim.style.setProperty('background-color', back.overlay);
-                        if (pic.getAttribute('src') !== back.url) {
-                            loaded = '';
-                            pic.src = back.url;
-                        }
+                        tcSetPicture(pic, back.url, function (ok) {
+                            loaded = ok;
+                            draw();
+                        });
                     }
                     draw();
                 }
@@ -7447,7 +7482,7 @@
         // are ThemeCreator's (s.state.mini is null, or {colors (14 slots), useImage, dim}) and go in through tcCommit.
         function tcMiniStep(s, host) {
             var TC = window.ThemeCreator;
-            host.appendChild(plEl('p', 'tc-help', "Make a mini-player version too? That's the small player in the desktop app. If you skip it, your theme just won't be offered there."));
+            host.appendChild(plEl('p', 'tc-help', "Make a mini-player version too? That's the small player in the desktop app. We start it from your theme's colors, and you can change it. If you skip it, your theme just won't be offered there."));
 
             var list = plEl('div', 'tc-opts');
             var choices = [
