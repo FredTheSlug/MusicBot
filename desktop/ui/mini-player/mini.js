@@ -182,8 +182,7 @@
 
   // ---- ♥: the song playing (bottom row) and each song in the menu; "♥ My likes (n)" first in the Playlists tab ----
   var likes = null; // MV.likesState of what the app last sent: unknown (null, or uris null) until the bot answers
-  var likeClicks = {}; // uri → the latest click still waiting for its answer (see MV.likeClicked)
-  var likeSeq = 0;
+  var likeClicks = MV.likeClicks(); // per song: the last click, and the one request on its way (see MV.likeToggled)
   var likeSongs = new WeakMap(); // a song row's ♥ → the song it likes (never written into the markup)
   var listing = ''; // what the results list shows: 'playlists' while it is the Playlists tab
 
@@ -224,23 +223,38 @@
 
   function takeLikes(payload) { likes = MV.likesState(payload, likes); }
 
-  /** Flips the ♥ at once; the answer brings the bot's fresh list, or its own words (and the ♥ goes back). */
+  /**
+   * Flips the ♥ at once. A request goes out only when none for this song is on its way (MV.likeToggled decides), so the
+   * bot gets a fast like, unlike, like in click order and ends on the last click.
+   */
   function toggleLike(song) {
     if (!song || !canLike() || !likes || !likes.uris) return;
-    var id = ++likeSeq;
-    var click = MV.likeClicked(likes, likeClicks, song.uri, id);
+    var click = MV.likeToggled(likes, likeClicks, song.uri);
     likeClicks = click.clicks;
     paintLikes();
-    var asked = click.liked ? invoke('mini_like', { song: song }) : invoke('mini_unlike', { uri: song.uri });
+    if (click.request) sendLike(song, click.request);
+  }
+
+  /**
+   * One like or unlike; its answer may ask for exactly one more (the clicks made meanwhile). A yes brings the bot's fresh
+   * list; a refusal that sends the ♥ back shows the bot's own words.
+   */
+  function sendLike(song, request) {
+    var asked = request.liked ? invoke('mini_like', { song: song }) : invoke('mini_unlike', { uri: song.uri });
     asked.then(function (fresh) {
       takeLikes(fresh);
-      likeClicks = MV.likeAnswered(likeClicks, song.uri, id);
-      paintLikes();
+      settleLike(song, request, true, '');
     }, function (e) {
-      likeClicks = MV.likeAnswered(likeClicks, song.uri, id);
-      paintLikes();
-      showStatus(String(e));
+      settleLike(song, request, false, String(e));
     });
+  }
+
+  function settleLike(song, request, ok, message) {
+    var answer = MV.likeSettled(likes, likeClicks, song.uri, ok, request.id);
+    likeClicks = answer.clicks;
+    paintLikes();
+    if (answer.reverted) showStatus(message);
+    if (answer.request) sendLike(song, answer.request);
   }
 
   /** A song row's ♥ (beside its +). */

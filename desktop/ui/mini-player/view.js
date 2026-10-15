@@ -453,37 +453,78 @@
     return { version: version, uris: uris, count: count };
   }
 
-  /** Whether the ♥ for `uri` shows filled: a click still on its way shows what it asked for, else the bot's list says. */
+  /*
+   * ♥ clicks, as the panel's likes.js handles them: at most one like/unlike request per song is on its way at a time,
+   * so the bot gets them in click order. A click meanwhile only changes what is wanted (the ♥ flips at once); when the
+   * request is answered and the bot differs from the last click, exactly one more request goes for it. The last click
+   * wins, on the ♥ and on the bot. clicks = {open: uri → {want, sent: {id, liked}, lastClick}, clock}, never changed
+   * in place: want = the last click, sent = the request on its way, lastClick = the clock of the last click.
+   */
+
+  /** No song has a request on its way. */
+  function likeClicks() {
+    return { open: Object.create(null), clock: 0 };
+  }
+
+  /** A copy of clicks with the clock moved on and its own `open`, ready to change. */
+  function stepClicks(clicks) {
+    var open = Object.create(null);
+    var from = clicks && clicks.open;
+    if (from) Object.keys(from).forEach(function (uri) { open[uri] = from[uri]; });
+    return { open: open, clock: ((clicks && clicks.clock) || 0) + 1 };
+  }
+
+  function openFor(clicks, uri) {
+    return clicks && hasOwn(clicks.open, uri) ? clicks.open[uri] : null;
+  }
+
+  /** Whether the ♥ for `uri` shows filled: the last click while a request for the song is on its way, else the bot's list. */
   function isLiked(likes, clicks, uri) {
     if (typeof uri !== 'string' || !uri) return false;
-    if (hasOwn(clicks, uri)) return clicks[uri].liked;
+    var open = openFor(clicks, uri);
+    if (open) return open.want;
     return !!(likes && likes.uris && likes.uris.has(uri));
   }
 
-  /** A copy of clicks (uri → {id, liked}: the latest click per song still waiting for its answer); the given one never changes. */
-  function copyClicks(clicks) {
-    var copy = Object.create(null);
-    Object.keys(clicks || {}).forEach(function (uri) { copy[uri] = clicks[uri]; });
-    return copy;
-  }
-
-  /** A click on the ♥ for `uri`: {clicks, liked}. The ♥ flips at once (to `liked`) and stays so until click `id` is answered. */
-  function likeClicked(likes, clicks, uri, id) {
-    var liked = !isLiked(likes, clicks, uri);
-    var next = copyClicks(clicks);
-    next[uri] = { id: id, liked: liked };
-    return { clicks: next, liked: liked };
+  /**
+   * A click on the ♥ for `uri`: it flips at once. {clicks, request}: the request to send ({id, liked}: like or unlike),
+   * or null while one for this song is still on its way (the click is only remembered; likeSettled sends for it if needed).
+   */
+  function likeToggled(likes, clicks, uri) {
+    var want = !isLiked(likes, clicks, uri);
+    var next = stepClicks(clicks);
+    var open = openFor(clicks, uri);
+    if (open) {
+      next.open[uri] = { want: want, sent: open.sent, lastClick: next.clock };
+      return { clicks: next, request: null };
+    }
+    var sent = { id: next.clock, liked: want };
+    next.open[uri] = { want: want, sent: sent, lastClick: next.clock };
+    return { clicks: next, request: { id: sent.id, liked: sent.liked } };
   }
 
   /**
-   * Click `id` on `uri` was answered, yes or no: the ♥ shows the bot's list again (fresh after a yes; as it was after a
-   * no, which is the revert), unless a newer click on the song is still on its way.
+   * The answer to request `id` for `uri`, a yes (ok) or a no; `likes` is the like state after it (the bot's fresh list,
+   * which comes with a yes). A yes means the bot now holds what was sent (the list may lag if reading it failed); a no
+   * leaves it as the list says. Returns {clicks, request, reverted}:
+   *   request   exactly one more request when the bot now differs from the last click, else null
+   *   reverted  the request was refused with no click after it, and the ♥ went back: the caller shows the bot's words
+   * A refused request is followed up only when clicks after it want something the bot doesn't have. An answer to
+   * anything but the song's request on its way changes nothing.
    */
-  function likeAnswered(clicks, uri, id) {
-    if (!hasOwn(clicks, uri) || clicks[uri].id !== id) return clicks;
-    var next = copyClicks(clicks);
-    delete next[uri];
-    return next;
+  function likeSettled(likes, clicks, uri, ok, id) {
+    var open = openFor(clicks, uri);
+    if (!open || open.sent.id !== id) return { clicks: clicks, request: null, reverted: false };
+    var next = stepClicks(clicks);
+    var now = ok ? open.sent.liked : !!(likes && likes.uris && likes.uris.has(uri));
+    var clickedSince = open.lastClick > open.sent.id;
+    if (open.want === now || (!ok && !clickedSince)) {
+      delete next.open[uri];
+      return { clicks: next, request: null, reverted: !ok && open.want !== now };
+    }
+    var sent = { id: next.clock, liked: open.want };
+    next.open[uri] = { want: open.want, sent: sent, lastClick: open.lastClick };
+    return { clicks: next, request: { id: sent.id, liked: sent.liked }, reverted: false };
   }
 
   /**
@@ -508,8 +549,8 @@
   }
 
   var api = {
-    requestedByText: requestedByText, likesState: likesState, isLiked: isLiked, likeClicked: likeClicked,
-    likeAnswered: likeAnswered, heartView: heartView, myLikesRow: myLikesRow,
+    requestedByText: requestedByText, likesState: likesState, isLiked: isLiked, likeClicks: likeClicks,
+    likeToggled: likeToggled, likeSettled: likeSettled, heartView: heartView, myLikesRow: myLikesRow,
     pickerRows: pickerRows, playlistKey: playlistKey, rememberRecent: rememberRecent, playlistSong: playlistSong,
     pickerError: pickerError, playlistCount: playlistCount,
     accelFromEvent: accelFromEvent,

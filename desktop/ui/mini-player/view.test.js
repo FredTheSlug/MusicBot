@@ -722,7 +722,7 @@ test('the match switch and the theme menu each send their own kind of change', (
 
 // ---- Likes: "requested by", the ♥s and "My likes" ----
 
-const { requestedByText, likesState, isLiked, likeClicked, likeAnswered, heartView, myLikesRow } = require('./view.js');
+const { requestedByText, likesState, isLiked, likeClicks, likeToggled, likeSettled, heartView, myLikesRow } = require('./view.js');
 
 test('requestedByText names who asked for the song, isolated; nothing when unknown', () => {
   const st = (requestedBy) => ({ track: Object.assign({}, track, { requestedBy }) });
@@ -767,61 +767,217 @@ test('the app\'s like state becomes a lookup; an older copy changes nothing', ()
 
 const KNOWN = likesState({ version: 1, likes: { uris: ['https://y/liked'], count: 1 } }, null);
 
-test('a ♥ shows the bot\'s list, or the click still on its way', () => {
-  assert.equal(isLiked(KNOWN, {}, 'https://y/liked'), true);
-  assert.equal(isLiked(KNOWN, {}, 'https://y/other'), false);
-  assert.equal(isLiked(null, {}, 'https://y/liked'), false);
+/** The like state after the bot's list changed: `uris` liked, one version on from `previous`. */
+function listed(previous, uris) {
+  return likesState({ version: previous.version + 1, likes: { uris: uris, count: uris.length } }, previous);
+}
+
+test('a ♥ shows the bot\'s list, or the last click on a song whose request is on its way', () => {
+  const none = likeClicks();
+  assert.equal(isLiked(KNOWN, none, 'https://y/liked'), true);
+  assert.equal(isLiked(KNOWN, none, 'https://y/other'), false);
+  assert.equal(isLiked(null, none, 'https://y/liked'), false);
   assert.equal(isLiked(KNOWN, null, 'https://y/liked'), true);
-  assert.equal(isLiked(KNOWN, {}, ''), false);
-  assert.equal(isLiked(KNOWN, {}, null), false);
-  for (const name of ['constructor', '__proto__', 'toString']) assert.equal(isLiked(KNOWN, {}, name), false, name);
+  assert.equal(isLiked(KNOWN, none, ''), false);
+  assert.equal(isLiked(KNOWN, none, null), false);
+  for (const name of ['constructor', '__proto__', 'toString']) {
+    assert.equal(isLiked(KNOWN, none, name), false, name);
+    assert.equal(likeToggled(KNOWN, none, name).request.liked, true, name + ' is a uri like any other');
+  }
 });
 
 test('a ♥ click fills at once and its answer hands the ♥ back to the bot\'s fresh list', () => {
-  const click = likeClicked(KNOWN, {}, 'https://y/other', 1);
-  assert.equal(click.liked, true, 'not liked yet: this click likes it');
+  const click = likeToggled(KNOWN, likeClicks(), 'https://y/other');
+  assert.deepEqual(click.request, { id: click.request.id, liked: true }, 'not liked yet: this click likes it');
   assert.equal(isLiked(KNOWN, click.clicks, 'https://y/other'), true, 'optimistic');
   // the bot said yes; the app asked for the list again and sends it with the answer
-  const fresh = likesState({ version: 2, likes: { uris: ['https://y/other', 'https://y/liked'], count: 2 } }, KNOWN);
-  const settled = likeAnswered(click.clicks, 'https://y/other', 1);
-  assert.deepEqual(Object.keys(settled), [], 'nothing left on its way');
-  assert.equal(isLiked(fresh, settled, 'https://y/other'), true);
+  const fresh = listed(KNOWN, ['https://y/other', 'https://y/liked']);
+  const answer = likeSettled(fresh, click.clicks, 'https://y/other', true, click.request.id);
+  assert.equal(answer.request, null);
+  assert.equal(answer.reverted, false);
+  assert.equal(isLiked(fresh, answer.clicks, 'https://y/other'), true);
+  assert.equal(isLiked(KNOWN, answer.clicks, 'https://y/other'), false, 'nothing is on its way any more: the list decides');
 });
 
-test('a refused ♥ click reverts', () => {
-  const click = likeClicked(KNOWN, {}, 'https://y/liked', 7);
-  assert.equal(click.liked, false, 'liked already: this click unlikes it');
-  assert.equal(isLiked(KNOWN, click.clicks, 'https://y/liked'), false, 'optimistic');
-  // the bot said no: its list is as it was, so the ♥ is too
-  assert.equal(isLiked(KNOWN, likeAnswered(click.clicks, 'https://y/liked', 7), 'https://y/liked'), true);
+test('oneRequestPerUriAtATime', () => {
+  // like, unlike, like clicked before any answer: only the first goes out; the ♥ follows every click
+  let c = likeClicks();
+  const a = likeToggled(KNOWN, c, 'u'); c = a.clicks;
+  const b = likeToggled(KNOWN, c, 'u'); c = b.clicks;
+  assert.equal(isLiked(KNOWN, c, 'u'), false);
+  const d = likeToggled(KNOWN, c, 'u'); c = d.clicks;
+  assert.equal(isLiked(KNOWN, c, 'u'), true);
+  assert.equal(a.request.liked, true);
+  assert.equal(b.request, null, 'the like is still on its way');
+  assert.equal(d.request, null);
+  assert.equal(isLiked(KNOWN, a.clicks, 'u'), true, 'a click never changes the clicks it was given');
+
+  // another song is not held up
+  const other = likeToggled(KNOWN, c, 'v'); c = other.clicks;
+  assert.equal(other.request.liked, true);
+  assert.notEqual(other.request.id, a.request.id);
+
+  // the bot already matches the last click: nothing more to send
+  const fresh = listed(KNOWN, ['u', 'https://y/liked']);
+  const answer = likeSettled(fresh, c, 'u', true, a.request.id);
+  assert.equal(answer.request, null);
+  assert.equal(answer.reverted, false);
+  assert.equal(isLiked(fresh, answer.clicks, 'u'), true);
+  assert.equal(isLiked(fresh, answer.clicks, 'v'), true, 'v\'s like is still on its way');
+  assert.equal(likeToggled(fresh, answer.clicks, 'u').request.liked, false, 'the next click sends again');
+  // a stray answer to a request that is not on its way changes nothing
+  assert.equal(likeSettled(fresh, answer.clicks, 'u', true, a.request.id).clicks, answer.clicks);
+  assert.equal(likeSettled(fresh, answer.clicks, 'nope', true, a.request.id).clicks, answer.clicks);
 });
 
-test('the latest click on a song shows until it is answered; clicks never change what they were given', () => {
-  const like = likeClicked(KNOWN, {}, 'u', 1);
-  const unlike = likeClicked(KNOWN, like.clicks, 'u', 2);
-  assert.equal(unlike.liked, false, 'the second click undoes the first');
-  assert.equal(like.clicks.u.liked, true);
-  const older = likeAnswered(unlike.clicks, 'u', 1);
-  assert.equal(older, unlike.clicks, 'the first answer leaves the newer click showing');
-  assert.equal(isLiked(KNOWN, older, 'u'), false);
-  assert.deepEqual(Object.keys(likeAnswered(older, 'u', 2)), []);
-  assert.equal(likeAnswered(older, 'u', 9), older, 'an answer to no click');
-  assert.equal(likeAnswered(older, 'nope', 2), older);
-  const other = likeClicked(KNOWN, unlike.clicks, 'https://y/liked', 3);
-  assert.equal(isLiked(KNOWN, other.clicks, 'u'), false, 'clicks on other songs are their own');
-  assert.equal(isLiked(KNOWN, other.clicks, 'https://y/liked'), false);
-  assert.deepEqual(Object.keys(unlike.clicks), ['u']);
+test('anUnlikeLastWins', () => {
+  // like, unlike: the like answers, then exactly one unlike follows for the last click
+  let c = likeClicks();
+  const a = likeToggled(KNOWN, c, 'u'); c = a.clicks;
+  c = likeToggled(KNOWN, c, 'u').clicks;
+  const liked = listed(KNOWN, ['u', 'https://y/liked']);
+  const first = likeSettled(liked, c, 'u', true, a.request.id);
+  assert.equal(isLiked(liked, first.clicks, 'u'), false, 'still the last click while the unlike goes out');
+  assert.deepEqual(first.request, { id: first.request.id, liked: false });
+  assert.equal(first.reverted, false);
+  const unliked = listed(liked, ['https://y/liked']);
+  const second = likeSettled(unliked, first.clicks, 'u', true, first.request.id);
+  assert.equal(second.request, null);
+  assert.equal(isLiked(unliked, second.clicks, 'u'), false);
+});
+
+/*
+ * One song through a list of steps: 'c' a click, 'a' the bot answers the request on its way with a yes, 'f' it refuses
+ * it, 'e' a likes-changed event brings the bot's list as it is. The fake bot applies a request when it answers it, and
+ * a yes comes back with the fresh list (as mini_like/mini_unlike answer). Afterwards every request left gets a yes.
+ */
+function drive(steps) {
+  let server = false;
+  let likes = likesState({ version: 1, likes: { uris: [], count: 0 } }, null);
+  const fresh = () => listed(likes, server ? ['u'] : []);
+  let clicks = likeClicks();
+  let open = null;
+  let sent = 0;
+  let clickCount = 0;
+  let lastClick = null;
+  const answer = (ok) => {
+    const r = open;
+    open = null;
+    if (ok) {
+      server = r.liked;
+      likes = fresh();
+    }
+    const res = likeSettled(likes, clicks, 'u', ok, r.id);
+    clicks = res.clicks;
+    if (res.request) {
+      open = res.request;
+      sent++;
+    }
+  };
+  for (const step of steps) {
+    if (step === 'c') {
+      const t = likeToggled(likes, clicks, 'u');
+      clicks = t.clicks;
+      clickCount++;
+      lastClick = isLiked(likes, clicks, 'u');
+      if (t.request) {
+        assert.equal(open, null, 'a second request while one is on its way: ' + steps);
+        open = t.request;
+        sent++;
+      }
+    } else if (step === 'e') {
+      likes = fresh();
+    } else if (open) {
+      answer(step === 'a');
+    }
+  }
+  while (open) answer(true);
+  return { shown: isLiked(likes, clicks, 'u'), server, lastClick, sent, clicks: clickCount };
+}
+
+function allSteps(letters, maxLength) {
+  const out = [];
+  const grow = (prefix) => {
+    if (prefix.length) out.push(prefix);
+    if (prefix.length < maxLength) letters.forEach((l) => grow(prefix + l));
+  };
+  grow('');
+  return out;
+}
+
+test('lastClickWinsOnTheServer', () => {
+  // every order of clicks and answers up to 9 steps (and with likes-changed events, up to 7): the bot ends on the last
+  // click, and so does the ♥
+  const orders = allSteps(['c', 'a'], 9).concat(allSteps(['c', 'a', 'e'], 7)).filter((st) => st.includes('c'));
+  assert.ok(orders.length > 4000);
+  orders.forEach((steps) => {
+    const r = drive(steps);
+    assert.equal(r.server, r.lastClick, steps + ': server');
+    assert.equal(r.shown, r.lastClick, steps + ': ♥');
+    assert.ok(r.sent <= r.clicks, steps + ': never more requests than clicks');
+  });
+  assert.equal(drive('ccc').sent, 1, 'like, unlike, like before any answer: one request');
+  assert.equal(drive('cc').sent, 2, 'like, unlike before any answer: the like, then one unlike');
+});
+
+test('refusals never leave the ♥ wrong', () => {
+  // with refusals too: once everything is answered the ♥ shows what the bot has
+  allSteps(['c', 'a', 'f', 'e'], 6).filter((st) => st.includes('c')).forEach((steps) => {
+    const r = drive(steps);
+    assert.equal(r.shown, r.server, steps);
+    assert.ok(r.sent <= r.clicks, steps + ': never more requests than clicks');
+  });
+});
+
+test('a refused ♥ click reverts, and only then are the bot\'s words shown', () => {
+  const like = likeToggled(KNOWN, likeClicks(), 'https://y/other');
+  const refused = likeSettled(KNOWN, like.clicks, 'https://y/other', false, like.request.id);
+  assert.equal(isLiked(KNOWN, refused.clicks, 'https://y/other'), false, 'a refused like empties the ♥ again');
+  assert.equal(refused.reverted, true, 'and the status line says why');
+  assert.equal(refused.request, null);
+  const unlike = likeToggled(KNOWN, likeClicks(), 'https://y/liked');
+  assert.deepEqual(unlike.request, { id: unlike.request.id, liked: false }, 'liked already: this click unlikes it');
+  assert.equal(isLiked(KNOWN, unlike.clicks, 'https://y/liked'), false);
+  const again = likeSettled(KNOWN, unlike.clicks, 'https://y/liked', false, unlike.request.id);
+  assert.equal(isLiked(KNOWN, again.clicks, 'https://y/liked'), true, 'a refused unlike fills it again');
+  assert.equal(again.reverted, true);
+});
+
+test('a refused click reverts only when no later click exists', () => {
+  // like (refused) with unlike, like clicked meanwhile: no revert, one like for the last click
+  let c = likeClicks();
+  const a = likeToggled(KNOWN, c, 'u'); c = a.clicks;
+  c = likeToggled(KNOWN, c, 'u').clicks;
+  c = likeToggled(KNOWN, c, 'u').clicks;
+  const failed = likeSettled(KNOWN, c, 'u', false, a.request.id);
+  assert.equal(failed.reverted, false);
+  assert.equal(isLiked(KNOWN, failed.clicks, 'u'), true, 'still the last click');
+  assert.deepEqual(failed.request, { id: failed.request.id, liked: true }, 'the last click is sent');
+  const liked = listed(KNOWN, ['u', 'https://y/liked']);
+  const done = likeSettled(liked, failed.clicks, 'u', true, failed.request.id);
+  assert.equal(done.request, null);
+  assert.equal(isLiked(liked, done.clicks, 'u'), true);
+
+  // like (refused) with an unlike clicked meanwhile: the bot already has what the last click wants
+  c = likeClicks();
+  const b = likeToggled(KNOWN, c, 'v'); c = b.clicks;
+  c = likeToggled(KNOWN, c, 'v').clicks;
+  const quiet = likeSettled(KNOWN, c, 'v', false, b.request.id);
+  assert.equal(quiet.request, null);
+  assert.equal(quiet.reverted, false, 'nothing went back: no message');
+  assert.equal(isLiked(KNOWN, quiet.clicks, 'v'), false);
 });
 
 test('heartView: hidden while the likes are unknown; off with no song or no signed-in bot; filled when liked', () => {
   const song = { uri: 'https://y/liked', title: 'T' };
-  assert.deepEqual(heartView(KNOWN, {}, song, true), { hidden: false, disabled: false, liked: true, title: 'Unlike' });
-  assert.deepEqual(heartView(KNOWN, {}, { uri: 'https://y/x' }, true), { hidden: false, disabled: false, liked: false, title: 'Like' });
-  assert.equal(heartView(null, {}, song, true).hidden, true, 'a bot without likes, or no answer yet');
-  assert.equal(heartView(likesState({ version: 2, likes: null }, null), {}, song, true).hidden, true);
-  assert.deepEqual(heartView(KNOWN, {}, null, true), { hidden: false, disabled: true, liked: false, title: 'Like' }, 'nothing playing');
-  assert.equal(heartView(KNOWN, {}, song, false).disabled, true, 'signed out or unreachable');
-  const click = likeClicked(KNOWN, {}, 'https://y/x', 1);
+  const none = likeClicks();
+  assert.deepEqual(heartView(KNOWN, none, song, true), { hidden: false, disabled: false, liked: true, title: 'Unlike' });
+  assert.deepEqual(heartView(KNOWN, none, { uri: 'https://y/x' }, true), { hidden: false, disabled: false, liked: false, title: 'Like' });
+  assert.equal(heartView(null, none, song, true).hidden, true, 'a bot without likes, or no answer yet');
+  assert.equal(heartView(likesState({ version: 2, likes: null }, null), none, song, true).hidden, true);
+  assert.deepEqual(heartView(KNOWN, none, null, true), { hidden: false, disabled: true, liked: false, title: 'Like' }, 'nothing playing');
+  assert.equal(heartView(KNOWN, none, song, false).disabled, true, 'signed out or unreachable');
+  const click = likeToggled(KNOWN, none, 'https://y/x');
   assert.equal(heartView(KNOWN, click.clicks, { uri: 'https://y/x' }, true).title, 'Unlike', 'the click shows at once');
 });
 
