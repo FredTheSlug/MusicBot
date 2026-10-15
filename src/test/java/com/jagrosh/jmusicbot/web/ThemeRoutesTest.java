@@ -25,12 +25,16 @@ import io.javalin.Javalin;
 import io.javalin.http.HandlerType;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -51,6 +55,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.json.JSONArray;
@@ -96,6 +101,7 @@ public class ThemeRoutesTest
     private final AtomicReference<Person> user = new AtomicReference<>(ALICE);
     private final List<Broadcast> broadcasts = Collections.synchronizedList(new ArrayList<Broadcast>());
     private final AtomicInteger broadcastAttempts = new AtomicInteger();
+    private final AtomicInteger userLookups = new AtomicInteger();
     private volatile boolean broadcasterFails;
     private Javalin app;
     private final HttpClient http = HttpClient.newHttpClient();
@@ -130,7 +136,11 @@ public class ThemeRoutesTest
 
     private ThemeRoutes routes()
     {
-        return new ThemeRoutes(store, images, ctx -> user.get(), () -> BOSS_ID, (type, data) ->
+        return new ThemeRoutes(store, images, ctx ->
+        {
+            userLookups.incrementAndGet();
+            return user.get();
+        }, () -> BOSS_ID, (type, data) ->
         {
             broadcastAttempts.incrementAndGet();
             if(broadcasterFails)
@@ -989,6 +999,184 @@ public class ThemeRoutesTest
         assertEquals(TOO_LARGE, error(editTheme(made.getString("id"), withBackground(themeJson("Limit", "public")), big, 1, false), 413));
         assertEquals(Arrays.asList(pictureNameOf(made)), pictureFiles());
         assertEquals(1, themeNamed(list(ALICE), "Limit").getLong("version"));
+    }
+
+    /** A picture of this many bytes made up as it is read: a JPEG signature, then zeros. */
+    private static final class EndlessPicture extends InputStream
+    {
+        private long left;
+        private boolean first = true;
+
+        EndlessPicture(long size)
+        {
+            this.left = size;
+        }
+
+        @Override
+        public int read()
+        {
+            byte[] one = new byte[1];
+            return read(one, 0, 1) < 0 ? -1 : one[0] & 0xFF;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length)
+        {
+            if(left <= 0)
+                return -1;
+            int count = (int) Math.min(length, left);
+            Arrays.fill(buffer, offset, offset + count, (byte) 0);
+            if(first && count >= 3)
+            {
+                buffer[offset] = (byte) 0xFF;
+                buffer[offset + 1] = (byte) 0xD8;
+                buffer[offset + 2] = (byte) 0xFF;
+                first = false;
+            }
+            left -= count;
+            return count;
+        }
+    }
+
+    /**
+     * Watches the folder Jetty spools uploads into while a test runs, and remembers the most that its upload files ever held
+     * at once. That is what "written to disk before it was refused" means: Jetty deletes them again when the request is over.
+     */
+    private static final class SpoolWatcher implements AutoCloseable
+    {
+        private final Path folder = Paths.get(System.getProperty("java.io.tmpdir"));
+        private final Thread thread = new Thread(this::watch, "spool-watcher");
+        private volatile boolean watching = true;
+        private volatile long peak;
+
+        SpoolWatcher()
+        {
+            thread.setDaemon(true);
+            thread.start();
+        }
+
+        private void watch()
+        {
+            while(watching)
+            {
+                long total = 0;
+                try(DirectoryStream<Path> files = Files.newDirectoryStream(folder, "MultiPart*"))
+                {
+                    for(Path file : files)
+                    {
+                        try
+                        {
+                            total += Files.size(file);
+                        }
+                        catch(IOException gone)
+                        {
+                            // deleted while looking: the request ended
+                        }
+                    }
+                }
+                catch(IOException ignore)
+                {
+                    // try again
+                }
+                peak = Math.max(peak, total);
+                try
+                {
+                    Thread.sleep(1);
+                }
+                catch(InterruptedException e)
+                {
+                    return;
+                }
+            }
+        }
+
+        /** The most bytes seen in upload files at one time. */
+        long peak()
+        {
+            return peak;
+        }
+
+        @Override
+        public void close()
+        {
+            watching = false;
+            thread.interrupt();
+        }
+    }
+
+    /**
+     * Creates a theme with a picture of this size, streamed from a generator so that it is never held in memory, with its
+     * length announced or sent chunked (no length, so the server can't tell how much is coming).
+     */
+    private Resp streamedUpload(String path, long pictureBytes, boolean announceLength) throws Exception
+    {
+        String boundary = "----streamtest" + UUID.randomUUID().toString().replace("-", "");
+        byte[] head = ("--" + boundary + "\r\nContent-Disposition: form-data; name=\"theme\"\r\n\r\n"
+                + withBackground(themeJson("Streamed", "public")) + "\r\n--" + boundary
+                + "\r\nContent-Disposition: form-data; name=\"background\"; filename=\"big.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n")
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] tail = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
+        Supplier<InputStream> body = () -> new SequenceInputStream(Collections.enumeration(Arrays.asList(
+                new ByteArrayInputStream(head), new EndlessPicture(pictureBytes), new ByteArrayInputStream(tail))));
+        HttpRequest.BodyPublisher publisher = announceLength
+                ? HttpRequest.BodyPublishers.fromPublisher(HttpRequest.BodyPublishers.ofInputStream(body), head.length + pictureBytes + tail.length)
+                : HttpRequest.BodyPublishers.ofInputStream(body);
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + app.port() + path))
+                .POST(publisher).header("Content-Type", "multipart/form-data; boundary=" + boundary).build();
+        HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        return new Resp(response.statusCode(), response.body(), response.headers());
+    }
+
+    @Test
+    public void uploadOverTheCapIsRefusedBeforeAnythingIsWritten() throws Exception
+    {
+        try(SpoolWatcher spool = new SpoolWatcher())
+        {
+            assertEquals(TOO_LARGE, error(streamedUpload("/api/themes", 100L * 1024 * 1024, true), 413));
+            assertEquals("not a byte of it was spooled to disk", 0, spool.peak());
+        }
+        assertNothingStored();
+        assertFalse("nothing was made, not even the folders", Files.exists(themesDir));
+    }
+
+    @Test
+    public void chunkedUploadOverTheCapIsStoppedAtTheCap() throws Exception
+    {
+        // no length to look at, so the server has to stop by itself: at most the cap, and the refusal is the same 413
+        try(SpoolWatcher spool = new SpoolWatcher())
+        {
+            assertEquals(TOO_LARGE, error(streamedUpload("/api/themes", 100L * 1024 * 1024, false), 413));
+            assertTrue("spooled " + spool.peak() + " bytes, more than the cap of " + ThemeRoutes.MAX_UPLOAD_BYTES,
+                    spool.peak() <= ThemeRoutes.MAX_UPLOAD_BYTES);
+        }
+        assertNothingStored();
+        assertFalse("nothing was made, not even the folders", Files.exists(themesDir));
+    }
+
+    @Test
+    public void editIsCappedToo() throws Exception
+    {
+        JSONObject made = ok(createTheme(withBackground(themeJson("Kept", "public")), jpeg(1)));
+        String id = made.getString("id");
+        List<String> pictures = pictureFiles();
+        broadcasts.clear();
+        try(SpoolWatcher spool = new SpoolWatcher())
+        {
+            assertEquals(TOO_LARGE, error(streamedUpload("/api/themes/" + id, 100L * 1024 * 1024, true), 413));
+            assertEquals("not a byte of it was spooled to disk", 0, spool.peak());
+            assertEquals(TOO_LARGE, error(streamedUpload("/api/themes/" + id, 100L * 1024 * 1024, false), 413));
+            assertTrue("spooled " + spool.peak() + " bytes, more than the cap", spool.peak() <= ThemeRoutes.MAX_UPLOAD_BYTES);
+        }
+        assertEquals(pictures, pictureFiles());
+        assertEquals(1, themeNamed(list(ALICE), "Kept").getLong("version"));
+        assertTrue(broadcasts.isEmpty());
+    }
+
+    @Test
+    public void createAsksWhoIsAskingOnce() throws Exception
+    {
+        ok(createTheme(themeJson("Once", "public"), null));
+        assertEquals(1, userLookups.get());
     }
 
     @Test

@@ -26,6 +26,8 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.Handler;
 import io.javalin.http.HttpResponseException;
+import io.javalin.http.util.MultipartUtil;
+import jakarta.servlet.MultipartConfigElement;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Part;
 import java.io.IOException;
@@ -60,7 +62,8 @@ import org.slf4j.LoggerFactory;
  * Errors are {@code {"error": message}}: 400 for values that aren't allowed ({@link IllegalArgumentException}), 403 for
  * what the person may not do ({@link ThemeForbiddenException}), 404 for a theme that doesn't exist or isn't visible to
  * them ({@link NoSuchElementException}, always the same words), 409 for the theme limit or a theme that changed
- * meanwhile ({@link IllegalStateException}), 413 for a picture that is too big ({@link PictureTooLargeException}),
+ * meanwhile ({@link IllegalStateException}), 413 for a picture, or an upload as a whole, that is too big
+ * ({@link PictureTooLargeException}; see {@link #MAX_UPLOAD_BYTES}),
  * 500 for a disk error. Every change is announced to all connected panels with a {@code themes} message that holds
  * the theme's id and nothing else: a panel asks for the list again, which shows it only what it may see.
  *
@@ -75,6 +78,13 @@ public class ThemeRoutes
     static final String PICTURES = "/theme-images/";
     /** The biggest {@code theme} part taken, in bytes. A real theme is about 2 KB. */
     static final int MAX_THEME_BYTES = 64 * 1024;
+    /**
+     * The biggest upload taken, in bytes: the biggest picture plus room for the theme and the multipart framing. Checked
+     * against the announced length before anything is read, and enforced while reading for uploads that announce none.
+     */
+    static final long MAX_UPLOAD_BYTES = ThemeStore.MAX_PICTURE_BYTES + 256 * 1024;
+    /** Parts up to this size are kept in memory while an upload is read; bigger ones go to a temp file. */
+    private static final int UPLOAD_IN_MEMORY_BYTES = 64 * 1024;
     /** The biggest {@code version} or {@code removeBackground} part taken, in bytes. */
     private static final int MAX_FIELD_BYTES = 64;
     private static final Pattern VERSION = Pattern.compile("[0-9]{1,18}");
@@ -229,23 +239,38 @@ public class ThemeRoutes
         }
     }
 
+    /**
+     * Checks that this is an upload of an allowed size and sets how it is read, before anything of it is read. Javalin's own
+     * multipart settings have no limit at all, and {@code maxRequestSize} only covers {@code ctx.body()}, so without this
+     * any member could write as much as they like to the temp folder before the store got to refuse the picture. An upload
+     * that announces more than {@link #MAX_UPLOAD_BYTES} is refused unread; the limit is also given to Jetty, which stops
+     * reading at it, for an upload that announces no length (it is then refused by {@link #part} just the same).
+     */
     private static void requireForm(Context ctx)
     {
         if(!ctx.isMultipartFormData())
             throw new IllegalArgumentException(NOT_A_FORM);
+        if(ctx.req().getContentLengthLong() > MAX_UPLOAD_BYTES)
+            throw new PictureTooLargeException(TOO_LARGE);
+        ctx.req().setAttribute(MultipartUtil.MULTIPART_CONFIG_ATTRIBUTE,
+                new MultipartConfigElement(System.getProperty("java.io.tmpdir"), -1L, MAX_UPLOAD_BYTES, UPLOAD_IN_MEMORY_BYTES));
     }
 
     /**
-     * The part of the upload with this name, or null. Asking Javalin for a file makes it read the whole upload with
-     * the server's multipart settings; the part is then looked up in what was read, so a text part (which Javalin
-     * hands out only as a string, read in full) can be given a size limit before anything is read from it.
+     * The part of the upload with this name, or null. The first call has Jetty read the whole upload (under the limits set
+     * by {@link #requireForm}); the parts are then looked up in what was read. Looking a text part up as a {@link Part}
+     * instead of a form parameter is what lets it be given a size limit before it is read.
      */
     private static Part part(Context ctx, String name)
     {
         try
         {
-            ctx.uploadedFiles(name);
             return ctx.req().getPart(name);
+        }
+        catch(IllegalStateException e)
+        {
+            // with no per-part limit and a config always set, this is Jetty stopping an upload that went over MAX_UPLOAD_BYTES
+            throw new PictureTooLargeException(TOO_LARGE);
         }
         catch(IOException | ServletException | RuntimeException e)
         {
@@ -429,7 +454,7 @@ public class ThemeRoutes
         ThemeFile.Person owner = person(ctx);
         ThemeFile saved = saveWith(pictureFrom(ctx), picture -> store.create(values, owner, picture));
         LOG.info("Web theme: {} created {}", saved.getOwner().getId(), saved.getId());
-        send(ctx, themeJson(saved, viewerId(ctx)));
+        send(ctx, themeJson(saved, owner == null ? null : owner.getId()));
         announce(saved.getId());
     }
 
