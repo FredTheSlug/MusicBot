@@ -21,18 +21,19 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,8 +49,8 @@ public class ThemeImages
 {
     private static final Logger LOG = LoggerFactory.getLogger(ThemeImages.class);
 
-    /** What a stored picture's name looks like: 32 lowercase hex characters, a dot and the extension. */
-    private static final Pattern NAME_PATTERN = Pattern.compile("[0-9a-f]{32}\\.(jpg|png|webp|gif)");
+    /** The temp files of uploads that are still being written; a hard kill can leave some behind. */
+    private static final String TEMP_GLOB = ".pic-*.tmp";
     private static final char[] HEX = "0123456789abcdef".toCharArray();
     private static final int NAME_BYTES = 16;
     /** Enough of the start of a file to tell every supported type apart: a WebP needs 12 bytes. */
@@ -64,7 +65,8 @@ public class ThemeImages
     private static final byte[] WEBP = ascii("WEBP");
 
     private static final String NOT_A_PICTURE = "That file isn't a picture we can use (JPG, PNG, WebP or GIF)";
-    private static final String TOO_LARGE = "Pictures can be up to 8 MB";
+    /** The message for a picture over the size limit; the store uses it too when an upload says up front that it is too big. */
+    static final String TOO_LARGE = "Pictures can be up to 8 MB";
 
     private final Path dir;
     private final Random random;
@@ -233,7 +235,7 @@ public class ThemeImages
     /** Deletes a stored picture. Quiet when it is already gone, and for anything that isn't a picture name. */
     public void delete(String name)
     {
-        if(name == null || !NAME_PATTERN.matcher(name).matches())
+        if(name == null || !ThemeFile.IMAGE_PATTERN.matcher(name).matches())
             return;
         deleteQuietly(dir.resolve(name));
     }
@@ -245,13 +247,49 @@ public class ThemeImages
      */
     public Optional<Path> resolve(String name)
     {
-        if(name == null || !NAME_PATTERN.matcher(name).matches())
+        if(name == null || !ThemeFile.IMAGE_PATTERN.matcher(name).matches())
             return Optional.empty();
         Path root = dir.toAbsolutePath().normalize();
         Path file = root.resolve(name).normalize();
         if(!root.equals(file.getParent()) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
             return Optional.empty();
         return Optional.of(file);
+    }
+
+    /**
+     * Deletes the temp files that an upload left behind when the bot was killed in the middle of it: those
+     * last changed before {@code before}. Newer ones may belong to an upload that is still being written.
+     * Never throws and never makes the folder.
+     */
+    public void deleteStaleTemps(Instant before)
+    {
+        deleteOlderThan(dir, TEMP_GLOB, before);
+    }
+
+    /** Deletes the plain files of {@code folder} that match {@code glob} and last changed before {@code before}; quiet if the folder isn't there. */
+    static void deleteOlderThan(Path folder, String glob, Instant before)
+    {
+        if(!Files.isDirectory(folder))
+            return;
+        try(DirectoryStream<Path> files = Files.newDirectoryStream(folder, glob))
+        {
+            for(Path file : files)
+            {
+                try
+                {
+                    if(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.getLastModifiedTime(file).toInstant().isBefore(before))
+                        deleteQuietly(file);
+                }
+                catch(IOException e)
+                {
+                    LOG.warn("Could not check {}: {}", file, e.toString());
+                }
+            }
+        }
+        catch(IOException | RuntimeException e)
+        {
+            LOG.warn("Could not clean up {}: {}", folder, e.toString());
+        }
     }
 
     private static void deleteQuietly(Path file)

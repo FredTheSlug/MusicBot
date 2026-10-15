@@ -22,6 +22,8 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -432,6 +434,38 @@ public class ThemeImagesTest
         assertTrue(Files.exists(wrongKind));
         assertTrue(Files.exists(dir.resolve(name)));
         assertTrue(Files.isDirectory(dir));
+    }
+
+    @Test
+    public void deleteStaleTempsRemovesOnlyOldLeftoverUploads() throws IOException
+    {
+        // nothing there, nothing made
+        images.deleteStaleTemps(Instant.now());
+        assertFalse(Files.exists(dir));
+
+        String name = save(JPEG);
+        Instant cutoff = Instant.parse("2026-10-14T18:00:00Z");
+        Path stale = dir.resolve(".pic-stale.tmp");
+        Path fresh = dir.resolve(".pic-fresh.tmp");
+        Path other = dir.resolve("notes.tmp");
+        Path folder = dir.resolve(".pic-folder.tmp");
+        Files.write(stale, bytes("x"));
+        Files.write(fresh, bytes("x"));
+        Files.write(other, bytes("x"));
+        Files.createDirectories(folder);
+        Files.setLastModifiedTime(stale, FileTime.from(cutoff.minusSeconds(1)));
+        Files.setLastModifiedTime(fresh, FileTime.from(cutoff.plusSeconds(1)));
+        Files.setLastModifiedTime(other, FileTime.from(cutoff.minusSeconds(3600)));
+        Files.setLastModifiedTime(folder, FileTime.from(cutoff.minusSeconds(3600)));
+        Files.setLastModifiedTime(dir.resolve(name), FileTime.from(cutoff.minusSeconds(3600)));
+
+        images.deleteStaleTemps(cutoff);
+
+        assertFalse(Files.exists(stale));
+        assertTrue(Files.exists(fresh));
+        assertTrue(Files.exists(other));
+        assertTrue(Files.isDirectory(folder));
+        assertTrue(Files.exists(dir.resolve(name)));
     }
 
     @Test

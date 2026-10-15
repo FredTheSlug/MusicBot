@@ -65,9 +65,11 @@ public class ThemeFile
     private static final int MAX_PERSON_NAME = 100;
     private static final String ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
     private static final int ID_LENGTH = 12;
-    private static final Pattern ID_PATTERN = Pattern.compile("[a-z0-9]{12}");
+    /** What a theme id looks like; the store only builds a file path from an id that matches it. */
+    static final Pattern ID_PATTERN = Pattern.compile("[a-z0-9]{12}");
     private static final Pattern COLOR_PATTERN = Pattern.compile("#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?");
-    private static final Pattern IMAGE_PATTERN = Pattern.compile("[0-9a-f]{32}\\.(jpg|png|webp|gif)");
+    /** What a stored picture's name looks like: 32 lowercase hex characters, a dot and the extension. {@link ThemeImages} uses it too. */
+    static final Pattern IMAGE_PATTERN = Pattern.compile("[0-9a-f]{32}\\.(jpg|png|webp|gif)");
     private static final Map<String, String> SLOT_LABELS = slotLabels();
 
     private static final String NAME_LENGTH = "Name must be 1 to " + MAX_NAME + " characters";
