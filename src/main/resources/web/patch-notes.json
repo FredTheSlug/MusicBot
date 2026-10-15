@@ -16,7 +16,7 @@
         { "area": "Panel", "text": "Friends can edit the same playlist at the same time." },
         { "area": "Panel", "text": "Start a playlist from any song you pick, not just the first one." },
         { "area": "Mini-player", "text": "The mini-player has an add-to-playlist button too, and shows the real number of songs in each playlist." },
-        { "area": "Discord", "text": "In Discord, play a playlist with \"play playlist Folder/Name\". Editing playlists now happens in the panel instead." }
+        { "area": "Discord", "text": "In Discord, play a playlist with \"play playlist Name\", or \"play playlist Folder/Name\" for one inside a folder. Editing playlists now happens in the panel instead." }
       ]
     },
     {

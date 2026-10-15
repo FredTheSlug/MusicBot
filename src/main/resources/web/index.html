@@ -2468,7 +2468,9 @@
         .login-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 22px var(--accent-glow); }
         .login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-        .header-actions { display: flex; align-items: center; gap: var(--header-actions-gap); }
+        /* Wraps at every width: the row is wide (What's new, Get the app, Panels, Columns, Reset layout) and the
+           header clips horizontally, so on a mid-size window a nowrap row would hide its rightmost buttons. */
+        .header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--header-actions-gap); }
 
         .logout-btn {
             background: var(--bg-elevated);
