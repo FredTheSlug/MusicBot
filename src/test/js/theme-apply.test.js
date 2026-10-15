@@ -146,6 +146,56 @@ test('backdropClampsOutOfRangeValuesAndIgnoresBadPictures', () => {
   assert.equal(ThemeApply.backdrop({}), null);
 });
 
+// ---- the creator's own preview picture (a blob: link the creator made for a file on this computer)
+
+const BLOB = 'blob:https://music.example.org/3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70';
+
+test('localPictureOnlyAcceptsABlobLinkOfThisPage', () => {
+  assert.deepEqual(ThemeApply.localPicture(BLOB, true), { url: BLOB, animated: true });
+  assert.deepEqual(ThemeApply.localPicture(BLOB, false), { url: BLOB, animated: false });
+  assert.deepEqual(ThemeApply.localPicture(BLOB, undefined), { url: BLOB, animated: false });
+  for (const origin of ['http://127.0.0.1:8765', 'https://tauri.localhost', 'http://localhost:3000', 'null']) {
+    const url = 'blob:' + origin + '/3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70';
+    assert.notEqual(ThemeApply.localPicture(url, false), null, url);
+  }
+  const bad = [
+    'blob:https://music.example.org/3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70"); background: url(//evil',
+    'blob:https://music.example.org/3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70 ', ' ' + BLOB,
+    'blob:https://music.example.org/not-a-uuid', 'blob:https://music.example.org/', 'blob:',
+    'blob:javascript:alert(1)//3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70', 'https://music.example.org/3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70',
+    'data:image/png;base64,AAAA', '/theme-images/0123456789abcdef0123456789abcdef.jpg', '', null, undefined, 42, {}, [BLOB]
+  ];
+  for (const url of bad) assert.equal(ThemeApply.localPicture(url, true), null, String(url));
+});
+
+test('theLocalPictureIsAcceptedOnlyWhenItIsExactlyTheOneHandedIn', () => {
+  const local = ThemeApply.localPicture(BLOB, false);
+  assert.equal(ThemeApply.pictureUrl(BLOB), null);
+  assert.equal(ThemeApply.pictureUrl(BLOB, local), BLOB);
+  const other = 'blob:https://music.example.org/aaaaaaaa-7a4d-4e59-9b0c-2d6f1a8e4c70';
+  assert.equal(ThemeApply.pictureUrl(other, local), null);
+  assert.equal(ThemeApply.pictureUrl(BLOB, null), null);
+  const evil = BLOB + '"); background: url(//evil';
+  assert.equal(ThemeApply.pictureUrl(evil, { url: evil, animated: false }), null, 'a hand-made object is checked again');
+  assert.equal(ThemeApply.pictureUrl(BLOB, BLOB), null, 'only what localPicture returned');
+  // the secret links still work next to it
+  assert.equal(ThemeApply.pictureUrl(PICTURE, local), PICTURE);
+});
+
+test('backdropShowsTheLocalPictureAndRespectsItsOwnMotionFlag', () => {
+  const still = ThemeApply.localPicture(BLOB, false);
+  const moving = ThemeApply.localPicture(BLOB, true);
+  const back = ThemeApply.backdrop({ url: BLOB, dim: 30, blur: 2, fit: 'cover' }, still);
+  assert.equal(back.url, BLOB);
+  assert.equal(back.filter, 'blur(2px)');
+  assert.equal(ThemeApply.backdrop({ url: BLOB, dim: 30, blur: 2, fit: 'cover' }), null, 'without it the page refuses the link');
+  assert.equal(ThemeApply.canAnimate(BLOB), false);
+  assert.equal(ThemeApply.canAnimate(BLOB, still), false);
+  assert.equal(ThemeApply.canAnimate(BLOB, moving), true, 'a GIF chosen on this computer is frozen by Reduce motion too');
+  assert.equal(ThemeApply.canAnimate('/theme-images/' + '0123456789abcdef'.repeat(2) + '.gif', still), true);
+  assert.equal(ThemeApply.canAnimate('/theme-images/' + '0123456789abcdef'.repeat(2) + '.jpg', moving), false);
+});
+
 // ---- radius and font
 
 test('scaleRadiusScalesPlainPixelLengths', () => {

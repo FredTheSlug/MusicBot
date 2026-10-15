@@ -5337,6 +5337,365 @@
         html[data-custom-theme][data-custom-plain][data-theme="grove"] .layout-pane.card {
             background: var(--bg-card);
         }
+        /*
+         * The guided theme creator. It has colors of its own (the --tc-* ones) and not the theme's: the page behind it is
+         * being re-colored while it is used, and the window has to stay readable whatever is chosen. At phone width it
+         * fills the screen, and "See the page" steps it aside for a look at the real thing.
+         */
+        .tc-root {
+            --tc-bg: #15171f;
+            --tc-bg2: #1d2029;
+            --tc-bg3: #272b38;
+            --tc-text: #eef0f6;
+            --tc-text2: #a9aec6;
+            --tc-line: rgba(255, 255, 255, 0.14);
+            --tc-line2: rgba(255, 255, 255, 0.26);
+            --tc-accent: #9c8dff;
+            --tc-primary: #6d5cf0;
+            --tc-ok: #4ade80;
+            --tc-warn: #fbbf24;
+            --tc-err: #f87171;
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 1050; /* above the playlist picker (1000), below the toasts (1100) */
+            pointer-events: none; /* only the window and the "back" pill take clicks: the page behind stays in view */
+            color: var(--tc-text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        .tc-root [hidden] { display: none !important; }
+        .tc-root button,
+        .tc-root input,
+        .tc-root summary { font: inherit; }
+        .tc-root :focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; }
+        .tc-sheet {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            bottom: 12px;
+            width: min(460px, calc(100% - 24px));
+            display: flex;
+            flex-direction: column;
+            background: var(--tc-bg);
+            border: 1px solid var(--tc-line2);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+            overflow: hidden;
+            pointer-events: auto;
+            animation: fadeSlideIn 0.2s ease;
+        }
+        .tc-root.tc-aside .tc-sheet { display: none; }
+        .tc-head {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 16px 6px;
+        }
+        .tc-title { flex: 1 1 auto; min-width: 0; font-size: 1.05rem; font-weight: 700; overflow-wrap: anywhere; }
+        .tc-progress { flex-shrink: 0; padding: 4px 16px 12px; border-bottom: 1px solid var(--tc-line); }
+        .tc-dots { display: flex; gap: 6px; list-style: none; }
+        .tc-dots li { flex: 1 1 0; }
+        .tc-dot {
+            display: block;
+            width: 100%;
+            height: 8px;
+            padding: 0;
+            border: none;
+            border-radius: 4px;
+            background: var(--tc-bg3);
+            cursor: pointer;
+        }
+        .tc-dot.done { background: var(--tc-primary); opacity: 0.6; }
+        .tc-dot[aria-current="step"] { background: var(--tc-accent); opacity: 1; }
+        .tc-dot:disabled { cursor: default; }
+        .tc-step-label { margin-top: 6px; color: var(--tc-text2); font-size: 0.78rem; }
+        .tc-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            padding: 16px;
+            scrollbar-gutter: stable;
+        }
+        .tc-body::-webkit-scrollbar { width: 6px; }
+        .tc-body::-webkit-scrollbar-thumb { background: var(--tc-line2); border-radius: 3px; }
+        .tc-step-title { font-size: 1.05rem; font-weight: 700; }
+        .tc-step-title:focus { outline: none; }
+        .tc-help { margin: 4px 0 14px; color: var(--tc-text2); font-size: 0.85rem; }
+        .tc-hint { margin-top: 2px; color: var(--tc-text2); font-size: 0.78rem; }
+        .tc-group { margin-top: 18px; }
+        .tc-group-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tc-text2); }
+        .tc-group.tc-flag { padding: 8px; margin-left: -8px; margin-right: -8px; border-radius: 10px; box-shadow: 0 0 0 2px var(--tc-warn); }
+        .tc-note {
+            margin: 12px 0;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border-left: 3px solid var(--tc-accent);
+            background: var(--tc-bg2);
+            overflow-wrap: anywhere;
+        }
+        .tc-note.warn { border-left-color: var(--tc-warn); }
+        .tc-note.err { border-left-color: var(--tc-err); }
+        .tc-note.ok { border-left-color: var(--tc-ok); }
+        .tc-note-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .tc-btn {
+            padding: 8px 14px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 10px;
+            background: var(--tc-bg3);
+            color: var(--tc-text);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .tc-btn:hover:not(:disabled) { border-color: var(--tc-accent); }
+        .tc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .tc-btn.tc-primary { background: var(--tc-primary); border-color: transparent; color: #fff; }
+        .tc-btn.tc-primary:hover:not(:disabled) { filter: brightness(1.12); }
+        .tc-btn.tc-danger { background: #dc2626; border-color: transparent; color: #fff; }
+        .tc-btn.tc-quiet { background: transparent; border-color: transparent; color: var(--tc-text2); }
+        .tc-btn.tc-quiet:hover:not(:disabled) { color: var(--tc-text); }
+        .tc-btn.tc-big { width: 100%; padding: 14px; font-size: 1rem; }
+        .tc-peek-btn { display: none; }
+        .tc-foot {
+            flex-shrink: 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 12px 16px;
+            border-top: 1px solid var(--tc-line);
+        }
+        .tc-foot .tc-btn { min-width: 96px; }
+        .tc-confirm-slot:empty { display: none; }
+        .tc-confirm-slot { flex-shrink: 0; padding: 10px 16px 0; border-top: 1px solid var(--tc-line); }
+        .tc-confirm {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: var(--tc-bg3);
+        }
+        .tc-confirm-text { flex: 1 1 160px; font-weight: 600; }
+        .tc-pill {
+            position: absolute;
+            left: 50%;
+            bottom: max(18px, env(safe-area-inset-bottom));
+            transform: translateX(-50%);
+            max-width: calc(100% - 32px);
+            padding: 12px 20px;
+            border: none;
+            border-radius: 999px;
+            background: var(--tc-primary);
+            color: #fff;
+            font-weight: 700;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        .tc-pill[hidden] { display: none; }
+
+        /* step 1: cards with a small picture of each theme in its own colors */
+        .tc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; margin-top: 8px; }
+        .tc-card {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 6px;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            background: var(--tc-bg2);
+            color: var(--tc-text);
+            text-align: left;
+            cursor: pointer;
+        }
+        .tc-card:hover { border-color: var(--tc-line2); }
+        .tc-card[aria-pressed="true"] { border-color: var(--tc-accent); background: var(--tc-bg3); }
+        .tc-card-name { padding: 0 2px 2px; font-size: 0.82rem; font-weight: 600; overflow-wrap: anywhere; }
+        .tc-card-by { display: block; color: var(--tc-text2); font-size: 0.72rem; font-weight: 400; }
+        .tc-mock {
+            position: relative;
+            display: block;
+            aspect-ratio: 16 / 10;
+            border-radius: 8px;
+            background: var(--m-bg);
+            overflow: hidden;
+        }
+        .tc-mock-bar { position: absolute; top: 0; left: 0; right: 0; height: 16%; background: var(--m-panel); }
+        .tc-mock-card { position: absolute; left: 7%; right: 7%; top: 26%; bottom: 10%; border-radius: 6px; background: var(--m-card); }
+        .tc-mock-line { position: absolute; left: 12%; top: 40%; width: 46%; height: 6px; border-radius: 3px; background: var(--m-text); }
+        .tc-mock-line.second { top: 58%; width: 30%; background: var(--m-text2); }
+        .tc-mock-pill { position: absolute; right: 12%; bottom: 18%; width: 22%; height: 9px; border-radius: 5px; background: var(--m-accent); }
+
+        /* step 2: colors */
+        .tc-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-top: 8px; }
+        .tc-swatches.four { grid-template-columns: repeat(4, 1fr); }
+        .tc-swatch {
+            aspect-ratio: 1;
+            min-width: 0;
+            padding: 0;
+            border: 2px solid var(--tc-line2);
+            border-radius: 50%;
+            background: var(--sw);
+            cursor: pointer;
+        }
+        .tc-swatches.four .tc-swatch { aspect-ratio: 3 / 2; border-radius: 10px; }
+        .tc-swatch[aria-pressed="true"] { border-color: var(--tc-text); box-shadow: 0 0 0 2px var(--tc-bg), 0 0 0 4px var(--tc-accent); }
+        .tc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+        .tc-seg { display: inline-flex; border: 1px solid var(--tc-line2); border-radius: 10px; overflow: hidden; }
+        .tc-seg button { padding: 7px 18px; border: none; background: var(--tc-bg2); color: var(--tc-text2); font-weight: 600; cursor: pointer; }
+        .tc-seg button[aria-pressed="true"] { background: var(--tc-primary); color: #fff; }
+        .tc-any { display: inline-flex; align-items: center; gap: 8px; color: var(--tc-text2); font-size: 0.82rem; }
+        .tc-root input[type="color"] {
+            width: 44px;
+            height: 32px;
+            padding: 2px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 8px;
+            background: var(--tc-bg2);
+            cursor: pointer;
+        }
+        .tc-badge { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 999px; font-size: 0.82rem; font-weight: 700; }
+        .tc-badge.ok { background: rgba(74, 222, 128, 0.16); color: var(--tc-ok); }
+
+        /* step 3: the picture */
+        .tc-drop {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 26px 16px;
+            border: 2px dashed var(--tc-line2);
+            border-radius: 14px;
+            background: var(--tc-bg2);
+            text-align: center;
+            cursor: pointer;
+        }
+        .tc-drop:hover,
+        .tc-drop.over,
+        .tc-drop:focus-within { border-color: var(--tc-accent); }
+        .tc-drop-title { font-size: 1rem; font-weight: 700; }
+        .tc-drop input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+        .tc-thumb { display: block; width: 100%; max-height: 150px; object-fit: contain; border-radius: 10px; background: var(--tc-bg2); }
+        .tc-range { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; margin-top: 14px; }
+        .tc-range label { font-weight: 600; }
+        .tc-range output { color: var(--tc-text2); font-size: 0.82rem; }
+        .tc-range input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--tc-accent); }
+        .tc-range .tc-hint { grid-column: 1 / -1; margin-top: 0; }
+        .tc-ends { grid-column: 1 / -1; display: flex; justify-content: space-between; color: var(--tc-text2); font-size: 0.78rem; }
+        .tc-opts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+        .tc-opt {
+            padding: 9px 12px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 10px;
+            background: var(--tc-bg2);
+            color: var(--tc-text);
+            text-align: left;
+            cursor: pointer;
+        }
+        .tc-opt[aria-pressed="true"] { border-color: var(--tc-accent); background: var(--tc-bg3); box-shadow: inset 3px 0 0 var(--tc-accent); }
+        .tc-opt:disabled { opacity: 0.55; cursor: not-allowed; }
+        .tc-opt-name { display: block; font-weight: 600; }
+
+        /* step 4: fine-tune */
+        .tc-details { margin-top: 14px; border: 1px solid var(--tc-line2); border-radius: 12px; background: var(--tc-bg2); }
+        .tc-details > summary { padding: 12px 14px; font-weight: 700; cursor: pointer; }
+        .tc-details-body { padding: 0 14px 14px; }
+        .tc-colors { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 10px; }
+        .tc-color-row { display: flex; align-items: center; gap: 10px; padding: 4px; border-radius: 8px; }
+        .tc-color-row.tc-flag { box-shadow: 0 0 0 2px var(--tc-warn); }
+        .tc-color-name { flex: 1 1 auto; min-width: 0; font-size: 0.82rem; font-weight: 600; }
+        .tc-fonts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+        .tc-font {
+            padding: 10px 12px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 10px;
+            background: var(--tc-bg);
+            color: var(--tc-text);
+            text-align: left;
+            cursor: pointer;
+        }
+        .tc-font[aria-pressed="true"] { border-color: var(--tc-accent); background: var(--tc-bg3); }
+        .tc-font-sample { display: block; font-size: 1.15rem; line-height: 1.2; }
+        .tc-font-name { display: block; margin-top: 2px; color: var(--tc-text2); font-size: 0.72rem; font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif; }
+        .tc-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            width: 100%;
+            margin-top: 14px;
+            padding: 12px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 10px;
+            background: var(--tc-bg);
+            color: var(--tc-text);
+            text-align: left;
+            cursor: pointer;
+        }
+        .tc-switch:disabled { opacity: 0.6; cursor: not-allowed; }
+        .tc-switch-track {
+            position: relative;
+            flex-shrink: 0;
+            width: 38px;
+            height: 22px;
+            border-radius: 11px;
+            background: var(--tc-bg3);
+            border: 1px solid var(--tc-line2);
+        }
+        .tc-switch-track::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--tc-text2);
+            transition: transform 0.15s;
+        }
+        .tc-switch[aria-checked="true"] .tc-switch-track { background: var(--tc-primary); border-color: transparent; }
+        .tc-switch[aria-checked="true"] .tc-switch-track::after { background: #fff; transform: translateX(16px); }
+
+        /* step 6: name and share */
+        .tc-field { margin-top: 14px; }
+        .tc-label { display: block; font-weight: 700; }
+        .tc-input {
+            width: 100%;
+            margin-top: 6px;
+            padding: 10px 12px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 10px;
+            background: var(--tc-bg2);
+            color: var(--tc-text);
+        }
+        .tc-input.bad { border-color: var(--tc-err); }
+        .tc-count { margin-top: 4px; color: var(--tc-text2); font-size: 0.78rem; text-align: right; }
+        .tc-error-text { margin-top: 4px; color: var(--tc-err); font-size: 0.84rem; }
+
+        @media (max-width: 900px) {
+            .tc-peek-btn { display: inline-flex; }
+        }
+        @media (max-width: 640px) {
+            .tc-sheet { top: 0; right: 0; bottom: 0; left: 0; width: auto; border: none; border-radius: 0; box-shadow: none; }
+            .tc-head { padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left)); }
+            .tc-progress { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+            .tc-body { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+            .tc-foot { padding: 12px max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+            .tc-foot .tc-btn { flex: 1 1 0; padding-top: 12px; padding-bottom: 12px; }
+            .tc-cards { grid-template-columns: repeat(2, 1fr); }
+            .tc-colors { grid-template-columns: 1fr; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .tc-sheet { animation: none; }
+        }
     </style>
 </head>
 <body>
@@ -5586,6 +5945,7 @@
 
     <script src="/web/theme-palette.js"></script>
     <script src="/web/theme-apply.js"></script>
+    <script src="/web/theme-creator.js"></script>
     <script src="/web/whats-new.js"></script>
 
     <script>
@@ -5683,6 +6043,7 @@
         var themeBackdropData = null; // ThemeApply.backdrop() of the active theme, or null
         var themeBackdropKey = '';
         var themeBackdropSeq = 0;
+        var themeLocalPicture = null; // ThemeApply.localPicture() of the picture the creator is previewing, or null
         var themeLoadSeq = 0;
         var themesReloadTimer = null;
         var themeActedOn = '';        // the theme this panel just deleted or hid
@@ -5747,7 +6108,7 @@
             clearCustomTheme(); // first: the radius values read below must be the base theme's own
             setBaseThemeAttribute(theme.base);
             root.setAttribute('data-custom-theme', theme.id);
-            var back = themeKit.backdrop(theme.background);
+            var back = themeKit.backdrop(theme.background, themeLocalPicture);
             if (!theme.effects || back) root.setAttribute('data-custom-plain', '');
             var vars = window.ThemePalette.cssVars(theme.colors);
             Object.keys(vars).forEach(function (name) { setCustomProperty(name, vars[name]); });
@@ -5864,7 +6225,7 @@
                 hideThemeBackdrop();
                 return;
             }
-            var freeze = readReduceMotion() && themeKit.canAnimate(back.url);
+            var freeze = readReduceMotion() && themeKit.canAnimate(back.url, themeLocalPicture);
             var img = new Image();
             img.onload = async function () {
                 var src = freeze ? await firstFrameOf(back.url, img) : back.url;
@@ -5905,7 +6266,7 @@
         function setReduceMotion(on) {
             reduceMotion = !!on;
             try { localStorage.setItem(REDUCE_MOTION_STORAGE_KEY, reduceMotion ? '1' : '0'); } catch (e) {}
-            if (themeBackdropData && themeKit.canAnimate(themeBackdropData.url)) renderThemeBackdrop();
+            if (themeBackdropData && themeKit.canAnimate(themeBackdropData.url, themeLocalPicture)) renderThemeBackdrop();
         }
 
         // The switch row at the foot of the Panels menu (the menu is rebuilt each time it opens).
@@ -6077,9 +6438,1140 @@
             loadCustomThemes();
         }
 
-        // The guided creator takes this over: null = a new theme, a theme from the list = edit it.
-        function openThemeCreator(themeOrNull) {
-            plToast("The theme creator isn't ready yet.");
+        // ---- The guided theme creator -------------------------------------------------------------------------
+        // A window over the panel. The real page behind it shows the theme as it is being made: each change builds a
+        // theme object in the server's shape (ThemeCreator.previewTheme) and gives it to applyCustomTheme, the same
+        // function that applies a saved theme, so there is no second applier. Cancel puts back what was on before.
+        // The choices, the checks and the values that are saved live in theme-creator.js (tested in Node); this is the
+        // page side: the window, the step screens, the preview, the picture and the request. Every label and name goes
+        // in with textContent; colors only come from ThemeCreator/ThemePalette or <input type=color>.
+        var themeCreator = null;             // the open creator (see openThemeCreator), or null
+        var TC_PICTURE_TYPES = 'image/jpeg,image/png,image/webp,image/gif';
+        var TC_PICTURE_SAMPLE_SIDE = 48;     // a picture is drawn this small to measure how bright it is
+        var TC_LET_GO_AFTER_MS = 3000;       // a replaced picture's local link is let go of once the page has switched over
+        var TC_PREVIEW_DELAY_MS = 30;        // changes that come in a burst (a slider) are previewed together
+        var TC_STAYS_LIVE = ['loginOverlay', 'whatsNewBackdrop', 'plToasts', 'themeBackdrop']; // not made inert behind the window
+
+        // While the creator shows its preview, the list of themes refreshing must not put the real theme back.
+        // (When the creator has stepped aside to let the person pick a theme to delete, the page is the real one.)
+        function themeCreatorHoldsPage() {
+            return !!themeCreator && themeCreator.aside !== 'themes';
+        }
+
+        function tcBtn(label, cls, onClick) {
+            var b = plEl('button', 'tc-btn' + (cls ? ' ' + cls : ''), label);
+            b.type = 'button';
+            b.addEventListener('click', onClick);
+            return b;
+        }
+
+        // A choice among several (card, swatch, option): aria-pressed says which one is chosen.
+        function tcChoice(cls, onClick) {
+            var b = plEl('button', cls);
+            b.type = 'button';
+            b.setAttribute('aria-pressed', 'false');
+            b.addEventListener('click', onClick);
+            return b;
+        }
+
+        function tcPress(el, on) {
+            el.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+
+        function tcGroup(title, hint) {
+            var g = plEl('div', 'tc-group');
+            g.appendChild(plEl('div', 'tc-group-title', title));
+            if (hint) g.appendChild(plEl('div', 'tc-hint', hint));
+            return g;
+        }
+
+        function tcColorInput(label, onInput) {
+            var input = plEl('input');
+            input.type = 'color';
+            input.setAttribute('aria-label', label);
+            input.addEventListener('input', function () { onInput(input.value.toLowerCase()); });
+            return input;
+        }
+
+        // A slider with its name, its value in words and an optional line of help.
+        function tcRange(id, label, hint, min, max, step, onInput) {
+            var wrap = plEl('div', 'tc-range');
+            var lab = plEl('label', '', label);
+            lab.htmlFor = id;
+            var out = plEl('output');
+            var input = plEl('input');
+            input.type = 'range';
+            input.id = id;
+            input.min = String(min);
+            input.max = String(max);
+            input.step = String(step);
+            input.addEventListener('input', function () { onInput(Number(input.value)); });
+            wrap.appendChild(lab);
+            wrap.appendChild(out);
+            wrap.appendChild(input);
+            if (hint) wrap.appendChild(plEl('div', 'tc-hint', hint));
+            return { el: wrap, input: input, out: out };
+        }
+
+        // A small picture of a theme in its colors (the stylesheet's own, or a theme that passed ThemeApply.usable).
+        function tcMock(colors) {
+            var mock = plEl('span', 'tc-mock');
+            mock.setAttribute('aria-hidden', 'true');
+            ['tc-mock-bar', 'tc-mock-card', 'tc-mock-line', 'tc-mock-line second', 'tc-mock-pill'].forEach(function (cls) {
+                mock.appendChild(plEl('span', cls));
+            });
+            var vars = {
+                '--m-bg': colors.bgPrimary, '--m-panel': colors.bgSecondary, '--m-card': colors.bgCard,
+                '--m-text': colors.textPrimary, '--m-text2': colors.textSecondary, '--m-accent': colors.accent
+            };
+            Object.keys(vars).forEach(function (name) { mock.style.setProperty(name, vars[name]); });
+            return mock;
+        }
+
+        // What the creator starts from for a new theme: the built-in theme that is on now (or the base of the custom one).
+        function tcStartBase() {
+            if (themeKit.BUILT_IN.indexOf(themeShown) >= 0) return themeShown;
+            return themeKit.BUILT_IN.indexOf(themeBase) >= 0 ? themeBase : 'nebula';
+        }
+
+        // null = a new theme, a theme of the list = edit it (it opens on the colors, filled in).
+        function openThemeCreator(themeOrNull, opts) {
+            if (themeCreator) {
+                tcSetAside(themeCreator, ''); // asked for again while it stands aside: back to it
+                return;
+            }
+            if (!themeKit || !window.ThemeCreator) {
+                plToast("The theme creator couldn't load. Reload the page and try again.", { error: true });
+                return;
+            }
+            if (themeOrNull && themeOrNull.mine !== true) return;
+            var TC = window.ThemeCreator;
+            var editing = !!themeOrNull;
+            var state = editing ? TC.fromTheme(themeOrNull) : TC.startState(tcStartBase());
+            var s = themeCreator = {
+                state: state,
+                editing: editing,
+                step: TC.firstStep(editing),
+                startKey: 'builtin:' + state.base,
+                touched: false,        // anything changed since it opened (Cancel asks only then)
+                saving: false,
+                aside: '',             // '' | 'peek' (a look at the page) | 'themes' (picking a theme to delete)
+                errors: {},            // step number -> the failure to show there
+                flag: null,            // {bgPrimary, bgCard}: the colors "Fix it" could not make readable
+                fixMessage: '',
+                nameShown: false,      // show the name's problem (after a try to save)
+                file: null,            // the picture file chosen here
+                fileKind: null,
+                blobUrl: '',           // its local link, for the preview
+                fileProblem: '',
+                pictureSeq: 0,
+                previewTimer: 0,
+                inerted: [],
+                returnFocus: opts && opts.returnFocus ? opts.returnFocus : document.activeElement,
+                refresh: function () {}
+            };
+            tcBuildWindow(s);
+            tcSetInert(s, true);
+            document.addEventListener('keydown', tcOnKey, true);
+            document.addEventListener('dragover', tcKeepFilesOut, true);
+            document.addEventListener('drop', tcKeepFilesOut, true);
+            tcShowStep(s, s.step);
+            tcPreviewNow(s);
+        }
+
+        // ---- the window ----
+
+        function tcBuildWindow(s) {
+            var TC = window.ThemeCreator;
+            var root = s.root = plEl('div', 'tc-root');
+            var sheet = s.sheet = plEl('div', 'tc-sheet');
+            sheet.setAttribute('role', 'dialog');
+            sheet.setAttribute('aria-modal', 'true');
+            sheet.setAttribute('aria-labelledby', 'tcTitle');
+
+            var head = plEl('div', 'tc-head');
+            s.title = plEl('h2', 'tc-title', s.editing ? 'Edit your theme' : 'Create a theme');
+            s.title.id = 'tcTitle';
+            head.appendChild(s.title);
+            var peek = tcBtn('See the page', 'tc-quiet tc-peek-btn', function () { tcSetAside(s, 'peek'); });
+            peek.title = 'Step aside for a moment to see the whole page';
+            head.appendChild(peek);
+            s.cancelBtn = tcBtn('Cancel', 'tc-quiet', function () { tcCancel(s); });
+            head.appendChild(s.cancelBtn);
+            sheet.appendChild(head);
+
+            var progress = plEl('div', 'tc-progress');
+            var dots = plEl('ol', 'tc-dots');
+            s.dots = TC.STEPS.map(function (step, i) {
+                var li = plEl('li');
+                var dot = plEl('button', 'tc-dot');
+                dot.type = 'button';
+                dot.setAttribute('aria-label', 'Step ' + (i + 1) + ': ' + step.title);
+                dot.addEventListener('click', function () { tcGo(s, i); });
+                li.appendChild(dot);
+                dots.appendChild(li);
+                return dot;
+            });
+            progress.appendChild(dots);
+            s.stepLabel = plEl('div', 'tc-step-label');
+            progress.appendChild(s.stepLabel);
+            sheet.appendChild(progress);
+
+            s.body = plEl('div', 'tc-body');
+            sheet.appendChild(s.body);
+            s.confirmSlot = plEl('div', 'tc-confirm-slot');
+            sheet.appendChild(s.confirmSlot);
+
+            var foot = plEl('div', 'tc-foot');
+            s.backBtn = tcBtn('Back', '', function () { tcGo(s, TC.prevStep(s.step)); });
+            s.nextBtn = tcBtn('Next', 'tc-primary', function () {
+                if (TC.isLastStep(s.step)) tcSave(s);
+                else tcGo(s, TC.nextStep(s.step));
+            });
+            foot.appendChild(s.backBtn);
+            foot.appendChild(s.nextBtn);
+            sheet.appendChild(foot);
+
+            s.pill = tcBtn('Back to the creator', 'tc-pill', function () { tcSetAside(s, ''); });
+            s.pill.hidden = true;
+            root.appendChild(sheet);
+            root.appendChild(s.pill);
+            document.body.appendChild(root);
+        }
+
+        // Dots, step label and the Back/Next buttons for the step on show (and for saving).
+        function tcRefreshChrome(s) {
+            var TC = window.ThemeCreator;
+            s.dots.forEach(function (dot, i) {
+                if (i === s.step) dot.setAttribute('aria-current', 'step');
+                else dot.removeAttribute('aria-current');
+                dot.classList.toggle('done', i < s.step);
+            });
+            s.stepLabel.textContent = 'Step ' + (s.step + 1) + ' of ' + TC.STEPS.length;
+            s.backBtn.disabled = TC.isFirstStep(s.step);
+            s.nextBtn.textContent = TC.nextLabel(s.step, s.saving);
+            // while the request is out nothing in the window can be changed
+            s.sheet.inert = s.saving;
+        }
+
+        function tcGo(s, index) {
+            if (s.saving) return;
+            delete s.errors[s.step];
+            s.fileProblem = '';
+            tcShowStep(s, index);
+        }
+
+        function tcShowStep(s, index) {
+            var TC = window.ThemeCreator;
+            tcCloseConfirm(s);
+            s.step = TC.clampStep(index);
+            s.body.textContent = '';
+            s.heading = plEl('h3', 'tc-step-title', TC.STEPS[s.step].title);
+            s.heading.tabIndex = -1;
+            s.body.appendChild(s.heading);
+            s.alertSlot = plEl('div');
+            s.body.appendChild(s.alertSlot);
+            var builders = [tcStepStart, tcStepColors, tcStepPicture, tcStepTweak, tcStepMini, tcStepShare];
+            s.refresh = builders[s.step](s) || function () {};
+            tcRenderAlert(s);
+            s.refresh();
+            tcRefreshChrome(s);
+            s.body.scrollTop = 0;
+            s.heading.focus({ preventScroll: true });
+        }
+
+        // Something changed: keep the state, preview it, redraw the step.
+        function tcCommit(s, next) {
+            if (themeCreator !== s) return;
+            s.state = next;
+            s.touched = true;
+            tcSchedulePreview(s);
+            s.refresh();
+        }
+
+        // A failure to show at the top of the step it belongs to, with the one thing that can be done about it.
+        function tcRenderAlert(s) {
+            s.alertSlot.textContent = '';
+            var failure = s.errors[s.step];
+            if (!failure) return;
+            var note = plEl('div', 'tc-note ' + (failure.type === 'invalid' ? 'err' : 'warn'));
+            note.setAttribute('role', 'alert');
+            note.appendChild(plEl('div', '', failure.text));
+            var actions = plEl('div', 'tc-note-actions');
+            if (failure.type === 'limit') actions.appendChild(tcBtn('Show my themes', 'tc-primary', function () { tcSetAside(s, 'themes'); }));
+            if (failure.type === 'changed') actions.appendChild(tcBtn('Reload', 'tc-primary', function () { tcReload(s); }));
+            if (failure.type === 'gone') actions.appendChild(tcBtn('Save as a new theme', 'tc-primary', function () { tcSaveAsNew(s); }));
+            if (actions.firstChild) note.appendChild(actions);
+            s.alertSlot.appendChild(note);
+        }
+
+        // New themes only: all the places are taken. The server decides when it comes to saving; this is just early notice.
+        function tcLimitNote(s) {
+            var limit = customThemes.limit;
+            if (s.editing || s.errors[s.step] || !limit || !(limit.max > 0) || limit.used < limit.max) return; // (a refusal says it already)
+            var note = plEl('div', 'tc-note warn');
+            note.appendChild(plEl('div', '', 'You already have all ' + limit.max + " of your themes. You can design this one, but you'll need to delete one of yours before you can save it."));
+            s.body.appendChild(note);
+        }
+
+        // ---- step 1: start from ----
+
+        function tcStepStart(s) {
+            var TC = window.ThemeCreator;
+            s.body.appendChild(plEl('p', 'tc-help', s.editing
+                ? 'The theme yours is based on. Choosing a different one starts your colors over.'
+                : "Pick a theme to start from. You'll make it your own on the next steps."));
+            tcLimitNote(s);
+            var cards = [];
+            function addCards(title, entries) {
+                if (!entries.length) return;
+                var group = tcGroup(title);
+                var grid = plEl('div', 'tc-cards');
+                entries.forEach(function (entry) {
+                    var card = tcChoice('tc-card', function () { tcPickStart(s, entry); });
+                    card.appendChild(tcMock(entry.colors));
+                    var name = plEl('span', 'tc-card-name');
+                    name.appendChild(plEl('bdi', '', entry.label));
+                    if (entry.by) {
+                        var by = plEl('span', 'tc-card-by');
+                        by.appendChild(document.createTextNode('by '));
+                        by.appendChild(plEl('bdi', '', entry.by));
+                        name.appendChild(by);
+                    }
+                    card.appendChild(name);
+                    grid.appendChild(card);
+                    cards.push({ key: entry.key, el: card });
+                });
+                group.appendChild(grid);
+                s.body.appendChild(group);
+            }
+            addCards('Built-in', themeKit.BUILT_IN.map(function (id) {
+                return { key: 'builtin:' + id, label: TC.BASE_PALETTES[id].label, colors: TC.BASE_PALETTES[id].colors, base: id };
+            }));
+            addCards('Community', themeKit.groupThemes(customThemes.list).community.map(function (theme) {
+                return {
+                    key: 'theme:' + theme.id, label: themeKit.displayName(theme.name), colors: theme.colors, theme: theme,
+                    by: themeKit.personName(theme.owner ? theme.owner.name : null)
+                };
+            }));
+            return function () {
+                cards.forEach(function (card) { tcPress(card.el, card.key === s.startKey); });
+            };
+        }
+
+        function tcPickStart(s, entry) {
+            var TC = window.ThemeCreator;
+            if (entry.key === s.startKey) return;
+            s.startKey = entry.key;
+            s.flag = null;
+            s.fixMessage = '';
+            tcCommit(s, entry.theme ? TC.chooseTheme(s.state, entry.theme) : TC.chooseBase(s.state, entry.base));
+        }
+
+        // ---- "Readable" and what to do when it is not (steps 2 and 4) ----
+
+        // opts.clearer(hex): the state with that main color, for "Use a clearer one".
+        function tcStatus(s, opts) {
+            var TC = window.ThemeCreator;
+            var el = plEl('div', 'tc-status');
+            el.tabIndex = -1;
+            el.setAttribute('aria-live', 'polite');
+            var status = { el: el };
+            status.update = function () {
+                var report = TC.report(s.state.colors);
+                // "make them closer" and the marked colors only stay while moving the text still wouldn't help
+                if (!report.ok && s.fixMessage && !TC.fixIt(s.state).farApart) {
+                    s.fixMessage = '';
+                    s.flag = null;
+                }
+                el.textContent = '';
+                if (report.ok) {
+                    s.fixMessage = '';
+                    s.flag = null;
+                    el.appendChild(plEl('span', 'tc-badge ok', TC.TEXT.READABLE));
+                } else {
+                    var note = plEl('div', 'tc-note warn');
+                    note.appendChild(plEl('div', '', s.fixMessage || TC.TEXT.NOT_READABLE));
+                    var actions = plEl('div', 'tc-note-actions');
+                    actions.appendChild(tcBtn('Fix it', '', function () { tcFixIt(s, status); }));
+                    note.appendChild(actions);
+                    el.appendChild(note);
+                }
+                if (!report.accentVisible) {
+                    var hard = plEl('div', 'tc-note');
+                    hard.appendChild(plEl('div', '', TC.TEXT.ACCENT_HARD_TO_SEE));
+                    var more = plEl('div', 'tc-note-actions');
+                    more.appendChild(tcBtn('Use a clearer one', '', function () {
+                        tcCommit(s, opts.clearer(TC.clearerAccent(s.state.colors.accent, s.state.colors.bgPrimary)));
+                        el.focus({ preventScroll: true });
+                    }));
+                    hard.appendChild(more);
+                    el.appendChild(hard);
+                }
+            };
+            return status;
+        }
+
+        // Moves the text colors just far enough. If Cards and Background are too far apart for any text, says so and
+        // marks the two colors to change.
+        function tcFixIt(s, status) {
+            var TC = window.ThemeCreator;
+            var fix = TC.fixIt(s.state);
+            s.fixMessage = fix.message;
+            s.flag = null;
+            if (fix.farApart) {
+                s.flag = {};
+                fix.highlight.forEach(function (slot) { s.flag[slot] = true; });
+            }
+            tcCommit(s, fix.state);
+            status.el.focus({ preventScroll: true });
+        }
+
+        // ---- step 2: colors ----
+
+        function tcStepColors(s) {
+            var TC = window.ThemeCreator;
+            var palette = window.ThemePalette;
+            s.body.appendChild(plEl('p', 'tc-help', 'Choose a main color and a background. We work out the rest and keep the words easy to read.'));
+            var surprise = plEl('div', 'tc-row');
+            surprise.appendChild(tcBtn('Surprise me', '', function () { tcCommit(s, TC.surpriseMe(s.state, Math.random)); }));
+            s.body.appendChild(surprise);
+
+            var mainGroup = tcGroup('Main color', 'Buttons, highlights and the progress bar.');
+            var mainSuggested = [];
+            var mainGrid = plEl('div', 'tc-swatches');
+            var mainButtons = TC.ACCENT_NAMES.map(function (name, i) {
+                var b = tcChoice('tc-swatch', function () { tcCommit(s, TC.setMain(s.state, mainSuggested[i])); });
+                b.setAttribute('aria-label', name);
+                b.title = name;
+                mainGrid.appendChild(b);
+                return b;
+            });
+            mainGroup.appendChild(mainGrid);
+            var mainRow = plEl('div', 'tc-row');
+            var mainAny = plEl('label', 'tc-any', 'Any color');
+            var mainInput = tcColorInput('Choose any main color', function (hex) { tcCommit(s, TC.setMain(s.state, hex)); });
+            mainAny.appendChild(mainInput);
+            mainRow.appendChild(mainAny);
+            mainGroup.appendChild(mainRow);
+            s.body.appendChild(mainGroup);
+
+            var backGroup = tcGroup('Background', 'The page behind everything.');
+            var seg = plEl('div', 'tc-seg');
+            seg.setAttribute('role', 'group');
+            seg.setAttribute('aria-label', 'Dark or light');
+            var modes = ['dark', 'light'].map(function (mode) {
+                var b = tcChoice('', function () { tcCommit(s, TC.setMode(s.state, mode)); });
+                b.textContent = mode === 'dark' ? 'Dark' : 'Light';
+                seg.appendChild(b);
+                return { mode: mode, el: b };
+            });
+            var segRow = plEl('div', 'tc-row');
+            segRow.appendChild(seg);
+            backGroup.appendChild(segRow);
+            var backSuggested = [];
+            var backGrid = plEl('div', 'tc-swatches four');
+            var backButtons = [0, 1, 2, 3].map(function (i) {
+                var b = tcChoice('tc-swatch', function () { tcCommit(s, TC.setPage(s.state, backSuggested[i])); });
+                b.setAttribute('aria-label', 'Suggested background ' + (i + 1));
+                backGrid.appendChild(b);
+                return b;
+            });
+            backGroup.appendChild(backGrid);
+            var backRow = plEl('div', 'tc-row');
+            var backAny = plEl('label', 'tc-any', 'Any color');
+            var backInput = tcColorInput('Choose any background color', function (hex) { tcCommit(s, TC.setPage(s.state, hex)); });
+            backAny.appendChild(backInput);
+            backRow.appendChild(backAny);
+            backGroup.appendChild(backRow);
+            s.body.appendChild(backGroup);
+
+            var status = tcStatus(s, { clearer: function (hex) { return TC.setMain(s.state, hex); } });
+            var statusGroup = plEl('div', 'tc-group');
+            statusGroup.appendChild(status.el);
+            s.body.appendChild(statusGroup);
+
+            return function () {
+                var st = s.state;
+                mainSuggested = TC.accentSuggestions(st.pageColor);
+                mainButtons.forEach(function (b, i) {
+                    b.style.setProperty('--sw', mainSuggested[i]);
+                    tcPress(b, mainSuggested[i] === st.mainColor);
+                });
+                mainInput.value = st.mainColor;
+                modes.forEach(function (m) { tcPress(m.el, m.mode === st.mode); });
+                backSuggested = palette.suggestBackgrounds(st.mainColor, st.mode);
+                backButtons.forEach(function (b, i) {
+                    b.style.setProperty('--sw', backSuggested[i]);
+                    tcPress(b, backSuggested[i] === st.pageColor);
+                });
+                backInput.value = st.pageColor;
+                status.update();
+                backGroup.classList.toggle('tc-flag', !!(s.flag && s.flag.bgPrimary));
+            };
+        }
+
+        // ---- step 3: the background picture ----
+
+        // The link the preview picture is shown from, or '' (the local link only counts while the creator holds it).
+        function tcPictureSrc(s) {
+            var url = s.state.picture === 'new' ? s.blobUrl : (s.state.picture === 'saved' ? s.state.savedPictureUrl : '');
+            return themeKit.pictureUrl(url, themeLocalPicture) || '';
+        }
+
+        function tcStepPicture(s) {
+            var TC = window.ThemeCreator;
+            s.body.appendChild(plEl('p', 'tc-help', 'Put your own picture behind the whole page. This is optional: skip it to keep just your colors.'));
+            var problem = plEl('div', 'tc-note err');
+            problem.setAttribute('role', 'alert');
+            problem.hidden = true;
+            s.body.appendChild(problem);
+
+            var input = plEl('input');
+            input.type = 'file';
+            input.accept = TC_PICTURE_TYPES;
+            input.setAttribute('aria-label', 'Choose a picture');
+            input.addEventListener('change', function () {
+                var file = input.files && input.files[0];
+                input.value = '';
+                if (file) tcChoosePicture(s, file);
+            });
+
+            // no picture yet
+            var empty = plEl('div');
+            var zone = plEl('label', 'tc-drop');
+            zone.appendChild(plEl('span', 'tc-drop-title', 'Drop a picture here, or choose one'));
+            zone.appendChild(plEl('span', 'tc-hint', 'JPG, PNG, WebP or GIF, up to 8 MB. Animated GIFs work too.'));
+            zone.appendChild(input);
+            ['dragenter', 'dragover'].forEach(function (type) {
+                zone.addEventListener(type, function (e) {
+                    e.preventDefault();
+                    zone.classList.add('over');
+                });
+            });
+            zone.addEventListener('dragleave', function () { zone.classList.remove('over'); });
+            zone.addEventListener('drop', function (e) {
+                e.preventDefault();
+                zone.classList.remove('over');
+                var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                if (file) tcChoosePicture(s, file);
+            });
+            empty.appendChild(zone);
+            var skipRow = plEl('div', 'tc-row');
+            skipRow.appendChild(tcBtn("Skip, I don't want a picture", 'tc-big', function () { tcGo(s, TC.nextStep(s.step)); }));
+            empty.appendChild(skipRow);
+            var removal = plEl('div', 'tc-note');
+            removal.appendChild(plEl('div', '', 'The picture this theme has now will be removed when you save.'));
+            empty.appendChild(removal);
+            s.body.appendChild(empty);
+
+            // a picture is chosen
+            var picked = plEl('div');
+            var thumb = plEl('img', 'tc-thumb');
+            thumb.alt = 'A preview of your picture';
+            picked.appendChild(thumb);
+            var pickedRow = plEl('div', 'tc-row');
+            pickedRow.appendChild(tcBtn('Choose a different picture', '', function () { input.click(); }));
+            pickedRow.appendChild(tcBtn('Remove picture', 'tc-quiet', function () { tcRemovePicture(s); }));
+            picked.appendChild(pickedRow);
+            var dim = tcRange('tcDim', 'Darken', 'Makes the words easier to read over the picture.', 0, 90, 1, function (v) {
+                tcCommit(s, TC.setPictureLook(s.state, { dim: v }));
+            });
+            var blur = tcRange('tcBlur', 'Blur', null, 0, 20, 1, function (v) {
+                tcCommit(s, TC.setPictureLook(s.state, { blur: v }));
+            });
+            picked.appendChild(dim.el);
+            picked.appendChild(blur.el);
+            var fitGroup = tcGroup('Fit');
+            var fitList = plEl('div', 'tc-opts');
+            var fits = [
+                ['cover', 'Fill the screen', 'The picture covers the page. The edges may be cut off.'],
+                ['contain', 'Show the whole picture', 'Nothing is cut off. There may be bars at the sides.'],
+                ['center', 'Center it', 'The picture stays its own size, in the middle.']
+            ].map(function (fit) {
+                var b = tcChoice('tc-opt', function () { tcCommit(s, TC.setPictureLook(s.state, { fit: fit[0] })); });
+                b.appendChild(plEl('span', 'tc-opt-name', fit[1]));
+                b.appendChild(plEl('span', 'tc-hint', fit[2]));
+                fitList.appendChild(b);
+                return { fit: fit[0], el: b };
+            });
+            fitGroup.appendChild(fitList);
+            picked.appendChild(fitGroup);
+            var effects = plEl('div', 'tc-note');
+            effects.appendChild(plEl('div', '', 'While a picture is on, the theme\'s special effects are off, so they don\'t fight with it.'));
+            picked.appendChild(effects);
+            s.body.appendChild(picked);
+
+            return function () {
+                var st = s.state;
+                var has = st.picture !== 'none';
+                empty.hidden = has;
+                picked.hidden = !has;
+                problem.hidden = !s.fileProblem;
+                problem.textContent = s.fileProblem;
+                removal.hidden = !(st.picture === 'none' && st.hadPicture);
+                if (!has) return;
+                var src = tcPictureSrc(s);
+                if (src && thumb.getAttribute('src') !== src) thumb.src = src;
+                thumb.hidden = !src;
+                dim.input.value = String(st.dim);
+                dim.out.textContent = st.dim + '%';
+                blur.input.value = String(st.blur);
+                blur.out.textContent = st.blur === 0 ? 'None' : st.blur + ' px';
+                fits.forEach(function (f) { tcPress(f.el, f.fit === st.fit); });
+                effects.hidden = !TC.hasDecorations(st.base);
+            };
+        }
+
+        // The brightness the picture is measured at: drawn small over the page color, then averaged.
+        function tcLoadPicture(url, pageColor) {
+            var TC = window.ThemeCreator;
+            return new Promise(function (resolve) {
+                var img = new Image();
+                img.onload = function () {
+                    var w = img.naturalWidth, h = img.naturalHeight;
+                    if (!w || !h) {
+                        resolve({ ok: false });
+                        return;
+                    }
+                    var dim = NaN;
+                    try {
+                        var shrink = Math.min(1, TC_PICTURE_SAMPLE_SIDE / Math.max(w, h));
+                        var canvas = document.createElement('canvas');
+                        canvas.width = Math.max(1, Math.round(w * shrink));
+                        canvas.height = Math.max(1, Math.round(h * shrink));
+                        var g = canvas.getContext('2d');
+                        g.fillStyle = pageColor;
+                        g.fillRect(0, 0, canvas.width, canvas.height);
+                        g.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        dim = TC.suggestedDim(g.getImageData(0, 0, canvas.width, canvas.height).data);
+                    } catch (e) {
+                        dim = NaN;
+                    }
+                    resolve({ ok: true, dim: dim });
+                };
+                img.onerror = function () { resolve({ ok: false }); };
+                img.src = url;
+            });
+        }
+
+        function tcLetGo(url) {
+            if (url) setTimeout(function () { URL.revokeObjectURL(url); }, TC_LET_GO_AFTER_MS);
+        }
+
+        // A file chosen or dropped: checked by its first bytes, shown at once from a local link, and measured for
+        // the Darken it starts at. Nothing is uploaded until Save.
+        async function tcChoosePicture(s, file) {
+            var TC = window.ThemeCreator;
+            var seq = ++s.pictureSeq;
+            var kind = null;
+            try {
+                kind = TC.sniffPicture(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+            } catch (e) {
+                kind = null;
+            }
+            if (themeCreator !== s || seq !== s.pictureSeq) return;
+            var refused = TC.pictureProblem(kind, file.size);
+            var url = refused ? '' : URL.createObjectURL(file);
+            var local = url ? themeKit.localPicture(url, TC.canMove(kind)) : null;
+            if (!refused && !local) refused = TC.TEXT.NOT_A_PICTURE;
+            var info = refused ? null : await tcLoadPicture(url, s.state.colors.bgPrimary);
+            if (!refused && !info.ok) refused = "That picture couldn't be opened. Try another one.";
+            if (themeCreator !== s || seq !== s.pictureSeq || refused) {
+                if (url) URL.revokeObjectURL(url);
+                if (themeCreator === s && seq === s.pictureSeq) {
+                    s.fileProblem = refused;
+                    s.refresh();
+                }
+                return;
+            }
+            var old = s.blobUrl;
+            s.file = file;
+            s.fileKind = kind;
+            s.blobUrl = url;
+            themeLocalPicture = local;
+            s.fileProblem = '';
+            tcCommit(s, TC.withNewPicture(s.state, info.dim));
+            tcPreviewNow(s);
+            tcLetGo(old);
+        }
+
+        function tcRemovePicture(s) {
+            var TC = window.ThemeCreator;
+            var old = s.blobUrl;
+            s.pictureSeq++;
+            s.file = null;
+            s.fileKind = null;
+            s.blobUrl = '';
+            s.fileProblem = '';
+            themeLocalPicture = null;
+            tcCommit(s, TC.withoutPicture(s.state));
+            tcPreviewNow(s);
+            tcLetGo(old);
+        }
+
+        // ---- step 4: fine-tune ----
+
+        function tcStepTweak(s) {
+            var TC = window.ThemeCreator;
+            s.body.appendChild(plEl('p', 'tc-help', "Everything here is optional. If you're happy with how the page looks, just press Next."));
+            var status = tcStatus(s, { clearer: function (hex) { return TC.tweakColor(s.state, 'accent', hex); } });
+            s.body.appendChild(status.el);
+
+            var details = plEl('details', 'tc-details');
+            details.appendChild(plEl('summary', '', 'Want to tweak more?'));
+            var inner = plEl('div', 'tc-details-body');
+            details.appendChild(inner);
+            s.body.appendChild(details);
+            if (s.flag) details.open = true;
+
+            var colorsGroup = tcGroup('Colors', 'Changing the colors on the Colors step starts these over.');
+            var grid = plEl('div', 'tc-colors');
+            var rows = TC.COLOR_CHOICES.map(function (choice) {
+                var row = plEl('label', 'tc-color-row');
+                row.title = choice.hint;
+                row.appendChild(plEl('span', 'tc-color-name', choice.label));
+                var input = tcColorInput(choice.label, function (hex) { tcCommit(s, TC.tweakColor(s.state, choice.slot, hex)); });
+                row.appendChild(input);
+                grid.appendChild(row);
+                return { slot: choice.slot, row: row, input: input };
+            });
+            colorsGroup.appendChild(grid);
+            inner.appendChild(colorsGroup);
+
+            var cornersGroup = tcGroup('Corners');
+            var corners = tcRange('tcCorners', 'Shape of the corners', null, 0, 200, 5, function (v) {
+                tcCommit(s, TC.setCorners(s.state, v));
+            });
+            var ends = plEl('div', 'tc-ends');
+            ends.appendChild(plEl('span', '', 'Square'));
+            ends.appendChild(plEl('span', '', 'Round'));
+            corners.el.appendChild(ends);
+            cornersGroup.appendChild(corners.el);
+            inner.appendChild(cornersGroup);
+
+            var fontGroup = tcGroup('Font', 'Shown on a line of sample text.');
+            var fontGrid = plEl('div', 'tc-fonts');
+            var fonts = TC.FONTS.map(function (font) {
+                var b = tcChoice('tc-font', function () { tcCommit(s, TC.setFont(s.state, font)); });
+                var sample = plEl('span', 'tc-font-sample', 'The quick brown fox');
+                sample.style.setProperty('font-family', themeKit.fontStack(font));
+                b.appendChild(sample);
+                b.appendChild(plEl('span', 'tc-font-name', font));
+                fontGrid.appendChild(b);
+                return { font: font, el: b };
+            });
+            fontGroup.appendChild(fontGrid);
+            inner.appendChild(fontGroup);
+
+            // Only for a base that has special effects: for any other, "off" would take away even its plain glow.
+            var effectsSwitch = null;
+            var effectsText = null;
+            if (TC.hasDecorations(s.state.base)) {
+                effectsSwitch = plEl('button', 'tc-switch');
+                effectsSwitch.type = 'button';
+                effectsSwitch.setAttribute('role', 'switch');
+                var words = plEl('span');
+                words.appendChild(plEl('span', 'tc-opt-name', 'Keep special effects'));
+                effectsText = plEl('span', 'tc-hint');
+                words.appendChild(effectsText);
+                effectsSwitch.appendChild(words);
+                effectsSwitch.appendChild(plEl('span', 'tc-switch-track'));
+                effectsSwitch.addEventListener('click', function () { tcCommit(s, TC.setEffects(s.state, !s.state.effects)); });
+                inner.appendChild(effectsSwitch);
+            }
+
+            return function () {
+                var st = s.state;
+                status.update();
+                rows.forEach(function (r) {
+                    r.input.value = st.colors[r.slot].slice(0, 7);
+                    r.row.classList.toggle('tc-flag', !!(s.flag && s.flag[r.slot]));
+                });
+                corners.input.value = String(st.radiusScale);
+                corners.out.textContent = st.radiusScale === 100 ? 'As designed' : st.radiusScale + '%';
+                fonts.forEach(function (f) { tcPress(f.el, f.font === st.font); });
+                if (effectsSwitch) {
+                    var withPicture = st.picture !== 'none';
+                    effectsSwitch.setAttribute('aria-checked', !withPicture && st.effects ? 'true' : 'false');
+                    effectsSwitch.disabled = withPicture;
+                    effectsText.textContent = withPicture
+                        ? 'Off while you use a background picture.'
+                        : 'The flames, patterns and glows that come with this theme.';
+                }
+            };
+        }
+
+        // ---- step 5: the mini-player ----
+
+        // TASK 8 REPLACES THE BODY OF THIS FUNCTION with the mini-player preview. `host` is the empty step area and
+        // s.state.mini is null (no mini-player version: nothing is sent) or {colors (14 slots), useImage, dim}. Change it
+        // only through tcCommit(s, newState), which keeps the preview, "changed" and the saved values in step.
+        // Return a function that redraws from s.state (it runs after every change), or nothing. Until then the step is a
+        // placeholder, and a theme that already has a mini-player version is saved with it unchanged.
+        function tcMiniStep(s, host) {
+            var TC = window.ThemeCreator;
+            host.appendChild(plEl('p', 'tc-help', 'Make a mini-player version too?'));
+            var note = plEl('div', 'tc-note');
+            note.appendChild(plEl('div', '', s.state.mini
+                ? 'This theme already has a mini-player version. It stays as it is.'
+                : "The mini-player version isn't ready yet. Skip this for now: your theme just won't be offered in the mini-player."));
+            host.appendChild(note);
+            var row = plEl('div', 'tc-row');
+            row.appendChild(tcBtn('Skip', 'tc-big', function () { tcGo(s, TC.nextStep(s.step)); }));
+            host.appendChild(row);
+        }
+
+        function tcStepMini(s) {
+            return tcMiniStep(s, s.body);
+        }
+
+        // ---- step 6: name and share ----
+
+        function tcStepShare(s) {
+            var TC = window.ThemeCreator;
+            s.body.appendChild(plEl('p', 'tc-help', 'Last step: name your theme and choose who can use it.'));
+            tcLimitNote(s);
+
+            var field = plEl('div', 'tc-field');
+            var label = plEl('label', 'tc-label', 'Name');
+            label.htmlFor = 'tcName';
+            var input = plEl('input', 'tc-input');
+            input.type = 'text';
+            input.id = 'tcName';
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+            input.setAttribute('aria-describedby', 'tcNameCount');
+            var count = plEl('div', 'tc-count');
+            count.id = 'tcNameCount';
+            var problem = plEl('div', 'tc-error-text');
+            problem.setAttribute('role', 'alert');
+            field.appendChild(label);
+            field.appendChild(input);
+            field.appendChild(problem);
+            field.appendChild(count);
+            s.body.appendChild(field);
+            input.addEventListener('input', function () {
+                s.state = TC.setName(s.state, input.value);
+                s.touched = true;
+                drawName();
+            });
+            input.addEventListener('blur', function () {
+                if (input.value) s.nameShown = true;
+                drawName();
+            });
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    tcSave(s);
+                }
+            });
+            function drawName() {
+                var wrong = TC.nameProblem(s.state.name);
+                count.textContent = Array.from(s.state.name.trim()).length + ' / ' + TC.MAX_NAME;
+                problem.textContent = s.nameShown ? wrong : '';
+                input.classList.toggle('bad', s.nameShown && !!wrong);
+                input.setAttribute('aria-invalid', s.nameShown && wrong ? 'true' : 'false');
+            }
+            s.drawName = drawName;
+
+            var who = tcGroup('Who can use it');
+            var list = plEl('div', 'tc-opts');
+            var options = [
+                ['public', 'Public', 'Everyone in the server can pick it.'],
+                ['private', 'Private', 'Only you.']
+            ].map(function (option) {
+                var b = tcChoice('tc-opt', function () { tcCommit(s, TC.setVisibility(s.state, option[0])); });
+                b.appendChild(plEl('span', 'tc-opt-name', option[1]));
+                b.appendChild(plEl('span', 'tc-hint', option[2]));
+                list.appendChild(b);
+                return { value: option[0], el: b };
+            });
+            who.appendChild(list);
+            s.body.appendChild(who);
+            var hidden = null;
+            if (s.state.hiddenByOwner) {
+                hidden = plEl('div', 'tc-note warn');
+                hidden.appendChild(plEl('div', '', 'Hidden by the bot owner. This theme stays private until the bot owner shows it again.'));
+                s.body.appendChild(hidden);
+            }
+
+            return function () {
+                if (document.activeElement !== input) input.value = s.state.name;
+                drawName();
+                options.forEach(function (o) {
+                    tcPress(o.el, o.value === s.state.visibility);
+                    if (o.value === 'public') o.el.disabled = s.state.hiddenByOwner;
+                });
+            };
+        }
+
+        // ---- the preview on the real page ----
+
+        // The page now: the theme as it is being made (unless the person has stepped aside to pick a theme).
+        function tcPreviewNow(s) {
+            if (themeCreator !== s || s.aside === 'themes') return;
+            if (s.previewTimer) {
+                clearTimeout(s.previewTimer);
+                s.previewTimer = 0;
+            }
+            var theme = window.ThemeCreator.previewTheme(s.state, s.blobUrl);
+            if (!themeKit.usable(theme)) return;
+            // The rest of the page keeps believing in the real theme (the picker, a fallback to its base): only the
+            // look on screen is the preview's.
+            var shown = themeShown, base = themeBase;
+            applyCustomTheme(theme);
+            themeShown = shown;
+            themeBase = base;
+        }
+
+        function tcSchedulePreview(s) {
+            if (s.previewTimer) return;
+            s.previewTimer = setTimeout(function () {
+                s.previewTimer = 0;
+                tcPreviewNow(s);
+            }, TC_PREVIEW_DELAY_MS);
+        }
+
+        // ---- keeping the page behind still, and stepping aside ----
+
+        // Everything behind the window is inert (no clicks, no focus) except what must stay working.
+        function tcSetInert(s, on) {
+            if (on) {
+                Array.prototype.forEach.call(document.body.children, function (el) {
+                    if (el === s.root || el.tagName === 'SCRIPT' || el.inert || TC_STAYS_LIVE.indexOf(el.id) >= 0) return;
+                    el.inert = true;
+                    s.inerted.push(el);
+                });
+            } else {
+                s.inerted.forEach(function (el) { el.inert = false; });
+                s.inerted = [];
+            }
+        }
+
+        // A file dropped beside the drop zone must not make the browser open it in place of the panel.
+        function tcKeepFilesOut(e) {
+            var types = e.dataTransfer && e.dataTransfer.types;
+            if (types && Array.prototype.indexOf.call(types, 'Files') >= 0) e.preventDefault();
+        }
+
+        // '' = the creator; 'peek' = hidden for a look at the page; 'themes' = hidden, the page usable, to pick one of
+        // your themes and delete it (the limit was reached).
+        function tcSetAside(s, mode) {
+            if (themeCreator !== s || s.aside === mode) return;
+            var was = s.aside;
+            s.aside = mode;
+            s.root.classList.toggle('tc-aside', !!mode);
+            s.pill.hidden = !mode;
+            s.pill.textContent = mode === 'themes' ? 'Back to your new theme' : 'Back to the creator';
+            if (mode === 'themes') {
+                tcSetInert(s, false);
+                applyThemeChoice(themeChoice); // the page as it really is, with the themes to choose from
+                var select = document.getElementById('themeSelect');
+                if (select) {
+                    select.focus();
+                    try { if (select.showPicker) select.showPicker(); } catch (e) {}
+                }
+            } else {
+                if (was === 'themes') {
+                    tcSetInert(s, true);
+                    tcPreviewNow(s);
+                }
+                if (mode === 'peek') s.pill.focus();
+                else s.nextBtn.focus();
+            }
+        }
+
+        function tcFocusable(s) {
+            return Array.prototype.filter.call(s.sheet.querySelectorAll('button, input, summary, [tabindex]'), function (el) {
+                return !el.disabled && el.tabIndex >= 0 && el.getClientRects().length > 0;
+            });
+        }
+
+        // Escape cancels, Tab stays inside the window.
+        function tcOnKey(e) {
+            var s = themeCreator;
+            if (!s) return;
+            var news = document.getElementById('whatsNewBackdrop');
+            if (news && !news.hidden) return; // the patch notes have their own keys
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (s.aside) tcSetAside(s, '');
+                else if (s.confirmEl) tcCloseConfirm(s, true);
+                else tcCancel(s);
+            } else if (e.key === 'Tab' && !s.aside && !s.saving) {
+                var items = tcFocusable(s);
+                if (!items.length) return;
+                var first = items[0], last = items[items.length - 1];
+                if (!s.sheet.contains(document.activeElement)) {
+                    e.preventDefault();
+                    first.focus();
+                } else if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+        }
+
+        // ---- cancel, close ----
+
+        function tcCancel(s) {
+            if (s.saving) return;
+            if (!s.touched) {
+                tcClose(s, true);
+                return;
+            }
+            if (s.confirmEl) return;
+            var bar = s.confirmEl = plEl('div', 'tc-confirm');
+            bar.setAttribute('role', 'group');
+            bar.setAttribute('aria-label', 'Confirm');
+            bar.appendChild(plEl('span', 'tc-confirm-text', s.editing ? 'Discard your changes?' : 'Discard this theme?'));
+            bar.appendChild(tcBtn('Discard', 'tc-danger', function () { tcClose(s, true); }));
+            var keep = tcBtn('Keep editing', '', function () { tcCloseConfirm(s, true); });
+            bar.appendChild(keep);
+            s.confirmSlot.appendChild(bar);
+            keep.focus();
+        }
+
+        function tcCloseConfirm(s, restoreFocus) {
+            if (!s.confirmEl) return;
+            if (s.confirmEl.parentNode) s.confirmEl.parentNode.removeChild(s.confirmEl);
+            s.confirmEl = null;
+            if (restoreFocus) s.cancelBtn.focus();
+        }
+
+        // Takes the window away. With `restore` the page gets back the theme that was chosen before (a saved
+        // theme is applied by the caller instead). The local picture link is let go of.
+        function tcClose(s, restore) {
+            if (themeCreator !== s) return;
+            if (s.previewTimer) clearTimeout(s.previewTimer);
+            s.pictureSeq++;
+            document.removeEventListener('keydown', tcOnKey, true);
+            document.removeEventListener('dragover', tcKeepFilesOut, true);
+            document.removeEventListener('drop', tcKeepFilesOut, true);
+            tcSetInert(s, false);
+            themeCreator = null;
+            if (s.root.parentNode) s.root.parentNode.removeChild(s.root);
+            themeLocalPicture = null;
+            if (restore) applyThemeChoice(themeChoice);
+            if (s.blobUrl) URL.revokeObjectURL(s.blobUrl);
+            s.blobUrl = '';
+            var back = s.returnFocus;
+            if (back && back.isConnected && typeof back.focus === 'function') {
+                try { back.focus({ preventScroll: true }); } catch (e) {}
+            }
+        }
+
+        // ---- saving ----
+
+        // One request: the values, the picture if one was chosen here, and for an edit the version it was opened at.
+        async function tcSave(s) {
+            var TC = window.ThemeCreator;
+            if (s.saving) return;
+            var problem = TC.nameProblem(s.state.name);
+            if (problem) {
+                s.nameShown = true;
+                if (s.step !== TC.STEP.SHARE) tcShowStep(s, TC.STEP.SHARE);
+                s.drawName();
+                var field = document.getElementById('tcName');
+                if (field) field.focus();
+                return;
+            }
+            s.errors = {};
+            s.saving = true;
+            tcRenderAlert(s);
+            tcRefreshChrome(s);
+            var req = TC.saveRequest(s.state);
+            var form = new FormData();
+            form.append('theme', JSON.stringify(req.values));
+            if (req.sendsPicture && s.file) form.append('background', s.file, 'background');
+            if (req.editing) {
+                form.append('version', String(req.version));
+                if (req.removeBackground) form.append('removeBackground', 'true');
+            }
+            var resp, data;
+            try {
+                resp = await authFetch(req.path, { method: 'POST', body: form });
+                data = await readApiJson(resp);
+            } catch (e) {
+                if (themeCreator === s) {
+                    s.saving = false;
+                    tcRefreshChrome(s);
+                    s.nextBtn.focus();
+                }
+                plCatch(e);
+                return;
+            }
+            if (themeCreator !== s) return;
+            s.saving = false;
+            if (resp.ok) tcSaved(s, data);
+            else tcRefused(s, req, resp.status, data);
+        }
+
+        // Saved: the window goes, the server's own answer becomes the theme in use.
+        function tcSaved(s, saved) {
+            tcClose(s, false);
+            if (themeKit.usable(saved)) {
+                var list = customThemes.list || [];
+                var at = -1;
+                list.forEach(function (theme, i) { if (theme.id === saved.id) at = i; });
+                if (at >= 0) list[at] = saved;
+                else {
+                    list.push(saved);
+                    if (customThemes.limit) customThemes.limit.used++;
+                }
+                customThemes.list = list;
+                rebuildThemePicker();
+                applyThemeChoice('custom:' + saved.id);
+            } else {
+                applyThemeChoice(themeChoice);
+            }
+            plToast('Theme saved');
+            loadCustomThemes();
+        }
+
+        // Not saved: the server's words on the step they belong to, and what can be done about it.
+        function tcRefused(s, req, status, data) {
+            var TC = window.ThemeCreator;
+            var failure = TC.classifyFailure(req, status, data && data.error, customThemes.limit ? customThemes.limit.max : 0);
+            s.errors = {};
+            s.errors[failure.step] = failure;
+            tcShowStep(s, failure.step);
+        }
+
+        // "This theme changed - reload it?": the theme as it is now, opened again at the colors. Work not saved is given up.
+        async function tcReload(s) {
+            var TC = window.ThemeCreator;
+            s.saving = true;
+            tcRefreshChrome(s);
+            await loadCustomThemes();
+            if (themeCreator !== s) return;
+            s.saving = false;
+            var fresh = s.state.id ? findCustomTheme(s.state.id) : null;
+            if (fresh && fresh.mine === true) {
+                var back = s.returnFocus;
+                tcClose(s, false);
+                openThemeCreator(fresh, { returnFocus: back });
+                return;
+            }
+            s.errors = {};
+            s.errors[TC.STEP.SHARE] = TC.classifyFailure({ editing: true, hadPicture: s.state.hadPicture, sendsPicture: s.state.picture === 'new' }, 404, '');
+            tcShowStep(s, TC.STEP.SHARE);
+        }
+
+        // The theme was deleted meanwhile: the same work, saved as a new theme (its old picture went with it).
+        function tcSaveAsNew(s) {
+            var TC = window.ThemeCreator;
+            s.state = TC.asNewTheme(s.state);
+            s.editing = false;
+            s.title.textContent = 'Create a theme';
+            s.errors = {};
+            tcPreviewNow(s);
+            tcSave(s);
         }
 
         function initThemeTools() {
@@ -6141,6 +7633,7 @@
         // After a refresh: apply a custom choice that was waiting for the list, or one that changed meanwhile; fall
         // back to the base theme when the one in use was deleted, hidden or made private.
         function reconcileThemeChoice() {
+            if (themeCreatorHoldsPage()) return; // the creator is showing its preview; it puts the real theme back when it closes
             var res = themeKit.resolveChoice(themeChoice, customThemes.list, themeBase || readStoredThemeBase());
             var hadId = customThemes.activeId, hadName = customThemes.activeName;
             var acted = themeActedOn; // a theme this person just deleted or hid needs no second message

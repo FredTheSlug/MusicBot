@@ -45,6 +45,9 @@
     var PICTURE_URL = /^\/theme-images\/[0-9a-f]{32}\.(?:jpg|png|webp|gif)$/;
     /* Any type but JPEG may move: GIF, animated WebP, and an animated PNG (APNG), which the server stores as .png. */
     var ANIMATED_URL = /\.(?:gif|webp|png)$/;
+    /* The blob: link of a picture the creator previews from a file on this computer: the page's own origin (or
+       "null"), then a UUID. No quote, bracket or space can be in it, so it can't leave the url("...") it is put in. */
+    var BLOB_URL = /^blob:(?:null|https?:\/\/(?:[A-Za-z0-9.\-]+|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
     /* Direction controls: they could reorder the text around a name, so they are never shown. */
     var BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
@@ -61,14 +64,32 @@
 
     /* ---- pictures ---- */
 
-    /* The link when it is one of our secret picture links, else null. */
-    function pictureUrl(url) {
-        return typeof url === 'string' && PICTURE_URL.test(url) ? url : null;
+    /*
+     * The one picture that does not come from the server: the creator's own preview of a file it made a blob: link
+     * for. {url, animated} (animated: it may move, so Reduce motion applies), or null when the link is not that kind of
+     * link. Everything that takes a `local` argument below accepts only what this returned, and only its exact link.
+     */
+    function localPicture(url, animated) {
+        if (typeof url !== 'string' || !BLOB_URL.test(url)) return null;
+        return Object.freeze({ url: url, animated: animated === true });
+    }
+
+    function isLocal(local) {
+        return !!local && typeof local === 'object' && typeof local.url === 'string' && BLOB_URL.test(local.url);
+    }
+
+    /* The link when it is one of our secret picture links (or exactly the local picture's link), else null. */
+    function pictureUrl(url, local) {
+        if (typeof url !== 'string') return null;
+        if (PICTURE_URL.test(url)) return url;
+        return isLocal(local) && url === local.url ? url : null;
     }
 
     /* Can this picture move (GIF, WebP, PNG)? Reduce motion shows those as their first frame. */
-    function canAnimate(url) {
-        return typeof url === 'string' && ANIMATED_URL.test(url);
+    function canAnimate(url, local) {
+        if (typeof url !== 'string') return false;
+        if (isLocal(local) && url === local.url) return local.animated === true;
+        return ANIMATED_URL.test(url);
     }
 
     function number(value) {
@@ -85,9 +106,9 @@
      * usable picture. The picture layer reaches 2x the blur radius past the screen on every side, so the
      * blur's soft edge never shows; fit 'center' keeps the picture's own size.
      */
-    function backdrop(background) {
+    function backdrop(background, local) {
         if (!background || typeof background !== 'object') return null;
-        var url = pictureUrl(background.url);
+        var url = pictureUrl(background.url, local);
         if (!url) return null;
         var dim = clamp(number(background.dim), 0, 90);
         var blur = clamp(number(background.blur), 0, 20);
@@ -224,6 +245,7 @@
         FONT_STACKS: FONT_STACKS,
         RADIUS_VARS: RADIUS_VARS,
         UNTITLED: UNTITLED,
+        localPicture: localPicture,
         pictureUrl: pictureUrl,
         canAnimate: canAnimate,
         backdrop: backdrop,
