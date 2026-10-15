@@ -5664,6 +5664,112 @@
         .tc-switch[aria-checked="true"] .tc-switch-track { background: var(--tc-primary); border-color: transparent; }
         .tc-switch[aria-checked="true"] .tc-switch-track::after { background: #fff; transform: translateX(16px); }
 
+        /*
+         * step 5: the mini-player. The preview is drawn like the real one (desktop/ui/mini-player/mini.css) from the
+         * mini-player's own 16 variables, which are set on .tc-minip itself; nothing here reads the page's colors or
+         * the creator's, so what it shows is what the mini-player will look like.
+         */
+        .tc-stage { position: sticky; top: 0; z-index: 1; padding: 8px 0 10px; background: var(--tc-bg); }
+        .tc-minip {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto;
+            padding: 12px 14px;
+            overflow: hidden;
+            isolation: isolate;
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-family: var(--font-family);
+            font-size: 16px;
+            line-height: 1.25;
+            user-select: none;
+        }
+        .tc-minip::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            background: radial-gradient(ellipse 60% 80% at 100% 0%, var(--accent-glow), transparent 70%);
+        }
+        .tc-minip-pic { position: absolute; inset: 0; z-index: -3; width: 100%; height: 100%; object-fit: cover; }
+        .tc-minip-dim { position: absolute; inset: 0; z-index: -2; }
+        .tc-minip-art {
+            display: flex;
+            flex: 0 0 76px;
+            align-items: center;
+            justify-content: center;
+            width: 76px;
+            height: 76px;
+            border-radius: 10px;
+            background: var(--accent-gradient);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+            color: #fff;
+        }
+        .tc-minip-art svg { width: 32px; height: 32px; fill: currentColor; opacity: 0.85; }
+        .tc-minip-info { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; padding-right: 4px; }
+        .tc-minip-title {
+            overflow: hidden;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-primary);
+        }
+        .tc-minip-meta { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; color: var(--accent-light); }
+        .tc-minip-bar {
+            height: 4px;
+            margin: 4px 0 6px;
+            border-radius: 4px;
+            background: var(--border-light);
+            background: color-mix(in srgb, var(--accent) 18%, transparent);
+            overflow: hidden;
+        }
+        .tc-minip-fill { width: 38%; height: 100%; background: var(--accent-gradient); box-shadow: 0 0 10px var(--accent-glow); }
+        .tc-minip-controls { display: flex; align-items: center; gap: 5px; }
+        .tc-minip-ctrl {
+            display: inline-flex;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--border-light);
+            border-radius: 50%;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+        .tc-minip-ctrl svg { width: 14px; height: 14px; fill: currentColor; }
+        .tc-minip-ctrl.primary {
+            width: 32px;
+            height: 32px;
+            border-color: transparent;
+            background: var(--accent-gradient);
+            box-shadow: 0 4px 14px var(--accent-glow);
+            color: #fff;
+        }
+        .tc-minip-ctrl.mode { width: 24px; height: 24px; border-color: transparent; background: transparent; color: var(--text-tertiary); }
+        .tc-minip-ctrl.mode svg { width: 13px; height: 13px; }
+        .tc-minip-ctrl.on { background: var(--accent-glow); color: var(--accent-light); }
+        .tc-link {
+            padding: 0;
+            border: none;
+            background: none;
+            color: var(--tc-accent);
+            font-weight: 600;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .tc-link:hover { color: var(--tc-text); }
+        @media (max-height: 560px) {
+            .tc-stage { position: static; }
+        }
+
         /* step 6: name and share */
         .tc-field { margin-top: 14px; }
         .tc-label { display: block; font-weight: 700; }
@@ -7204,22 +7310,228 @@
 
         // ---- step 5: the mini-player ----
 
-        // TASK 8 REPLACES THE BODY OF THIS FUNCTION with the mini-player preview. `host` is the empty step area and
-        // s.state.mini is null (no mini-player version: nothing is sent) or {colors (14 slots), useImage, dim}. Change it
-        // only through tcCommit(s, newState), which keeps the preview, "changed" and the saved values in step.
-        // Return a function that redraws from s.state (it runs after every change), or nothing. Until then the step is a
-        // placeholder, and a theme that already has a mini-player version is saved with it unchanged.
+        // The icons of the real mini-player (desktop/ui/mini-player/index.html), as paths in a 24 x 24 box.
+        var TC_MINI_ICONS = {
+            note: 'M12 3v10.55A4 4 0 1 0 14 17V7h4V3z',
+            restart: 'M6 5h2v14H6zM20 5v14L9.5 12z',
+            play: 'M8 5v14l11-7z',
+            skip: 'M4 5v14l10.5-7zM16 5h2v14h-2z',
+            shuffle: 'M16 3h5v5l-1.8-1.8-3.5 3.5-1.4-1.4 3.5-3.5zM4 18.6 15.6 7 17 8.4 5.4 20zm10.3-3.3 1.4-1.4 3.5 3.5L21 16v5h-5l1.8-1.8zM4 5.4 5.4 4l5.3 5.3-1.4 1.4z',
+            repeat: 'M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z'
+        };
+
+        // One of the icons above (fixed text, never anything from the person or the server).
+        function tcIcon(name) {
+            var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', TC_MINI_ICONS[name]);
+            svg.appendChild(path);
+            return svg;
+        }
+
+        // A small mini-player drawn the way the real one is (artwork, song, artist, progress, buttons). Its colors are the
+        // mini-player's 16 variables, set on this element only: the page behind keeps showing the panel's theme.
+        // update(view, src): view is ThemeCreator.miniView(); src the link of the theme's picture ('' for none), which only
+        // shows when the mini-player is set to use it (an <img>, so a picture that does not load just isn't there).
+        function tcMiniPreview() {
+            var el = plEl('div', 'tc-minip');
+            el.setAttribute('role', 'img');
+            el.setAttribute('aria-label', 'A preview of the mini-player');
+            var pic = plEl('img', 'tc-minip-pic');
+            pic.alt = '';
+            pic.hidden = true;
+            var dim = plEl('div', 'tc-minip-dim');
+            dim.hidden = true;
+            el.appendChild(pic);
+            el.appendChild(dim);
+
+            var art = plEl('div', 'tc-minip-art');
+            art.appendChild(tcIcon('note'));
+            el.appendChild(art);
+            var info = plEl('div', 'tc-minip-info');
+            info.appendChild(plEl('div', 'tc-minip-title', 'Song title'));
+            info.appendChild(plEl('div', 'tc-minip-meta', 'Artist name'));
+            var bar = plEl('div', 'tc-minip-bar');
+            bar.appendChild(plEl('div', 'tc-minip-fill'));
+            info.appendChild(bar);
+            var controls = plEl('div', 'tc-minip-controls');
+            [['restart', ''], ['play', ' primary'], ['skip', ''], ['shuffle', ' mode on'], ['repeat', ' mode']].forEach(function (c) {
+                var b = plEl('span', 'tc-minip-ctrl' + c[1]);
+                b.appendChild(tcIcon(c[0]));
+                controls.appendChild(b);
+            });
+            info.appendChild(controls);
+            el.appendChild(info);
+
+            var back = null;      // what ThemeApply.backdrop made of the picture, or null
+            var loaded = '';      // the link of the picture that has loaded
+            function draw() {
+                var on = !!back && loaded === back.url;
+                pic.hidden = !on;
+                dim.hidden = !on;
+            }
+            pic.addEventListener('load', function () {
+                loaded = pic.getAttribute('src') || '';
+                draw();
+            });
+            pic.addEventListener('error', function () {
+                loaded = '';
+                draw();
+            });
+
+            return {
+                el: el,
+                update: function (view, src) {
+                    var vars = view.vars;
+                    Object.keys(vars).forEach(function (name) { el.style.setProperty(name, vars[name]); });
+                    back = view.useImage && src ? themeKit.backdrop({ url: src, dim: view.dim, blur: 0, fit: 'cover' }, themeLocalPicture) : null;
+                    if (back) {
+                        dim.style.setProperty('background-color', back.overlay);
+                        if (pic.getAttribute('src') !== back.url) {
+                            loaded = '';
+                            pic.src = back.url;
+                        }
+                    }
+                    draw();
+                }
+            };
+        }
+
+        // The same "Readable" badge and main-color hint as step 2, for the mini-player's colors. Fix it (see
+        // ThemeCreator.fixMini) works on the mini-player's colors only. Rebuilt only when what it says changes.
+        function tcMiniStatus(s) {
+            var TC = window.ThemeCreator;
+            var el = plEl('div', 'tc-status');
+            el.tabIndex = -1;
+            el.setAttribute('aria-live', 'polite');
+            var shown = '';
+            return {
+                el: el,
+                update: function (view) {
+                    var key = (view.report.ok ? 'readable' : 'hard') + (view.report.accentVisible ? '' : ' faint');
+                    if (key === shown) return;
+                    shown = key;
+                    el.textContent = '';
+                    if (view.report.ok) {
+                        el.appendChild(plEl('span', 'tc-badge ok', TC.TEXT.READABLE));
+                    } else {
+                        var note = plEl('div', 'tc-note warn');
+                        note.appendChild(plEl('div', '', TC.TEXT.MINI_NOT_READABLE));
+                        var actions = plEl('div', 'tc-note-actions');
+                        actions.appendChild(tcBtn('Fix it', '', function () {
+                            tcCommit(s, TC.fixMini(s.state));
+                            el.focus({ preventScroll: true });
+                        }));
+                        note.appendChild(actions);
+                        el.appendChild(note);
+                    }
+                    if (!view.report.accentVisible) {
+                        var hard = plEl('div', 'tc-note');
+                        hard.appendChild(plEl('div', '', TC.TEXT.ACCENT_HARD_TO_SEE));
+                        var more = plEl('div', 'tc-note-actions');
+                        more.appendChild(tcBtn('Use a clearer one', '', function () {
+                            var now = TC.miniView(s.state);
+                            tcCommit(s, TC.setMiniMain(s.state, TC.clearerAccent(now.main, now.page)));
+                            el.focus({ preventScroll: true });
+                        }));
+                        hard.appendChild(more);
+                        el.appendChild(hard);
+                    }
+                }
+            };
+        }
+
+        // Skip, or make a mini-player version: a live preview of it, its own main color and background, and, for a theme
+        // with a picture, whether the picture goes behind it and how dark. `host` is the empty step area. All the choices
+        // are ThemeCreator's (s.state.mini is null, or {colors (14 slots), useImage, dim}) and go in through tcCommit.
         function tcMiniStep(s, host) {
             var TC = window.ThemeCreator;
-            host.appendChild(plEl('p', 'tc-help', 'Make a mini-player version too?'));
-            var note = plEl('div', 'tc-note');
-            note.appendChild(plEl('div', '', s.state.mini
-                ? 'This theme already has a mini-player version. It stays as it is.'
-                : "The mini-player version isn't ready yet. Skip this for now: your theme just won't be offered in the mini-player."));
-            host.appendChild(note);
-            var row = plEl('div', 'tc-row');
-            row.appendChild(tcBtn('Skip', 'tc-big', function () { tcGo(s, TC.nextStep(s.step)); }));
-            host.appendChild(row);
+            host.appendChild(plEl('p', 'tc-help', "Make a mini-player version too? That's the small player in the desktop app. If you skip it, your theme just won't be offered there."));
+
+            var list = plEl('div', 'tc-opts');
+            var choices = [
+                [false, TC.TEXT.MINI_SKIP, "Your theme won't be offered in the mini-player."],
+                [true, TC.TEXT.MINI_MAKE, "Made from your theme's colors. You can change them below."]
+            ].map(function (choice) {
+                var b = tcChoice('tc-opt', function () {
+                    tcCommit(s, choice[0] ? TC.makeMini(s.state) : TC.skipMini(s.state));
+                });
+                b.appendChild(plEl('span', 'tc-opt-name', choice[1]));
+                b.appendChild(plEl('span', 'tc-hint', choice[2]));
+                list.appendChild(b);
+                return { make: choice[0], el: b };
+            });
+            host.appendChild(list);
+
+            var made = plEl('div');
+            var preview = tcMiniPreview();
+            var stage = plEl('div', 'tc-stage');
+            stage.appendChild(preview.el);
+            made.appendChild(stage);
+            var status = tcMiniStatus(s);
+            made.appendChild(status.el);
+
+            var colorsGroup = tcGroup('Mini-player colors', "They start as your theme's colors. Change them if the mini-player should look different.");
+            var grid = plEl('div', 'tc-colors');
+            function colorRow(label, hint, onInput) {
+                var row = plEl('label', 'tc-color-row');
+                row.title = hint;
+                row.appendChild(plEl('span', 'tc-color-name', label));
+                var input = tcColorInput(label + ' for the mini-player', onInput);
+                row.appendChild(input);
+                grid.appendChild(row);
+                return input;
+            }
+            var mainInput = colorRow('Main color', 'Buttons, highlights and the progress bar', function (hex) { tcCommit(s, TC.setMiniMain(s.state, hex)); });
+            var pageInput = colorRow('Background', 'The mini-player itself', function (hex) { tcCommit(s, TC.setMiniPage(s.state, hex)); });
+            colorsGroup.appendChild(grid);
+            var own = plEl('div', 'tc-hint');
+            own.appendChild(document.createTextNode("These are your own colors, so they don't change when the theme's do. "));
+            var match = plEl('button', 'tc-link', TC.TEXT.MINI_MATCH);
+            match.type = 'button';
+            match.addEventListener('click', function () { tcCommit(s, TC.matchMini(s.state)); });
+            own.appendChild(match);
+            colorsGroup.appendChild(own);
+            made.appendChild(colorsGroup);
+
+            // only a theme that has a picture can put it behind the mini-player
+            var pictureGroup = tcGroup('Background picture');
+            var pictureSwitch = plEl('button', 'tc-switch');
+            pictureSwitch.type = 'button';
+            pictureSwitch.setAttribute('role', 'switch');
+            var words = plEl('span');
+            words.appendChild(plEl('span', 'tc-opt-name', 'Use my background picture'));
+            words.appendChild(plEl('span', 'tc-hint', 'Shown behind the mini-player.'));
+            pictureSwitch.appendChild(words);
+            pictureSwitch.appendChild(plEl('span', 'tc-switch-track'));
+            pictureSwitch.addEventListener('click', function () {
+                tcCommit(s, TC.setMiniPicture(s.state, !TC.miniView(s.state).useImage));
+            });
+            pictureGroup.appendChild(pictureSwitch);
+            var darken = tcRange('tcMiniDim', 'Darken', 'Makes the words easier to read over the picture.', 0, 90, 1, function (v) {
+                tcCommit(s, TC.setMiniDim(s.state, v));
+            });
+            pictureGroup.appendChild(darken.el);
+            made.appendChild(pictureGroup);
+            host.appendChild(made);
+
+            return function () {
+                var view = TC.miniView(s.state);
+                choices.forEach(function (c) { tcPress(c.el, c.make === view.made); });
+                made.hidden = !view.made;
+                if (!view.made) return;
+                preview.update(view, tcPictureSrc(s));
+                status.update(view);
+                mainInput.value = view.main;
+                pageInput.value = view.page;
+                own.hidden = view.follows;
+                pictureGroup.hidden = !view.hasPicture;
+                pictureSwitch.setAttribute('aria-checked', view.useImage ? 'true' : 'false');
+                darken.el.hidden = !view.useImage;
+                darken.input.value = String(view.dim);
+                darken.out.textContent = view.dim + '%';
+            };
         }
 
         function tcStepMini(s) {

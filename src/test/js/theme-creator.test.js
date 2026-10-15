@@ -1006,12 +1006,363 @@ test('aHugeOrMultilineErrorBodyIsNotShownAsItIs', () => {
   assert.equal(C.classifyFailure({ editing: false }, 400, 12).text, "That didn't work " + EM_DASH + ' check your choices and try again');
 });
 
-// ---- the placeholder for the mini-player step
+// ---- step 5: the mini-player version
+
+const DESKTOP_CORE = require('../../../desktop/bridge/core.js');
+
+/* A theme with a picture chosen here (the file itself is the page's business). */
+function withPicture(state, dim) {
+  return C.withNewPicture(state, dim === undefined ? 35 : dim);
+}
 
 test('aThemeWithoutAMiniPlayerVersionSendsNone', () => {
   const s = C.startState('nebula');
   assert.equal(s.mini, null);
   assert.equal('mini' in C.buildValues(s), false);
+  assert.deepEqual(C.miniView(s), { made: false });
+});
+
+test('theStepSaysWhatToDoInPlainWords', () => {
+  assert.equal(C.TEXT.MINI_SKIP, 'Skip ' + EM_DASH + ' no mini-player version');
+  assert.equal(C.TEXT.MINI_MAKE, 'Make a mini-player version');
+  assert.equal(C.TEXT.MINI_NOT_READABLE, 'Some text will be hard to read in the mini-player');
+  assert.equal(C.TEXT.MINI_MATCH, 'Update to match the theme');
+});
+
+test('makingAMiniPlayerVersionGeneratesItFromTheThemesColorsWithoutGlass', () => {
+  const before = C.startState('ember');
+  const s = C.makeMini(before);
+  assert.deepEqual(s.mini.colors, P.mini(before.colors));
+  assert.deepEqual(Object.keys(s.mini.colors), P.MINI_SLOTS.slice());
+  assert.equal(Object.keys(s.mini.colors).length, 14);
+  assert.equal('glass' in s.mini.colors, false);
+  assert.equal(before.mini, null, 'the state it was given is left alone');
+  assert.equal(C.miniFollows(s), true);
+  // making one when there is one changes nothing
+  assert.equal(C.makeMini(s), s);
+});
+
+test('aMiniPlayerVersionOfAThemeWithoutAPictureNeverUsesOne', () => {
+  const s = C.makeMini(C.startState('nebula'));
+  assert.equal(s.mini.useImage, false);
+  assert.equal(C.setMiniPicture(s, true).mini.useImage, false);
+  assert.equal(C.buildValues(C.setMiniPicture(s, true)).mini.useImage, false);
+  const view = C.miniView(s);
+  assert.equal(view.hasPicture, false);
+  assert.equal(view.useImage, false);
+});
+
+test('aThemeWithAPictureStartsItsMiniPlayerVersionOnThePictureAtTheSameDarkening', () => {
+  const s = C.makeMini(withPicture(C.startState('nebula'), 62));
+  assert.equal(s.mini.useImage, true);
+  assert.equal(s.mini.dim, 62);
+  assert.equal(C.makeMini(C.startState('nebula')).mini.dim, 40, 'without a picture, the usual start');
+  const view = C.miniView(s);
+  assert.equal(view.hasPicture, true);
+  assert.equal(view.useImage, true);
+  assert.equal(view.dim, 62);
+  // the switch can be turned off and on again
+  const off = C.setMiniPicture(s, false);
+  assert.equal(off.mini.useImage, false);
+  assert.equal(C.setMiniPicture(off, true).mini.useImage, true);
+  assert.equal(s.mini.useImage, true, 'the state it was given is left alone');
+});
+
+test('aSavedPictureCountsAsAPictureForTheMiniPlayer', () => {
+  const s = C.setMiniPicture(C.fromTheme(savedTheme({ mini: { colors: P.mini(COLORS), useImage: false, dim: 20 } })), true);
+  assert.equal(s.mini.useImage, true);
+  assert.equal(C.miniView(s).hasPicture, true);
+  assert.equal(C.buildValues(s).mini.useImage, true);
+});
+
+test('takingThePictureAwayTakesItAwayFromTheMiniPlayerToo', () => {
+  const s = C.withoutPicture(C.makeMini(withPicture(C.startState('nebula'))));
+  assert.equal(s.mini.useImage, false);
+  assert.equal(C.miniView(s).hasPicture, false);
+  assert.equal(C.buildValues(s).mini.useImage, false);
+  assert.equal('background' in C.buildValues(s), false);
+  // choosing another picture does not switch it back on behind the person's back
+  assert.equal(withPicture(s).mini.useImage, false);
+});
+
+test('theMiniPlayerPictureIsDarkenedFromZeroToNinetyInWholeNumbers', () => {
+  const s = C.makeMini(withPicture(C.startState('nebula')));
+  assert.equal(C.setMiniDim(s, 0).mini.dim, 0);
+  assert.equal(C.setMiniDim(s, 90).mini.dim, 90);
+  assert.equal(C.setMiniDim(s, 120).mini.dim, 90);
+  assert.equal(C.setMiniDim(s, -5).mini.dim, 0);
+  assert.equal(C.setMiniDim(s, 33.6).mini.dim, 34);
+  assert.equal(C.setMiniDim(s, '45').mini.dim, 45);
+  assert.equal(C.setMiniDim(s, 'x').mini.dim, s.mini.dim, 'not a number: as it was');
+  assert.equal(C.setMiniDim(C.startState('nebula'), 10).mini, null, 'no mini-player version, nothing to set');
+  const odd = C.buildValues(Object.assign(withPicture(C.startState('nebula')), {
+    mini: { colors: P.mini(C.startState('nebula').colors), useImage: true, dim: 140.4 }
+  }));
+  assert.equal(odd.mini.dim, 90);
+});
+
+test('theMiniPlayerVersionIsSavedAsFourteenColorsAFlagAndADarkening', () => {
+  const s = C.makeMini(withPicture(C.startState('aurora'), 55));
+  const v = C.buildValues(s);
+  assert.deepEqual(Object.keys(v.mini).sort(), ['colors', 'dim', 'useImage']);
+  assert.deepEqual(Object.keys(v.mini.colors), javaList('COLOR_SLOTS').slice(0, 14));
+  assert.equal(v.mini.useImage, true);
+  assert.equal(v.mini.dim, 55);
+  assert.deepEqual(v.mini.colors, P.mini(s.colors));
+  assert.notEqual(v.mini.colors, s.mini.colors, 'a copy');
+  assert.equal(C.saveRequest(s).values.mini.dim, 55);
+});
+
+test('skippingTheMiniPlayerVersionSendsNoneAndTheThemeIsNotOfferedThere', () => {
+  const made = C.makeMini(C.startState('nebula'));
+  const skipped = C.skipMini(made);
+  assert.equal(skipped.mini, null);
+  assert.equal('mini' in C.buildValues(skipped), false);
+  assert.deepEqual(C.miniView(skipped), { made: false });
+  assert.ok(made.mini, 'the state it was given is left alone');
+  assert.equal(C.skipMini(skipped), skipped);
+  // the saved theme that had one loses it
+  assert.equal('mini' in C.buildValues(C.skipMini(C.fromTheme(savedTheme()))), false);
+});
+
+test('aGeneratedMiniPlayerVersionFollowsTheThemeWhenItsColorsChange', () => {
+  let s = C.makeMini(C.startState('nebula'));
+  for (const step of [
+    (x) => C.setMain(x, '#22c55e'),
+    (x) => C.setPage(x, '#201020'),
+    (x) => C.setMode(x, 'light'),
+    (x) => C.surpriseMe(x, seeded(7)),
+    (x) => C.tweakColor(x, 'textSecondary', '#8899aa'),
+    (x) => C.tweakColor(x, 'bgCard', '#223344'),
+    (x) => C.fixIt(x).state,
+    (x) => C.chooseBase(x, 'dawn'),
+    (x) => C.chooseTheme(x, savedTheme({ mine: false })),
+    (x) => C.setFont(C.setCorners(x, 50), 'Syne')
+  ]) {
+    s = step(s);
+    assert.deepEqual(s.mini.colors, P.mini(s.colors));
+    assert.equal(C.miniFollows(s), true);
+    assert.equal('glass' in s.mini.colors, false);
+  }
+});
+
+test('theEarlierStateOfAFollowingMiniPlayerVersionIsNotTouchedWhenTheThemeMoves', () => {
+  const made = C.makeMini(C.startState('nebula'));
+  const moved = C.setMain(made, '#22c55e');
+  assert.notDeepEqual(moved.mini.colors, made.mini.colors);
+  assert.deepEqual(made.mini.colors, P.mini(C.startState('nebula').colors));
+});
+
+test('aMiniPlayerVersionWithItsOwnColorsKeepsThemWhenTheThemeChanges', () => {
+  let s = C.setMiniMain(C.makeMini(C.startState('nebula')), '#ff7a00');
+  assert.equal(C.miniFollows(s), false);
+  const own = s.mini.colors;
+  s = C.setMain(s, '#22c55e');
+  s = C.setPage(s, '#102030');
+  s = C.chooseBase(s, 'ember');
+  s = C.tweakColor(s, 'accent', '#123456');
+  assert.deepEqual(s.mini.colors, own);
+  assert.equal(C.miniFollows(s), false);
+  assert.equal(C.miniView(s).follows, false);
+});
+
+test('updateToMatchTheThemeBringsTheOwnColorsBackToTheThemesAndFollowingAgain', () => {
+  let s = C.setMiniPage(C.makeMini(C.startState('nebula')), '#101828');
+  s = C.setMain(s, '#22c55e');
+  assert.equal(C.miniView(s).follows, false);
+  const matched = C.matchMini(s);
+  assert.deepEqual(matched.mini.colors, P.mini(s.colors));
+  assert.equal(C.miniFollows(matched), true);
+  assert.equal(C.miniView(matched).follows, true);
+  assert.equal(matched.mini.useImage, s.mini.useImage);
+  assert.equal(matched.mini.dim, s.mini.dim);
+  assert.equal(C.setMain(matched, '#ec4899').mini.colors.accent, '#ec4899', 'and it follows from then on');
+  assert.equal(C.matchMini(C.startState('nebula')).mini, null);
+});
+
+test('editingAThemeWhoseMiniPlayerVersionWasGeneratedFromItFollowsTheNewColors', () => {
+  const generated = C.fromTheme(savedTheme());
+  assert.equal(C.miniFollows(generated), true);
+  const s = C.setMain(generated, '#22c55e');
+  assert.deepEqual(s.mini.colors, P.mini(s.colors));
+  assert.equal(s.mini.colors.accent, '#22c55e');
+  assert.equal(s.mini.useImage, true);
+  assert.equal(s.mini.dim, 55);
+  assert.equal(C.buildValues(s).mini.colors.accent, '#22c55e');
+});
+
+test('editingAThemeWhoseMiniPlayerVersionHasItsOwnColorsKeepsThemAndOffersToUpdate', () => {
+  const own = Object.assign(P.mini(COLORS), { accent: '#ff7a00', accentLight: '#ff9a40' });
+  const generated = C.fromTheme(savedTheme({ mini: { colors: own, useImage: false, dim: 20 } }));
+  assert.equal(C.miniFollows(generated), false);
+  const s = C.setMain(generated, '#22c55e');
+  assert.deepEqual(s.mini.colors, own);
+  assert.equal(C.miniView(s).follows, false);
+  assert.deepEqual(C.matchMini(s).mini.colors, P.mini(s.colors));
+});
+
+test('aStoredMiniPlayerPictureWithNoPictureOnTheThemeIsNoPicture', () => {
+  const s = C.fromTheme(savedTheme({ background: null, mini: { colors: P.mini(COLORS), useImage: true, dim: 20 } }));
+  assert.equal(s.mini.useImage, false);
+  assert.equal(C.buildValues(s).mini.useImage, false);
+});
+
+test('savingAsANewThemeKeepsTheMiniPlayerVersion', () => {
+  const own = Object.assign(P.mini(COLORS), { accent: '#ff7a00' });
+  const s = C.asNewTheme(C.fromTheme(savedTheme({ mini: { colors: own, useImage: true, dim: 55 } })));
+  assert.equal(s.id, null);
+  assert.deepEqual(s.mini.colors, own);
+  assert.equal(C.miniFollows(s), false);
+  // its picture went with the old theme, so the mini-player cannot use one
+  assert.equal(C.buildValues(s).mini.useImage, false);
+  assert.deepEqual(C.buildValues(s).mini.colors, own);
+  assert.equal(C.asNewTheme(C.fromTheme(savedTheme())).mini.dim, 55);
+});
+
+test('theMiniPlayersOwnMainColorAndBackgroundRegenerateItsPaletteWithoutTouchingTheTheme', () => {
+  const made = C.makeMini(C.startState('nebula'));
+  const orange = C.setMiniMain(made, '#ff7a00');
+  assert.equal(orange.mini.colors.accent, '#ff7a00');
+  assert.equal(orange.mini.colors.bgPrimary, made.mini.colors.bgPrimary, 'the background stays');
+  assert.deepEqual(orange.mini.colors, P.mini(P.generate('#ff7a00', made.mini.colors.bgPrimary, 'dark')));
+  const light = C.setMiniPage(orange, '#f4efe6');
+  assert.equal(light.mini.colors.bgPrimary, '#f4efe6');
+  assert.equal(light.mini.colors.accent, '#ff7a00', 'the main color stays');
+  assert.deepEqual(light.mini.colors, P.mini(P.generate('#ff7a00', '#f4efe6', 'light')));
+  // nothing happens to the theme's own colors
+  assert.deepEqual(light.colors, made.colors);
+  assert.equal(light.mainColor, made.mainColor);
+  assert.equal(light.pageColor, made.pageColor);
+  const view = C.miniView(light);
+  assert.equal(view.main, '#ff7a00');
+  assert.equal(view.page, '#f4efe6');
+  assert.equal(C.miniView(made).main, made.mainColor);
+  assert.equal(C.miniView(made).page, made.pageColor);
+});
+
+test('theMiniPlayersOwnColorsAreFourteenReadableColorsForAnyPair', () => {
+  for (let i = 0; i < 150; i++) {
+    const pick = P.surprise(seeded(i + 1));
+    let s = C.makeMini(C.startState('nebula'));
+    s = C.setMiniPage(C.setMiniMain(s, pick.accent), pick.background);
+    assert.equal(Object.keys(s.mini.colors).length, 14, String(i));
+    assert.equal('glass' in s.mini.colors, false, String(i));
+    assert.equal(C.miniView(s).report.ok, true, String(i));
+    assert.equal(P.readability(s.mini.colors).ok, true, String(i));
+    assert.equal(C.miniFollows(s), false);
+  }
+});
+
+test('aColorThatIsNotAColorChangesNothingInTheMiniPlayer', () => {
+  const s = C.makeMini(C.startState('nebula'));
+  for (const bad of ['red', '#12', '#12345678', '', null, undefined, 5, '#gggggg']) {
+    assert.equal(C.setMiniMain(s, bad), s, String(bad));
+    assert.equal(C.setMiniPage(s, bad), s, String(bad));
+  }
+  const none = C.startState('nebula');
+  assert.equal(C.setMiniMain(none, '#ff0000'), none);
+  assert.equal(C.setMiniPage(none, '#ff0000'), none);
+  assert.equal(C.fixMini(none), none);
+  assert.equal(C.setMiniPicture(none, true), none);
+  // upper case is fine and comes out lower case
+  assert.equal(C.setMiniMain(s, '#FF7A00').mini.colors.accent, '#ff7a00');
+});
+
+test('theMiniPlayerHasTheSameReadableBadgeAsStepTwoAndTheMainColorHint', () => {
+  const s = C.makeMini(C.startState('nebula'));
+  assert.deepEqual(C.miniView(s).report, C.report(s.mini.colors));
+  assert.equal(C.miniView(s).report.ok, true);
+  assert.equal(C.miniView(s).report.accentVisible, true);
+  // a main color that blends into the background
+  const hidden = C.setMiniMain(s, s.mini.colors.bgPrimary);
+  assert.equal(C.miniView(hidden).report.accentVisible, false);
+  const clearer = C.setMiniMain(hidden, C.clearerAccent(hidden.mini.colors.accent, hidden.mini.colors.bgPrimary));
+  assert.equal(C.miniView(clearer).report.accentVisible, true);
+});
+
+test('aMiniPlayerVersionThatFollowsAnUnreadableThemeIsUnreadableAndFixItMakesItReadable', () => {
+  let s = C.makeMini(C.startState('nebula'));
+  s = C.tweakColor(s, 'textPrimary', '#2a2d44');
+  assert.equal(C.miniView(s).report.ok, false);
+  assert.ok(C.miniView(s).report.problems.includes('textPrimary'));
+  const fixed = C.fixMini(s);
+  assert.equal(C.miniView(fixed).report.ok, true);
+  assert.equal(fixed.mini.colors.accent, s.mini.colors.accent, 'only the words move');
+  assert.equal(fixed.mini.colors.bgCard, s.mini.colors.bgCard);
+  assert.deepEqual(fixed.colors, s.colors, 'the theme itself is not touched');
+  assert.equal(C.miniFollows(fixed), false, 'the mini-player now has colors of its own');
+  assert.equal(C.miniView(fixed).follows, false);
+});
+
+test('fixItInTheMiniPlayerWorksEvenWhenNoWordsCouldBeReadOnBothSurfaces', () => {
+  let s = C.makeMini(C.startState('nebula'));
+  s = C.tweakColor(C.tweakColor(s, 'bgPrimary', '#6a6a6a'), 'bgCard', '#8a8a8a'); // no words reach 4.5:1 on both
+  assert.equal(C.miniView(s).report.ok, false);
+  assert.equal(C.fixIt(s).farApart, true, 'on the panel the person must change the cards');
+  const fixed = C.fixMini(s);
+  assert.equal(C.miniView(fixed).report.ok, true, 'in the mini-player it starts over from the main color and background');
+  assert.equal(fixed.mini.colors.accent, s.mini.colors.accent);
+  assert.equal(fixed.mini.colors.bgPrimary, s.mini.colors.bgPrimary);
+});
+
+test('fixItInTheMiniPlayerAlwaysEndsReadableAndLeavesAReadableOneAlone', () => {
+  const rand = seeded(99);
+  const hex = () => '#' + [0, 1, 2].map(() => Math.floor(rand() * 256).toString(16).padStart(2, '0')).join('');
+  for (let i = 0; i < 60; i++) {
+    let s = C.makeMini(C.startState('nebula'));
+    s = C.tweakColor(C.tweakColor(C.tweakColor(s, 'bgPrimary', hex()), 'bgCard', hex()), 'textPrimary', hex());
+    assert.equal(C.miniView(C.fixMini(s)).report.ok, true, String(i));
+  }
+  const fine = C.makeMini(C.startState('nebula'));
+  assert.equal(C.fixMini(fine), fine);
+});
+
+test('theMiniPlayerPreviewIsStyledByExactlyTheSixteenVariablesTheMiniPlayerTakes', () => {
+  assert.deepEqual(C.MINI_VARS, DESKTOP_CORE.THEME_VARS, 'the real mini-player copies these 16 and no others');
+  assert.equal(C.MINI_VARS.length, 16);
+  const s = C.makeMini(C.startState('ember'));
+  const vars = C.miniView(s).vars;
+  assert.deepEqual(Object.keys(vars).sort(), C.MINI_VARS.slice().sort());
+  const c = s.mini.colors;
+  assert.equal(vars['--bg-primary'], c.bgPrimary);
+  assert.equal(vars['--bg-card'], c.bgCard);
+  assert.equal(vars['--accent'], c.accent);
+  assert.equal(vars['--text-secondary'], c.textSecondary);
+  assert.equal(vars['--border'], c.border);
+  assert.equal(vars['--success'], c.success);
+  assert.equal(vars['--accent-glow'], P.cssVars(c)['--accent-glow']);
+  assert.equal(vars['--accent-gradient'], 'linear-gradient(135deg, ' + c.accent + ', ' + c.accent2 + ')');
+  assert.equal(vars['--font-family'], ThemeApply.fontStack(s.font));
+  for (const name of C.MINI_VARS) assert.equal(typeof vars[name], 'string', name);
+  // not the panel's extras: no glass, no r/g/b numbers
+  assert.equal('--glass' in vars, false);
+  assert.equal('--accent-r' in vars, false);
+});
+
+test('theMiniPlayerPreviewWearsTheThemesFontAndItsOwnColors', () => {
+  let s = C.makeMini(C.startState('nebula'));
+  s = C.setFont(s, 'Fraunces');
+  assert.equal(C.miniView(s).vars['--font-family'], ThemeApply.fontStack('Fraunces'));
+  s = C.setMiniMain(s, '#ff7a00');
+  assert.equal(C.miniView(s).vars['--accent'], '#ff7a00');
+  assert.notEqual(C.miniView(s).vars['--accent'], s.colors.accent, "not the theme's main color");
+});
+
+test('everyStateTransitionLeavesTheOneItWasGivenAlone', () => {
+  const base = C.makeMini(withPicture(C.startState('nebula')));
+  const frozen = JSON.stringify(base);
+  C.setMiniMain(base, '#ff0000');
+  C.setMiniPage(base, '#00ff00');
+  C.setMiniPicture(base, false);
+  C.setMiniDim(base, 3);
+  C.matchMini(C.setMiniMain(base, '#ff0000'));
+  C.fixMini(base);
+  C.skipMini(base);
+  C.setMain(base, '#00ff00');
+  C.tweakColor(base, 'accent', '#123456');
+  C.withoutPicture(base);
+  C.asNewTheme(base);
+  assert.equal(JSON.stringify(base), frozen);
 });
 
 // ---- the page side
@@ -1038,9 +1389,38 @@ test('theCreatorNeverBuildsHtmlOrCssTextFromAnything', () => {
   assert.match(CREATOR_CODE, /\.style\.setProperty\(/);
 });
 
-test('theMiniPlayerStepIsAClearlyNamedHookForTheNextTask', () => {
-  assert.match(CREATOR_CODE, /TASK 8 REPLACES THE BODY OF THIS FUNCTION/);
+test('theMiniPlayerStepIsBuiltByTcMiniStepAndIsNoLongerAPlaceholder', () => {
   assert.match(CREATOR_CODE, /function tcMiniStep\(s, host\)/);
+  assert.doesNotMatch(CREATOR_CODE, /TASK 8 REPLACES THE BODY OF THIS FUNCTION/);
+  assert.doesNotMatch(CREATOR_CODE, /isn't ready yet/);
+  // the words and the choices come from the tested module; the step only draws them
+  for (const name of ['TC.TEXT.MINI_SKIP', 'TC.TEXT.MINI_MAKE', 'TC.TEXT.MINI_MATCH', 'TC.makeMini(', 'TC.skipMini(',
+    'TC.miniView(', 'TC.setMiniMain(', 'TC.setMiniPage(', 'TC.matchMini(', 'TC.fixMini(', 'TC.setMiniPicture(', 'TC.setMiniDim(']) {
+    assert.ok(CREATOR_CODE.includes(name), name);
+  }
+});
+
+test('theMiniPlayerPreviewGetsItsColorsOnItsOwnElementAndNeverOnThePage', () => {
+  const fn = /function tcMiniPreview\(\) \{([\s\S]*?)\n        \}\n/.exec(CREATOR_CODE);
+  assert.ok(fn, 'tcMiniPreview not found');
+  assert.match(fn[1], /el\.style\.setProperty\(name, vars\[name\]\)/);
+  assert.doesNotMatch(CREATOR_CODE, /documentElement\.style\.setProperty/);
+  // the picture is the creator's validated one, and goes in as an <img>, never as CSS text
+  assert.match(CREATOR_CODE, /themeKit\.backdrop\(\{ url: src, dim: view\.dim/);
+  assert.match(CREATOR_CODE, /pic\.src = back\.url/);
+});
+
+test('theMiniPlayerPreviewStylesUseOnlyTheSixteenMiniVariables', () => {
+  const rules = [...INDEX.matchAll(/\n        (\.tc-minip[^{]*)\{([^}]*)\}/g)];
+  assert.ok(rules.length >= 8, 'preview rules not found: ' + rules.length);
+  const used = new Set();
+  for (const rule of rules) {
+    for (const m of rule[2].matchAll(/var\((--[a-z0-9-]+)/g)) used.add(m[1]);
+  }
+  assert.ok(used.size >= 8, [...used].join(' '));
+  for (const name of used) assert.ok(C.MINI_VARS.includes(name), name + ' is not one of the mini-player variables');
+  // and it does not paint with the creator's or the page's other colors
+  for (const rule of rules) assert.doesNotMatch(rule[2], /--tc-|--glass|--accent2|--card-/, rule[1]);
 });
 
 test('theCreatorPreviewsThroughTheSameFunctionThatAppliesSavedThemes', () => {

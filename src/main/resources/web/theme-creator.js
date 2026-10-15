@@ -1,7 +1,8 @@
 /*
  * The logic of the guided theme creator, apart from the page: the six steps, the state the creator keeps, the
- * choices that change it (colors, fine-tuning), what is checked (readability, a visible main color, pictures,
- * names), the values that are saved and the preview that is shown, and what to say when saving fails.
+ * choices that change it (colors, fine-tuning, the mini-player version), what is checked (readability, a visible main
+ * color, pictures, names), the values that are saved and the previews that are shown, and what to say when saving
+ * fails.
  * Pure functions on plain objects, no DOM: every function returns a new state and leaves the one it was given alone.
  * Loaded by the panel as a classic script (window.ThemeCreator, after theme-palette.js and theme-apply.js) and by
  * Node for tests.
@@ -179,7 +180,11 @@
         GONE: "This theme was deleted, so your changes can't be saved over it. You can save them as a new theme instead.",
         GONE_PICTURE: ' Its picture went with it, so the new theme will have no picture unless you choose one again.',
         SAVE_FAILED: "Couldn't save " + DASH + ' try again',
-        DIDNT_WORK: "That didn't work " + DASH + ' check your choices and try again'
+        DIDNT_WORK: "That didn't work " + DASH + ' check your choices and try again',
+        MINI_SKIP: 'Skip ' + DASH + ' no mini-player version',
+        MINI_MAKE: 'Make a mini-player version',
+        MINI_NOT_READABLE: 'Some text will be hard to read in the mini-player',
+        MINI_MATCH: 'Update to match the theme'
     });
 
     /* ---- the steps ---- */
@@ -318,7 +323,8 @@
      *   picture   'none' | 'saved' (the theme's own picture on the server) | 'new' (a file chosen here, sent on save)
      *   hadPicture, savedPictureUrl  whether the edited theme has a picture on the server, and its link
      *   dim, blur, fit               the picture's settings
-     *   mini                         null or {colors{14}, useImage, dim}
+     *   mini                         null or {colors{14}, useImage, dim}; whether its colors follow the theme is not kept
+     *                                apart: they do exactly when they are the ones the theme's colors make (miniFollows)
      */
     function blankState() {
         return {
@@ -330,9 +336,14 @@
         };
     }
 
+    function copyMini(mini) {
+        return mini ? { colors: mini.colors ? copyOf(mini.colors) : {}, useImage: mini.useImage === true, dim: mini.dim } : null;
+    }
+
     function clone(state) {
         var next = copyOf(state);
         next.colors = state.colors ? copyOf(state.colors) : null;
+        next.mini = copyMini(state.mini);
         return next;
     }
 
@@ -369,7 +380,7 @@
     function withFields(state, fields) {
         var next = clone(state);
         Object.keys(fields).forEach(function (key) { next[key] = fields[key]; });
-        return next;
+        return fields.colors ? keepMiniFollowing(state, next) : next;
     }
 
     /* A new theme starting from a built-in theme. */
@@ -404,7 +415,7 @@
         if (theme.mini && typeof theme.mini === 'object') {
             state.mini = {
                 colors: normalizeColors(theme.mini.colors, palette.MINI_SLOTS, state.colors),
-                useImage: theme.mini.useImage === true,
+                useImage: theme.mini.useImage === true && !!url,
                 dim: clampInt(theme.mini.dim, 0, 90, DEFAULT_DIM)
             };
         }
@@ -559,7 +570,7 @@
             next.pageColor = rgb;
             next.mode = modeOf(rgb);
         }
-        return next;
+        return keepMiniFollowing(state, next);
     }
 
     function setCorners(state, percent) {
@@ -581,9 +592,11 @@
         return withFields(state, { picture: 'new', dim: clampInt(dim, 0, 90, state.dim) });
     }
 
-    /* No picture: for a theme that had one on the server this means removing it. */
+    /* No picture: for a theme that had one on the server this means removing it. The mini-player has none to use then. */
     function withoutPicture(state) {
-        return withFields(state, { picture: 'none' });
+        var next = withFields(state, { picture: 'none' });
+        if (next.mini) next.mini.useImage = false;
+        return next;
     }
 
     /* Any of dim, blur and fit; what is missing or out of range is left as it was. */
@@ -641,6 +654,128 @@
     function pictureProblem(kind, size) {
         if (!kind || !(size > 0)) return TEXT.NOT_A_PICTURE;
         return size > MAX_PICTURE_BYTES ? TEXT.PICTURE_TOO_BIG : '';
+    }
+
+    /* ---- step 5: the mini-player version ---- */
+
+    /* The 16 variables the desktop mini-player takes from a theme (desktop/bridge/core.js THEME_VARS; a test keeps them equal). */
+    var MINI_VARS = Object.freeze(['--bg-primary', '--bg-secondary', '--bg-card', '--bg-elevated', '--bg-hover', '--accent',
+        '--accent-light', '--accent-glow', '--accent-gradient', '--text-primary', '--text-secondary', '--text-tertiary',
+        '--border', '--border-light', '--success', '--font-family']);
+
+    function sameColors(a, b) {
+        return palette.MINI_SLOTS.every(function (slot) { return !!a && !!b && a[slot] === b[slot]; });
+    }
+
+    /* Do the mini-player's colors follow the theme, that is, are they the ones the theme's colors make? */
+    function miniFollows(state) {
+        return !!state.mini && !!state.colors && sameColors(state.mini.colors, palette.mini(state.colors));
+    }
+
+    /*
+     * `next` is `prev` after a change; if the theme's colors changed and the mini-player's colors were following them,
+     * they follow to the new ones. Colors the person set for the mini-player themselves stay. (Every change of the
+     * theme's colors ends here, so a mini-player version made from the theme never goes out of step.)
+     */
+    function keepMiniFollowing(prev, next) {
+        if (miniFollows(prev) && next.mini && next.colors) next.mini.colors = palette.mini(next.colors);
+        return next;
+    }
+
+    function withMini(state, fields) {
+        var next = clone(state);
+        Object.keys(fields).forEach(function (key) { next.mini[key] = fields[key]; });
+        return next;
+    }
+
+    /* The mini-player's 14 colors made from a main color and a background of its own (readable, like step 2's). */
+    function miniFrom(main, page) {
+        return palette.mini(palette.generate(main, page, modeOf(page)));
+    }
+
+    /* "Make a mini-player version": its colors from the theme's, on its picture (and darkening) when the theme has one. */
+    function makeMini(state) {
+        if (state.mini) return state;
+        var picture = hasPicture(state);
+        var next = clone(state);
+        next.mini = {
+            colors: palette.mini(state.colors),
+            useImage: picture,
+            dim: picture ? clampInt(state.dim, 0, 90, DEFAULT_DIM) : DEFAULT_DIM
+        };
+        return next;
+    }
+
+    /* "Skip": no mini-player version, so the theme isn't offered in the mini-player. */
+    function skipMini(state) {
+        if (!state.mini) return state;
+        var next = clone(state);
+        next.mini = null;
+        return next;
+    }
+
+    /* Its own main color: the mini-player's palette is made again from it and the mini-player's background. */
+    function setMiniMain(state, hex) {
+        if (!state.mini || !isHex6(hex)) return state;
+        return withMini(state, { colors: miniFrom(hex.toLowerCase(), rgbOf(state.mini.colors.bgPrimary)) });
+    }
+
+    function setMiniPage(state, hex) {
+        if (!state.mini || !isHex6(hex)) return state;
+        return withMini(state, { colors: miniFrom(rgbOf(state.mini.colors.accent), hex.toLowerCase()) });
+    }
+
+    /* "Update to match the theme": the colors the theme's make, and following it again. */
+    function matchMini(state) {
+        return state.mini ? withMini(state, { colors: palette.mini(state.colors) }) : state;
+    }
+
+    /*
+     * "Fix it": the words move just far enough (as on step 2). Where the page and cards are so far apart that no words
+     * work on both, the palette starts over from the mini-player's main color and background, which is always readable.
+     * Either way the colors are the mini-player's own from then on.
+     */
+    function fixMini(state) {
+        if (!state.mini || palette.readability(state.mini.colors).ok) return state;
+        var fixed = palette.fixReadability(state.mini.colors);
+        if (!palette.readability(fixed).ok) fixed = miniFrom(rgbOf(state.mini.colors.accent), rgbOf(state.mini.colors.bgPrimary));
+        return withMini(state, { colors: fixed });
+    }
+
+    /* "Use my background picture": only a theme with a picture has one to use. */
+    function setMiniPicture(state, on) {
+        return state.mini ? withMini(state, { useImage: on === true && hasPicture(state) }) : state;
+    }
+
+    function setMiniDim(state, dim) {
+        return state.mini ? withMini(state, { dim: clampInt(dim, 0, 90, state.mini.dim) }) : state;
+    }
+
+    /* The 16 variables for the preview, from the mini-player's colors and the theme's font. */
+    function miniVars(state) {
+        var all = palette.cssVars(state.mini.colors);
+        var vars = {};
+        MINI_VARS.forEach(function (name) { vars[name] = all[name]; });
+        vars['--font-family'] = apply.fontStack(state.font) || apply.fontStack('Inter');
+        return vars;
+    }
+
+    /* Everything the step shows about the mini-player version, or {made: false} when there is none. */
+    function miniView(state) {
+        if (!state.mini) return { made: false };
+        var colors = state.mini.colors;
+        var picture = hasPicture(state);
+        return {
+            made: true,
+            follows: miniFollows(state),
+            main: rgbOf(colors.accent),
+            page: rgbOf(colors.bgPrimary),
+            report: report(colors),
+            hasPicture: picture,
+            useImage: state.mini.useImage === true && picture,
+            dim: clampInt(state.mini.dim, 0, 90, DEFAULT_DIM),
+            vars: miniVars(state)
+        };
     }
 
     /* ---- step 6: the name and who can use the theme ---- */
@@ -832,6 +967,17 @@
         withNewPicture: withNewPicture,
         withoutPicture: withoutPicture,
         setPictureLook: setPictureLook,
+        MINI_VARS: MINI_VARS,
+        makeMini: makeMini,
+        skipMini: skipMini,
+        miniFollows: miniFollows,
+        setMiniMain: setMiniMain,
+        setMiniPage: setMiniPage,
+        matchMini: matchMini,
+        fixMini: fixMini,
+        setMiniPicture: setMiniPicture,
+        setMiniDim: setMiniDim,
+        miniView: miniView,
         averageBrightness: averageBrightness,
         suggestedDim: suggestedDim,
         sniffPicture: sniffPicture,
