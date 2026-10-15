@@ -1708,6 +1708,16 @@
             text-overflow: ellipsis;
         }
 
+        /* "added by fred · Oct 13": one line under the artist, shown on phones too */
+        .pl-song-added {
+            margin-top: 1px;
+            font-size: 0.72rem;
+            color: var(--text-tertiary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .pl-song.unresolved .pl-song-title { color: var(--text-tertiary); font-weight: 400; }
         .pl-song.unresolved .pl-thumb { opacity: 0.5; }
         .pl-song-warn { color: #d97706; }
@@ -6104,6 +6114,7 @@
     <script src="/web/theme-creator.js"></script>
     <script src="/web/whats-new.js"></script>
     <script src="/web/likes.js"></script>
+    <script src="/web/playlist-rows.js"></script>
 
     <script>
         let currentGuild = localStorage.getItem('defaultGuild') || '';
@@ -11263,20 +11274,6 @@
             return h > 0 ? h + ' h' + (m ? ' ' + m + ' min' : '') : m + ' min';
         }
 
-        function plShortDate(iso) {
-            if (!iso) return '';
-            var d = new Date(iso);
-            return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-        }
-
-        // "Added by fred · Oct 13, 2026", leaving out what is not known.
-        function plAddedTip(song) {
-            var date = plShortDate(song.addedAt);
-            if (song.addedBy && date) return 'Added by ' + song.addedBy + ' · ' + date;
-            if (song.addedBy) return 'Added by ' + song.addedBy;
-            return date ? 'Added ' + date : '';
-        }
-
         function plIconBtn(label, title, onClick, extraClass) {
             var b = plEl('button', 'playlist-btn' + (extraClass ? ' ' + extraClass : ''), label);
             b.type = 'button';
@@ -12233,6 +12230,7 @@
             var list = page.els.list;
             if (plMenu && list.contains(plMenu.anchor)) plCloseMenu(false);
             var keep = list.scrollTop;
+            var focused = plFocusedButton(list);
             list.textContent = '';
             page.rowBySong = new Map();
             var frag = document.createDocumentFragment();
@@ -12243,6 +12241,24 @@
             });
             list.appendChild(frag);
             list.scrollTop = keep;
+            plFocusButtonAgain(list, focused);
+        }
+
+        // The rows are drawn again on every read (also the one after each move). A button of a row that had keyboard
+        // focus gets it back: {id: the song, at: which button of its row}, or null.
+        function plFocusedButton(list) {
+            var el = document.activeElement;
+            var row = el && el !== list && list.contains(el) ? el.closest('.pl-song') : null;
+            if (!row || !row.dataset.songId) return null;
+            var at = Array.prototype.indexOf.call(row.querySelectorAll('button'), el);
+            return at < 0 ? null : { id: row.dataset.songId, at: at };
+        }
+
+        function plFocusButtonAgain(list, mark) {
+            if (!mark) return;
+            var row = Array.prototype.find.call(list.children, function (li) { return li.dataset.songId === mark.id; });
+            var button = row ? row.querySelectorAll('button')[mark.at] : null;
+            if (button) button.focus({ preventScroll: true });
         }
 
         function plRefreshRow(page, song) {
@@ -12278,8 +12294,7 @@
             var editable = !page.legacy;
             var broken = song.unresolved && editable;
             var li = plEl('li', 'pl-song' + (broken ? ' unresolved' : '') + (page.removing.has(song.id) ? ' pending' : ''));
-            var tip = plAddedTip(song);
-            if (tip) li.title = tip;
+            li.dataset.songId = song.id;
 
             if (editable) {
                 var handle = plEl('span', 'pl-handle', '☰');
@@ -12317,6 +12332,9 @@
                 if (song.durationMs > 0) sub.appendChild(plEl('span', 'pl-song-len-inline', (song.author ? ' · ' : '') + formatTime(song.durationMs)));
                 info.appendChild(sub);
             }
+            // "added by fred · Oct 13" (plain text; the name is bidi-isolated by playlist-rows.js)
+            var added = window.PlaylistRows ? PlaylistRows.addedByText(song, Date.now()) : '';
+            if (added) info.appendChild(plEl('div', 'pl-song-added', added));
             li.appendChild(info);
             if (!broken && song.durationMs > 0) li.appendChild(plEl('span', 'pl-song-len', formatTime(song.durationMs)));
             var like = broken ? null : likeButtonFor(plPickerSong(song));
@@ -12344,13 +12362,36 @@
 
         function plSongMenu(page, song, anchor) {
             var remove = { label: 'Remove', danger: true, run: function () { plRemoveSong(page, song); } };
-            if (song.unresolved) return [remove];
+            var moves = plMoveMenuItems(page, song, !page.legacy, plMoveFromMenu);
+            if (song.unresolved) return moves.concat([remove]);
             var items = [];
             // Only links: /play puts "ytsearch:" in front of anything else, so a stored search would be searched for as text
             if (plIsWebLink(song.uri)) items.push({ label: 'Play next', run: function () { plPlayNext(song); } });
             items.push({ label: 'Add to another playlist', run: function () { openPlaylistPicker(plPickerSong(song), anchor, 'playlist'); } });
-            items.push(remove);
-            return items;
+            return items.concat(moves, [remove]);
+        }
+
+        // The Move up / Move down / Move to top / Move to bottom items of a song's ⋯ menu: [{label, run}]. None when
+        // the list cannot be changed (editable is false: a read-only list) or the song has nowhere to go. Picking one
+        // calls move(page, song, toIndex) with the song's final position; a page that is not a playlist passes its own.
+        function plMoveMenuItems(page, song, editable, move) {
+            if (!editable || !window.PlaylistRows) return [];
+            return PlaylistRows.moveTargets(page.songs.indexOf(song), page.songs.length).map(function (t) {
+                return { label: t.label, run: function () { move(page, song, t.toIndex); } };
+            });
+        }
+
+        // A Move item of the row menu takes the same path as a drop (rows change at once, a refusal puts them back,
+        // no read slips in between) and is ignored while a move or a drag is already under way.
+        function plMoveFromMenu(page, song, to) {
+            if (plPageBusy(page)) return;
+            page.moving = true;
+            plMoveSong(page, song, to);
+            // The rows were drawn again (plRenderRows keeps focus on the same button). Focusing the song's ⋯ button
+            // here also scrolls it into view, which "Move to top" and "Move to bottom" need: the next Move is one Enter away.
+            var row = page.rowBySong.get(song);
+            var more = row ? row.querySelector('.playlist-btn[aria-haspopup]') : null;
+            if (more) more.focus();
         }
 
         async function plRemoveSong(page, song) {
@@ -12464,7 +12505,7 @@
                 // (the dragend that follows must not start one). The move itself waits a tick: redrawing the rows
                 // removes the handle that started the drag, and the drag should finish first.
                 page.moving = true;
-                setTimeout(function () { plMoveSong(page, song, gap); }, 0);
+                setTimeout(function () { plMoveSong(page, song, plDropIndex(page, song, gap)); }, 0);
             });
         }
 
@@ -12491,24 +12532,28 @@
             });
         }
 
-        // gap is where the song was dropped (between rows). The drop handler has already marked the page busy
-        // (page.moving); this clears it again whatever happens, then lets a read that was held back go.
-        async function plMoveSong(page, song, gap) {
+        // A song dropped on a gap (between rows) ends up at the gap, minus one when it came from above.
+        function plDropIndex(page, song, gap) {
+            var from = page.songs.indexOf(song);
+            return gap > from ? gap - 1 : gap;
+        }
+
+        // `to` is the song's final position. Whoever starts a move (the drop handler, a Move item of the row menu)
+        // has already marked the page busy (page.moving); this clears it again whatever happens, then lets a read
+        // that was held back go.
+        async function plMoveSong(page, song, to) {
             try {
-                await plMoveSongNow(page, song, gap);
+                await plMoveSongNow(page, song, to);
             } finally {
                 page.moving = false;
                 plFlushDeferred(page);
             }
         }
 
-        // The song's final position is the gap, minus one when it came from above. The rows change at once; the
-        // server's refusal puts them back.
-        async function plMoveSongNow(page, song, gap) {
+        // The rows change at once; the server's refusal puts them back.
+        async function plMoveSongNow(page, song, to) {
             var from = page.songs.indexOf(song);
-            if (from < 0) return;
-            var to = gap > from ? gap - 1 : gap;
-            if (to === from) return;
+            if (from < 0 || to === from || to < 0 || to >= page.songs.length) return;
             // Reads already on their way are dropped (they are older than this move) and a fresh one follows it.
             page.seq++;
             page.deferred = true;
