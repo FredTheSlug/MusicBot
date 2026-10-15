@@ -74,6 +74,8 @@ public class LikesStore
     private final Path dir;
     private final PlaylistStore store;
     private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
+    /** The lists that can't be read and were warned about, each with its {@link #stamp} as of the warning. */
+    private final ConcurrentHashMap<Path, String> warned = new ConcurrentHashMap<>();
 
     /**
      * Likes kept in {@code likesDir} (made by the first like); {@code clock} dates every like and change.
@@ -82,12 +84,12 @@ public class LikesStore
     public LikesStore(Path likesDir, Clock clock)
     {
         this.dir = likesDir.toAbsolutePath().normalize();
-        this.store = new PlaylistStore(likesDir, clock);
+        this.store = new PlaylistStore(likesDir, clock, this::unreadable);
     }
 
     /**
-     * The person's list, newest like first; empty when they have none or the file can't be read (the store
-     * logs a warning then). Throws {@link IllegalArgumentException} for a user id that is not 1 to 20 digits.
+     * The person's list, newest like first; empty when they have none or the file can't be read (warned about
+     * once, see {@link #unreadable}). Throws {@link IllegalArgumentException} for a user id that is not 1 to 20 digits.
      */
     public Optional<PlaylistFile> get(String userId)
     {
@@ -97,8 +99,13 @@ public class LikesStore
     /** The uris the person has liked, newest first; none when they have no list. */
     public Set<String> uris(String userId)
     {
+        return uris(get(userId).orElse(null));
+    }
+
+    /** The uris of a list of likes, newest first, each once; none for no list (null). */
+    public static Set<String> uris(PlaylistFile list)
+    {
         Set<String> uris = new LinkedHashSet<>();
-        PlaylistFile list = get(userId).orElse(null);
         if(list != null)
             for(Song song : list.getSongs())
                 if(song.getUri() != null)
@@ -109,10 +116,10 @@ public class LikesStore
     /**
      * Likes the song for {@code owner}: a copy goes to the top of their list ({@code addedBy} the owner,
      * {@code addedAt} now), and the list is made if there is none. A song whose uri is already liked changes
-     * nothing and writes nothing. Returns how many songs the list holds afterwards. A list already at
-     * {@link PlaylistFile#MAX_SONGS} refuses a new song with {@link IllegalStateException}({@link #FULL}).
+     * nothing and writes nothing. Returns how many songs the list holds afterwards, and whether it was written. A
+     * list already at {@link PlaylistFile#MAX_SONGS} refuses a new song with {@link IllegalStateException}({@link #FULL}).
      */
-    public int like(Person owner, Song song)
+    public Outcome like(Person owner, Song song)
     {
         String id = ownerId(owner);
         if(song == null || song.getUri() == null || song.getUri().isBlank())
@@ -126,19 +133,19 @@ public class LikesStore
                 current = store.create(id, "", owner);
             }
             if(contains(current, song.getUri()))
-                return current.getSongs().size();
+                return new Outcome(current.getSongs().size(), false);
             if(current.getSongs().size() >= PlaylistFile.MAX_SONGS)
                 throw new IllegalStateException(FULL);
-            return store.addSongs(id, "", Collections.singletonList(song), 0, owner, list -> list.setCreatedBy(owner))
-                    .getSongs().size();
+            return new Outcome(store.addSongs(id, "", Collections.singletonList(song), 0, owner, list -> list.setCreatedBy(owner))
+                    .getSongs().size(), true);
         }
     }
 
     /**
-     * Takes every song with this uri out of the owner's list. Returns how many songs the list holds afterwards;
-     * a uri that is not liked, or no list at all (0), writes nothing.
+     * Takes every song with this uri out of the owner's list. Returns how many songs the list holds afterwards, and
+     * whether it was written: a uri that is not liked, or no list at all (0 songs), writes nothing.
      */
-    public int unlike(Person owner, String uri)
+    public Outcome unlike(Person owner, String uri)
     {
         String id = ownerId(owner);
         if(uri == null || uri.isBlank())
@@ -148,14 +155,14 @@ public class LikesStore
         {
             PlaylistFile current = store.get(id, "").orElse(null);
             if(current == null)
-                return 0;
+                return new Outcome(0, false);
             if(!contains(current, wanted))
-                return current.getSongs().size();
-            return store.update(id, "", list ->
+                return new Outcome(current.getSongs().size(), false);
+            return new Outcome(store.update(id, "", list ->
             {
                 list.setCreatedBy(owner);
                 list.getSongs().removeIf(each -> wanted.equals(each.getUri()));
-            }).getSongs().size();
+            }).getSongs().size(), true);
         }
     }
 
@@ -213,7 +220,8 @@ public class LikesStore
 
     /**
      * Everyone with at least one like, sorted by name (ignoring case; a list with no owner name goes by its id).
-     * Lists that can't be read are skipped, with a warning; so are files that are not named after a user id.
+     * Lists that can't be read are skipped (with one warning per broken file); so are files that are not named after a
+     * user id.
      */
     public List<Liker> people()
     {
@@ -335,6 +343,7 @@ public class LikesStore
                 try
                 {
                     Files.move(file, target); // refuses to replace an existing file
+                    warned.remove(file); // a broken file that ever takes its place is a new one
                     LOG.warn("Liked songs file {} can't be read: kept as {} and a new list started", file, target);
                     return;
                 }
@@ -350,6 +359,30 @@ public class LikesStore
         }
     }
 
+    /**
+     * A list that can't be read, as the store finds it: warned about once, not at every read (every song change has
+     * every panel ask who liked the song, which reads every list), and again only when the file changes.
+     */
+    private void unreadable(Path file, String why)
+    {
+        String stamp = stamp(file);
+        if(!stamp.equals(warned.put(file, stamp)))
+            LOG.warn("Skipping liked songs file {}: {} (not warned about again until it changes)", file, why);
+    }
+
+    /** What tells one version of a file from the next: its last-modified time and size ("" when they can't be read). */
+    private static String stamp(Path file)
+    {
+        try
+        {
+            return Files.getLastModifiedTime(file) + " " + Files.size(file);
+        }
+        catch(IOException e)
+        {
+            return "";
+        }
+    }
+
     /** True when a song of the list has this uri. */
     private static boolean contains(PlaylistFile list, String uri)
     {
@@ -362,7 +395,7 @@ public class LikesStore
     }
 
     /** The name to show for the list's owner: the one in the file, else the id the file is named after. */
-    private static String ownerName(PlaylistFile list)
+    public static String ownerName(PlaylistFile list)
     {
         Person owner = list.getCreatedBy();
         return owner == null || owner.getName() == null || owner.getName().isBlank() ? list.getName() : owner.getName();
@@ -386,6 +419,31 @@ public class LikesStore
     private Object lockFor(String userId)
     {
         return locks.computeIfAbsent(userId, key -> new Object());
+    }
+
+    /** What a {@link #like} or {@link #unlike} did. */
+    public static final class Outcome
+    {
+        private final int count;
+        private final boolean changed;
+
+        Outcome(int count, boolean changed)
+        {
+            this.count = count;
+            this.changed = changed;
+        }
+
+        /** How many songs the list holds afterwards. */
+        public int getCount()
+        {
+            return count;
+        }
+
+        /** Whether the list was written; false when it already was as asked (or there is none to unlike from). */
+        public boolean isChanged()
+        {
+            return changed;
+        }
     }
 
     /** One person with likes, as {@link #people} lists them. */

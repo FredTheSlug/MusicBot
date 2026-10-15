@@ -851,6 +851,27 @@ public class LikeRoutesTest
         }
     }
 
+    @Test
+    public void aLikeOrUnlikeThatChangesNothingTellsNobody() throws Exception
+    {
+        ok(like("a"));
+        int mark = broadcasts.size();
+        assertTrue("already liked", ok(like("a")).similar(answer("liked", true, "count", 1)));
+        assertTrue("not liked", ok(post("/api/likes/remove", new JSONObject().put("uri", uriOf("never"))))
+                .similar(answer("liked", false, "count", 1)));
+        as(FRED); // no list at all
+        assertTrue(ok(post("/api/likes/remove", new JSONObject().put("uri", uriOf("a")))).similar(answer("liked", false, "count", 0)));
+        assertEquals("nothing was written: " + broadcasts.subList(mark, broadcasts.size()), mark, broadcasts.size());
+
+        // a real change still tells everyone, once
+        as(ANNA);
+        ok(post("/api/likes/remove", new JSONObject().put("uri", uriOf("a"))));
+        assertLikesBroadcast(single(mark), ANNA);
+        mark = broadcasts.size();
+        ok(like("a"));
+        assertLikesBroadcast(single(mark), ANNA);
+    }
+
     // ---- playing -----------------------------------------------------------------------------------------------
 
     @Test

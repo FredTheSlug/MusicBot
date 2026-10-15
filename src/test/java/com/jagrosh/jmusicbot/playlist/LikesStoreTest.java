@@ -23,6 +23,7 @@ import com.jagrosh.jmusicbot.playlist.PlaylistFile.Song;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -233,10 +234,10 @@ public class LikesStoreTest
     @Test
     public void firstLikeCreatesTheListAtTheTop() throws Exception
     {
-        assertEquals(1, likes.like(FRED, song("a")));
+        assertEquals(1, likes.like(FRED, song("a")).getCount());
         assertTrue(Files.isRegularFile(fileOf(FRED)));
         clock.set(T0.plusSeconds(60));
-        assertEquals(2, likes.like(FRED, song("b")));
+        assertEquals(2, likes.like(FRED, song("b")).getCount());
 
         PlaylistFile list = likes.get(FRED.getId()).get();
         assertEquals("newest first", Arrays.asList("b", "a"), keys(list.getSongs()));
@@ -275,11 +276,33 @@ public class LikesStoreTest
 
         Song again = song("a");
         again.setTitle("Another title for the same song");
-        assertEquals(2, likes.like(FRED, again));
+        assertEquals(2, likes.like(FRED, again).getCount());
 
         assertArrayEquals("no write at all", before, Files.readAllBytes(fileOf(FRED)));
         assertEquals("and it stays where it was", Arrays.asList("b", "a"), listed(FRED));
-        assertEquals("another person's like is their own", 1, likes.like(ANNA, song("a")));
+        assertEquals("another person's like is their own", 1, likes.like(ANNA, song("a")).getCount());
+    }
+
+    @Test
+    public void likeAndUnlikeSayWhetherTheyWrote() throws Exception
+    {
+        // what tells the panels about a change only when there is one
+        assertTrue("the first like makes the list", likes.like(FRED, song("a")).isChanged());
+        assertTrue(likes.like(FRED, song("b")).isChanged());
+        LikesStore.Outcome again = likes.like(FRED, song("a"));
+        assertFalse("already liked", again.isChanged());
+        assertEquals(2, again.getCount());
+
+        LikesStore.Outcome notLiked = likes.unlike(FRED, uri("zzz"));
+        assertFalse("not liked", notLiked.isChanged());
+        assertEquals(2, notLiked.getCount());
+        LikesStore.Outcome noList = likes.unlike(ANNA, uri("a"));
+        assertFalse("no list at all", noList.isChanged());
+        assertEquals(0, noList.getCount());
+
+        LikesStore.Outcome unliked = likes.unlike(FRED, uri("a"));
+        assertTrue(unliked.isChanged());
+        assertEquals(1, unliked.getCount());
     }
 
     @Test
@@ -291,10 +314,10 @@ public class LikesStoreTest
         Song second = song("b");
         second.setUri(longUri);
 
-        assertEquals(1, likes.like(FRED, first));
-        assertEquals(1, likes.like(FRED, second));
+        assertEquals(1, likes.like(FRED, first).getCount());
+        assertEquals(1, likes.like(FRED, second).getCount());
         assertEquals(1, likes.uris(FRED.getId()).size());
-        assertEquals("the same cut applies to the uri to unlike", 0, likes.unlike(FRED, longUri));
+        assertEquals("the same cut applies to the uri to unlike", 0, likes.unlike(FRED, longUri).getCount());
     }
 
     @Test
@@ -306,19 +329,19 @@ public class LikesStoreTest
         addRaw(FRED, song("a"), 0); // a copy made some other way: [a, c, b, a]
         assertEquals(Arrays.asList("a", "c", "b", "a"), listed(FRED));
 
-        assertEquals(2, likes.unlike(FRED, uri("a")));
+        assertEquals(2, likes.unlike(FRED, uri("a")).getCount());
         assertEquals(Arrays.asList("c", "b"), listed(FRED));
 
         byte[] before = Files.readAllBytes(fileOf(FRED));
         clock.set(T0.plusSeconds(60));
-        assertEquals("not liked: just the count", 2, likes.unlike(FRED, uri("zzz")));
+        assertEquals("not liked: just the count", 2, likes.unlike(FRED, uri("zzz")).getCount());
         assertArrayEquals("no write", before, Files.readAllBytes(fileOf(FRED)));
 
-        assertEquals("no list at all", 0, likes.unlike(ANNA, uri("a")));
+        assertEquals("no list at all", 0, likes.unlike(ANNA, uri("a")).getCount());
         assertFalse("and none is made", Files.exists(fileOf(ANNA)));
 
-        assertEquals(1, likes.unlike(FRED, uri("c")));
-        assertEquals(0, likes.unlike(FRED, uri("b")));
+        assertEquals(1, likes.unlike(FRED, uri("c")).getCount());
+        assertEquals(0, likes.unlike(FRED, uri("b")).getCount());
         assertTrue("an emptied list stays, empty", likes.get(FRED.getId()).get().getSongs().isEmpty());
         assertTrue(likes.uris(FRED.getId()).isEmpty());
     }
@@ -358,7 +381,7 @@ public class LikesStoreTest
         likes.move(new Person("1", "n4"), idOfB, 0);
         assertEquals("n4", likes.get("1").get().getCreatedBy().getName());
 
-        assertEquals("a change that changes nothing writes nothing", 2, likes.unlike(new Person("1", "n5"), uri("zzz")));
+        assertEquals("a change that changes nothing writes nothing", 2, likes.unlike(new Person("1", "n5"), uri("zzz")).getCount());
         assertEquals("n4", likes.get("1").get().getCreatedBy().getName());
     }
 
@@ -373,13 +396,13 @@ public class LikesStoreTest
         assertEquals(FULL, LikesStore.FULL);
         assertArrayEquals("nothing was written", before, Files.readAllBytes(fileOf(FRED)));
 
-        assertEquals("a song that is already in just answers", 2000, likes.like(FRED, song("s5")));
+        assertEquals("a song that is already in just answers", 2000, likes.like(FRED, song("s5")).getCount());
         IllegalStateException putBack = assertThrows(IllegalStateException.class, () -> likes.reinsert(FRED, song("old"), 0));
         assertEquals(FULL, putBack.getMessage());
         assertArrayEquals(before, Files.readAllBytes(fileOf(FRED)));
 
-        assertEquals(1999, likes.unlike(FRED, uri("s5")));
-        assertEquals("room again", 2000, likes.like(FRED, song("new")));
+        assertEquals(1999, likes.unlike(FRED, uri("s5")).getCount());
+        assertEquals("room again", 2000, likes.like(FRED, song("new")).getCount());
         assertEquals("new", listed(FRED).get(0));
     }
 
@@ -392,14 +415,14 @@ public class LikesStoreTest
         assertFalse("a broken list reads as empty", likes.get(FRED.getId()).isPresent());
         assertTrue(likes.uris(FRED.getId()).isEmpty());
         assertTrue(likes.people().isEmpty());
-        assertEquals("nothing to unlike in it, and nothing is touched", 0, likes.unlike(FRED, uri("a")));
+        assertEquals("nothing to unlike in it, and nothing is touched", 0, likes.unlike(FRED, uri("a")).getCount());
         assertThrows(NoSuchElementException.class, () -> likes.removeSong(FRED, "abcdefgh"));
         assertThrows(NoSuchElementException.class, () -> likes.move(FRED, "abcdefgh", 0));
         assertThrows(NoSuchElementException.class, () -> likes.reinsert(FRED, song("a"), 0));
         assertEquals("{oops", read(file));
         assertTrue("the skipped file is warned about", warnings().stream().anyMatch(w -> w.contains(FRED.getId() + ".json")));
 
-        assertEquals(1, likes.like(FRED, song("a")));
+        assertEquals(1, likes.like(FRED, song("a")).getCount());
         assertEquals("the old file is kept", "{oops", read(dir.resolve(FRED.getId() + ".json.broken")));
         assertEquals(Collections.singletonList("a"), listed(FRED));
         assertEquals("fred", likes.get(FRED.getId()).get().getCreatedBy().getName());
@@ -407,7 +430,7 @@ public class LikesStoreTest
 
         // broken again: the first copy is never overwritten, the new one takes the next free name
         write(file, "{oops again");
-        assertEquals(1, likes.like(FRED, song("b")));
+        assertEquals(1, likes.like(FRED, song("b")).getCount());
         assertEquals("{oops again", read(dir.resolve(FRED.getId() + ".json.broken-2")));
         assertEquals("{oops", read(dir.resolve(FRED.getId() + ".json.broken")));
         assertEquals(Collections.singletonList("b"), listed(FRED));
@@ -487,6 +510,40 @@ public class LikesStoreTest
     }
 
     @Test
+    public void aBrokenListIsWarnedAboutOnceUntilItChanges() throws Exception
+    {
+        // who is asked at every song change by every panel: one broken file must not fill the log
+        likes.like(ANNA, song("u1"));
+        Path broken = dir.resolve("444.json");
+        write(broken, "{oops");
+        log.list.clear();
+
+        for(int i = 0; i < 3; i++)
+        {
+            assertEquals(1, likes.people().size());
+            assertEquals(Collections.singletonList("anna"), likes.whoLiked(uri("u1"), null));
+            assertEquals(Collections.singleton(uri("u1")), likes.allUris());
+            assertFalse(likes.get("444").isPresent());
+        }
+        List<String> warned = warnings();
+        assertEquals("one broken file, one warning: " + warned, 1, warned.size());
+        assertTrue(warned.get(0).contains("444.json"));
+
+        // changed, and still broken: warned about again, once
+        write(broken, "{oops, still");
+        Files.setLastModifiedTime(broken, FileTime.from(Files.getLastModifiedTime(broken).toInstant().plusSeconds(60)));
+        likes.people();
+        likes.whoLiked(uri("u1"), null);
+        assertEquals("the changed file is warned about once more: " + warnings(), 2, warnings().size());
+
+        // a playlist store of its own still warns at every read, as it always did
+        PlaylistStore plain = new PlaylistStore(dir, clock);
+        plain.get("444", "");
+        plain.get("444", "");
+        assertEquals(4, warnings().size());
+    }
+
+    @Test
     public void everyoneMergesWithoutDuplicates() throws Exception
     {
         likes.like(ANNA, song("s1"));
@@ -562,9 +619,10 @@ public class LikesStoreTest
     @Test
     public void concurrentLikesOfOneSongMakeOneEntry() throws Exception
     {
-        List<Integer> counts = race(8, i -> likes.like(FRED, song("same")));
+        List<LikesStore.Outcome> outcomes = race(8, i -> likes.like(FRED, song("same")));
 
-        assertEquals(Collections.nCopies(8, 1), counts);
+        assertEquals(Collections.nCopies(8, 1), outcomes.stream().map(LikesStore.Outcome::getCount).collect(Collectors.toList()));
+        assertEquals("one of them wrote", 1, outcomes.stream().filter(LikesStore.Outcome::isChanged).count());
         assertEquals(Collections.singletonList("same"), listed(FRED));
     }
 
@@ -603,7 +661,7 @@ public class LikesStoreTest
 
         // 20 digits is the longest a Discord id can be
         Person longest = new Person(repeat("9", 20), "max");
-        assertEquals(1, likes.like(longest, song("a")));
+        assertEquals(1, likes.like(longest, song("a")).getCount());
         assertTrue(Files.isRegularFile(dir.resolve(repeat("9", 20) + ".json")));
     }
 
@@ -676,7 +734,7 @@ public class LikesStoreTest
         // Anna names Fred's song id: it is looked for in her own list only
         assertThrows(NoSuchElementException.class, () -> likes.removeSong(ANNA, fredsSong));
         assertThrows(NoSuchElementException.class, () -> likes.move(ANNA, fredsSong, 0));
-        assertEquals(1, likes.unlike(ANNA, uri("a")));
+        assertEquals(1, likes.unlike(ANNA, uri("a")).getCount());
 
         assertArrayEquals(Files.readAllBytes(fileOf(FRED)), fredBefore);
         assertEquals(Collections.singletonList("a"), listed(FRED));

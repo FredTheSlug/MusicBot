@@ -45,6 +45,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -97,13 +98,28 @@ public class PlaylistStore
 
     private final Path root;
     private final Clock clock;
+    /** Told about every {@code .json} file that is not a playlist when it is read: the file and why. */
+    private final BiConsumer<Path, String> unreadable;
     private final ConcurrentHashMap<Path, Object> locks = new ConcurrentHashMap<>();
 
-    /** A store over {@code root} (made when the first playlist is written); {@code clock} stamps every change. */
+    /**
+     * A store over {@code root} (made when the first playlist is written); {@code clock} stamps every change. A file
+     * that is not a playlist is skipped with a warning at every read.
+     */
     public PlaylistStore(Path root, Clock clock)
+    {
+        this(root, clock, (file, why) -> LOG.warn("Skipping playlist file {}: {}", file, why));
+    }
+
+    /**
+     * As {@link #PlaylistStore(Path, Clock)}, except that each file that is not a playlist is handed to {@code unreadable}
+     * (the file and why) instead of the warning.
+     */
+    PlaylistStore(Path root, Clock clock, BiConsumer<Path, String> unreadable)
     {
         this.root = root.toAbsolutePath().normalize();
         this.clock = clock;
+        this.unreadable = unreadable;
     }
 
     /** Every playlist in every folder, sorted by folder then name. Unreadable (corrupt) files are skipped. */
@@ -991,7 +1007,7 @@ public class PlaylistStore
         }
         catch(IllegalArgumentException e)
         {
-            LOG.warn("Skipping playlist file {}: {}", json, e.getMessage());
+            unreadable.accept(json, e.getMessage());
             return Optional.empty();
         }
     }

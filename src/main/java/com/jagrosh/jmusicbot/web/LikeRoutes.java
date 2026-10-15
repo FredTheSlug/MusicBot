@@ -26,10 +26,8 @@ import io.javalin.http.Context;
 import io.javalin.http.Handler;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -49,7 +47,8 @@ import org.slf4j.LoggerFactory;
  * the request. With nobody logged in (web login off) the changes answer 401 and {@code mine} is empty; everything else
  * can be read and played by anyone who may use the panel. Bodies and answers are JSON, and errors are mapped as for the
  * playlists ({@code {"error": message}}, 400 / 404 / 409 for a full list / 500). Every change is announced to all
- * connected panels with a {@code likes} message, {@code {"userId": <whose likes>}}, and nothing about the songs.
+ * connected panels with a {@code likes} message, {@code {"userId": <whose likes>}}, and nothing about the songs; a like
+ * of a song already liked, or an unlike of one that isn't, changes nothing and is not announced.
  */
 public class LikeRoutes
 {
@@ -105,10 +104,10 @@ public class LikeRoutes
         void play(Context ctx, String guildId, PlaylistFile list, String mode, String songId);
     }
 
-    /** A change to the likes of {@code me}, the person logged in. */
+    /** A change to the likes of {@code me}, the person logged in; true when the list was written. */
     private interface Change
     {
-        void handle(Context ctx, Person me);
+        boolean handle(Context ctx, Person me);
     }
 
     /** Adds the routes to the app. */
@@ -130,7 +129,7 @@ public class LikeRoutes
     /** What the play hook answers: "Loading anna's likes...", or "Loading everyone's likes..." for the mix. */
     static String loadingMessage(PlaylistFile list)
     {
-        return "Loading " + (EVERYONE.equals(list.getName()) ? EVERYONE : ownerName(list)) + "'s likes...";
+        return "Loading " + (EVERYONE.equals(list.getName()) ? EVERYONE : LikesStore.ownerName(list)) + "'s likes...";
     }
 
     // ---- errors and who is asking ------------------------------------------------------------------------------
@@ -140,7 +139,7 @@ public class LikeRoutes
         return PlaylistRoutes.guarded(LOG, route);
     }
 
-    /** A change: 401 when nobody is logged in; once it went through, the panels are told whose likes changed. */
+    /** A change: 401 when nobody is logged in; once it was written, the panels are told whose likes changed. */
     private Handler change(Change change)
     {
         return guarded(ctx ->
@@ -151,8 +150,8 @@ public class LikeRoutes
                 PlaylistRoutes.fail(ctx, 401, LOG_IN, LOG_IN);
                 return;
             }
-            change.handle(ctx, me);
-            announce(me);
+            if(change.handle(ctx, me))
+                announce(me);
         });
     }
 
@@ -168,13 +167,6 @@ public class LikeRoutes
         }
     }
 
-    /** The name to show for the owner of a list: their name as of their last change, else their id. */
-    private static String ownerName(PlaylistFile list)
-    {
-        Person owner = list.getCreatedBy();
-        return owner == null || owner.getName() == null || owner.getName().trim().isEmpty() ? list.getName() : owner.getName();
-    }
-
     private static JSONObject counted(PlaylistFile list)
     {
         return new JSONObject().put("count", list.getSongs().size()).put("version", list.getVersion());
@@ -187,13 +179,8 @@ public class LikeRoutes
     {
         Person me = currentUser.apply(ctx);
         PlaylistFile list = me == null ? null : likes.get(me.getId()).orElse(null);
-        Set<String> uris = new LinkedHashSet<>();
-        if(list != null)
-            for(Song song : list.getSongs())
-                if(song.getUri() != null)
-                    uris.add(song.getUri());
-        PlaylistRoutes.send(ctx, new JSONObject().put("uris", new JSONArray(uris)).put("count", list == null ? 0 : list.getSongs().size())
-                .put("max", PlaylistFile.MAX_SONGS));
+        PlaylistRoutes.send(ctx, new JSONObject().put("uris", new JSONArray(LikesStore.uris(list)))
+                .put("count", list == null ? 0 : list.getSongs().size()).put("max", PlaylistFile.MAX_SONGS));
     }
 
     /** Everyone with at least one like: the caller first, then by name. */
@@ -234,51 +221,56 @@ public class LikeRoutes
         PlaylistFile list = likes.get(userId).orElseThrow(() -> new NoSuchElementException(NO_LIKES));
         Person me = currentUser.apply(ctx);
         PlaylistRoutes.send(ctx, PlaylistRoutes.page(list, "")
-                .put("owner", new JSONObject().put("id", list.getName()).put("name", ownerName(list)))
+                .put("owner", new JSONObject().put("id", list.getName()).put("name", LikesStore.ownerName(list)))
                 .put("mine", me != null && userId.equals(me.getId())));
     }
 
     // ---- changes of your own likes -----------------------------------------------------------------------------
 
-    private void add(Context ctx, Person me)
+    private boolean add(Context ctx, Person me)
     {
         Object song = PlaylistRoutes.body(ctx).opt("song");
         if(!(song instanceof JSONObject))
             throw new IllegalArgumentException(BAD_SONG);
-        int count = likes.like(me, SongInput.song((JSONObject) song, uriAlreadyStored, BAD_SONG));
-        PlaylistRoutes.send(ctx, new JSONObject().put("liked", true).put("count", count));
+        LikesStore.Outcome liked = likes.like(me, SongInput.song((JSONObject) song, uriAlreadyStored, BAD_SONG));
+        PlaylistRoutes.send(ctx, new JSONObject().put("liked", true).put("count", liked.getCount()));
+        return liked.isChanged();
     }
 
-    private void remove(Context ctx, Person me)
+    private boolean remove(Context ctx, Person me)
     {
         String uri = PlaylistRoutes.required(PlaylistRoutes.body(ctx), "uri", "uri");
-        int count = likes.unlike(me, uri.trim());
-        PlaylistRoutes.send(ctx, new JSONObject().put("liked", false).put("count", count));
+        LikesStore.Outcome unliked = likes.unlike(me, uri.trim());
+        PlaylistRoutes.send(ctx, new JSONObject().put("liked", false).put("count", unliked.getCount()));
+        return unliked.isChanged();
     }
 
-    private void removeSong(Context ctx, Person me)
+    private boolean removeSong(Context ctx, Person me)
     {
         String songId = PlaylistRoutes.required(PlaylistRoutes.body(ctx), "songId", "Song id");
         PlaylistStore.Removed removed = likes.removeSong(me, songId);
         String token = undos.remember(new Removal(me.getId(), removed.getSong(), removed.getIndex()));
         PlaylistRoutes.send(ctx, counted(removed.getPlaylist()).put("undo", token));
+        return true;
     }
 
-    private void undo(Context ctx, Person me)
+    private boolean undo(Context ctx, Person me)
     {
         // Only the token is read from the request: the song and its place were remembered when it went.
         String token = PlaylistRoutes.required(PlaylistRoutes.body(ctx), "token", "Undo token");
         PlaylistFile list = undos.redeem(token, removal -> removal.ownerId.equals(me.getId()),
                 removal -> likes.reinsert(me, removal.song, removal.index));
         PlaylistRoutes.send(ctx, counted(list));
+        return true;
     }
 
-    private void move(Context ctx, Person me)
+    private boolean move(Context ctx, Person me)
     {
         JSONObject body = PlaylistRoutes.body(ctx);
         String songId = PlaylistRoutes.required(body, "songId", "Song id");
         int toIndex = PlaylistRoutes.requiredInt(body, "toIndex");
         PlaylistRoutes.send(ctx, counted(likes.move(me, songId, toIndex)));
+        return true;
     }
 
     // ---- playing -----------------------------------------------------------------------------------------------
