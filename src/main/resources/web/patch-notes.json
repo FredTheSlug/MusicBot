@@ -1,6 +1,21 @@
 {
   "notes": [
     {
+      "id": "2026-10-15",
+      "date": "2026-10-15",
+      "title": "Liked songs",
+      "app": "0.6.0",
+      "items": [
+        { "area": "Panel", "text": "Tap ♥ on any song to keep it in your Liked songs. It's on the song that's playing, the queue, History, Most played, search results and playlists." },
+        { "area": "Panel", "text": "You'll find \"♥ Liked songs\" at the top of Playlists: your own likes, your friends' likes, and \"Everyone's likes\", which plays everyone's favourites mixed together." },
+        { "area": "Panel", "text": "The song that's playing shows which friends liked it too." },
+        { "area": "Panel", "text": "Your Liked songs can be put in a different order, and you can remove songs from them (with Undo). Friends' lists are yours to play and copy songs from." },
+        { "area": "Panel", "text": "Songs in a playlist now show who added them and when." },
+        { "area": "Panel", "text": "Move songs up, down, to the top or to the bottom from the ⋯ menu, which is handy on phones." },
+        { "area": "Mini-player", "text": "The mini-player gets a ♥ button for the song that's playing and in search, shows who requested the song under its name, and lists your likes at the top of Playlists. You need the updated app (0.6.0) to see it." }
+      ]
+    },
+    {
       "id": "2026-10-14-3",
       "date": "2026-10-14",
       "title": "Clearer upload limits",
