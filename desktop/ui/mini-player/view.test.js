@@ -722,7 +722,7 @@ test('the match switch and the theme menu each send their own kind of change', (
 
 // ---- Likes: "requested by", the ♥s and "My likes" ----
 
-const { requestedByText, likesState, isLiked, likeClicks, likeToggled, likeSettled, heartView, myLikesRow } = require('./view.js');
+const { requestedByText, likesState, isLiked, likeClicks, likeToggled, likeSettled, likeAccount, heartView, myLikesRow } = require('./view.js');
 
 test('requestedByText names who asked for the song, isolated; nothing when unknown', () => {
   const st = (requestedBy) => ({ track: Object.assign({}, track, { requestedBy }) });
@@ -966,6 +966,62 @@ test('a refused click reverts only when no later click exists', () => {
   assert.equal(quiet.request, null);
   assert.equal(quiet.reverted, false, 'nothing went back: no message');
   assert.equal(isLiked(KNOWN, quiet.clicks, 'v'), false);
+});
+
+test('likeAccount: who a ♥ click goes for, or null while no ♥ can be sent', () => {
+  const st = { connected: true, signedIn: true, me: { id: '1', name: 'fred', avatarUrl: null } };
+  assert.equal(likeAccount(true, KNOWN, st), '1');
+  assert.equal(likeAccount(false, KNOWN, st), null, 'signed out or out of reach: what toggleLike refuses');
+  assert.equal(likeAccount(true, null, st), null, 'no likes from the bot yet');
+  assert.equal(likeAccount(true, likesState({ version: 2, likes: null }, null), st), null, 'likes unknown');
+  assert.equal(likeAccount(true, KNOWN, Object.assign({}, st, { me: null })), '', 'the bot did not say who: still one account');
+  assert.equal(likeAccount(true, KNOWN, null), '');
+});
+
+test('a follow-up goes only while a ♥ can be clicked, and for the account the click was made for', () => {
+  // like, unlike clicked by account 1: once the like is answered, the unlike would follow
+  const start = () => {
+    let c = likeClicks();
+    const a = likeToggled(KNOWN, c, 'u', '1'); c = a.clicks;
+    c = likeToggled(KNOWN, c, 'u', '1').clicks;
+    return { id: a.request.id, clicks: c };
+  };
+  const liked = listed(KNOWN, ['u', 'https://y/liked']);
+
+  let s = start();
+  const same = likeSettled(liked, s.clicks, 'u', true, s.id, '1');
+  assert.deepEqual(same.request, { id: same.request.id, liked: false }, 'still account 1: the unlike follows');
+
+  s = start();
+  const other = likeSettled(liked, s.clicks, 'u', true, s.id, '2');
+  assert.equal(other.request, null, 'account 2 signed in since the click: nothing goes for it');
+  assert.equal(other.reverted, false);
+  assert.equal(isLiked(liked, other.clicks, 'u'), true, 'the ♥ shows the list again');
+  assert.equal(likeToggled(liked, other.clicks, 'u', '2').request.liked, false, 'and the next click sends again');
+
+  s = start();
+  const signedOut = likeSettled(liked, s.clicks, 'u', true, s.id, null);
+  assert.equal(signedOut.request, null, 'no ♥ can be clicked now (signed out, out of reach): nothing more is sent');
+  assert.equal(isLiked(liked, signedOut.clicks, 'u'), true);
+
+  // like, unlike, like; the like is refused while signed out: nothing more is sent, and the bot's words are shown
+  let c = likeClicks();
+  const a = likeToggled(KNOWN, c, 'v', '1'); c = a.clicks;
+  c = likeToggled(KNOWN, c, 'v', '1').clicks;
+  c = likeToggled(KNOWN, c, 'v', '1').clicks;
+  const refused = likeSettled(KNOWN, c, 'v', false, a.request.id, null);
+  assert.equal(refused.request, null);
+  assert.equal(refused.reverted, true);
+  assert.equal(isLiked(KNOWN, refused.clicks, 'v'), false);
+
+  // an answer that needs no follow-up settles as before, whoever is signed in now
+  s = start();
+  const follow = likeSettled(liked, s.clicks, 'u', true, s.id, '1');
+  const unliked = listed(liked, ['https://y/liked']);
+  const quiet = likeSettled(unliked, follow.clicks, 'u', true, follow.request.id, '2');
+  assert.equal(quiet.request, null);
+  assert.equal(quiet.reverted, false);
+  assert.equal(isLiked(unliked, quiet.clicks, 'u'), false);
 });
 
 test('heartView: hidden while the likes are unknown; off with no song or no signed-in bot; filled when liked', () => {

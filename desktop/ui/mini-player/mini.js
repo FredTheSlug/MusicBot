@@ -223,13 +223,17 @@
 
   function takeLikes(payload) { likes = MV.likesState(payload, likes); }
 
+  /** Who a ♥ click goes for now (MV.likeAccount): null while no ♥ can be sent. */
+  function likeAccount() { return MV.likeAccount(canLike(), likes, ui && ui.state); }
+
   /**
    * Flips the ♥ at once. A request goes out only when none for this song is on its way (MV.likeToggled decides), so the
    * bot gets a fast like, unlike, like in click order and ends on the last click.
    */
   function toggleLike(song) {
-    if (!song || !canLike() || !likes || !likes.uris) return;
-    var click = MV.likeToggled(likes, likeClicks, song.uri);
+    var account = likeAccount();
+    if (!song || account === null) return;
+    var click = MV.likeToggled(likes, likeClicks, song.uri, account);
     likeClicks = click.clicks;
     paintLikes();
     if (click.request) sendLike(song, click.request);
@@ -249,8 +253,9 @@
     });
   }
 
+  /** The answer to a like or unlike. A follow-up goes only as a click would now, and for the account that clicked. */
   function settleLike(song, request, ok, message) {
-    var answer = MV.likeSettled(likes, likeClicks, song.uri, ok, request.id);
+    var answer = MV.likeSettled(likes, likeClicks, song.uri, ok, request.id, likeAccount());
     likeClicks = answer.clicks;
     paintLikes();
     if (answer.reverted) showStatus(message);
