@@ -85,6 +85,8 @@ public class PlaylistStore
     public static final String UPGRADING = "This playlist is still being upgraded — try again in a minute";
     private static final String FULL = "Playlist is full";
     private static final String SONG_NOT_FOUND = "Song not found";
+    /** The extra edit of the song operations that the public ones don't make. */
+    private static final Consumer<PlaylistFile> NO_MORE = file -> { };
     private static final Comparator<String> TEXT_ORDER =
             String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.<String>naturalOrder());
     private static final Comparator<Entry> ENTRY_ORDER =
@@ -507,6 +509,12 @@ public class PlaylistStore
      */
     public PlaylistFile addSongs(String name, String folder, List<Song> songs, Integer index, Person by)
     {
+        return addSongs(name, folder, songs, index, by, NO_MORE);
+    }
+
+    /** As {@link #addSongs(String, String, List, Integer, Person)}; {@code also} edits the playlist after the songs went in, in the same write. */
+    PlaylistFile addSongs(String name, String folder, List<Song> songs, Integer index, Person by, Consumer<PlaylistFile> also)
+    {
         if(songs == null || songs.isEmpty())
             throw new IllegalArgumentException("No songs to add");
         return update(name, folder, file ->
@@ -522,11 +530,18 @@ public class PlaylistStore
             for(Song source : songs)
                 added.add(PlaylistFile.copyForPlaylist(source, ids, by, now));
             list.addAll(index == null ? list.size() : Math.max(0, Math.min(index, list.size())), added);
+            also.accept(file);
         });
     }
 
     /** Takes the song out of the playlist; the result holds it and its place, so an Undo can add it back there. */
     public Removed removeSong(String name, String folder, String songId)
+    {
+        return removeSong(name, folder, songId, NO_MORE);
+    }
+
+    /** As {@link #removeSong(String, String, String)}; {@code also} edits the playlist after the song went out, in the same write. */
+    Removed removeSong(String name, String folder, String songId, Consumer<PlaylistFile> also)
     {
         Song[] song = new Song[1];
         int[] index = new int[1];
@@ -534,6 +549,7 @@ public class PlaylistStore
         {
             index[0] = indexOfSong(f, songId);
             song[0] = f.getSongs().remove(index[0]);
+            also.accept(f);
         });
         return new Removed(song[0], index[0], file);
     }
@@ -546,41 +562,46 @@ public class PlaylistStore
      */
     public PlaylistFile reinsertSong(String name, String folder, Song song, int index)
     {
+        return reinsertSong(name, folder, song, index, NO_MORE);
+    }
+
+    /** As {@link #reinsertSong(String, String, Song, int)}; {@code also} edits the playlist after the song went in, in the same write. */
+    PlaylistFile reinsertSong(String name, String folder, Song song, int index, Consumer<PlaylistFile> also)
+    {
         if(song == null)
             throw new IllegalArgumentException("No song to put back");
         return update(name, folder, file ->
         {
-            if(file.getSongs().size() >= PlaylistFile.MAX_SONGS)
+            List<Song> list = file.getSongs();
+            if(list.size() >= PlaylistFile.MAX_SONGS)
                 throw new IllegalStateException(FULL);
-            putBack(file, song, index);
+            Set<String> ids = new HashSet<>();
+            for(Song existing : list)
+                ids.add(existing.getId());
+            boolean idFree = song.getId() != null && !ids.contains(song.getId());
+            Song copy = PlaylistFile.copyForPlaylist(song, ids, song.getAddedBy(), song.getAddedAt());
+            if(idFree)
+                copy.setId(song.getId());
+            list.add(Math.max(0, Math.min(index, list.size())), copy);
+            also.accept(file);
         });
-    }
-
-    /**
-     * Adds a copy of {@code song} to the list at {@code index} (clamped), as {@link #reinsertSong} does: same
-     * {@code addedBy} and {@code addedAt}, the same id unless a song has taken it. The caller has made sure there is room.
-     */
-    static void putBack(PlaylistFile file, Song song, int index)
-    {
-        List<Song> list = file.getSongs();
-        Set<String> ids = new HashSet<>();
-        for(Song existing : list)
-            ids.add(existing.getId());
-        boolean idFree = song.getId() != null && !ids.contains(song.getId());
-        Song copy = PlaylistFile.copyForPlaylist(song, ids, song.getAddedBy(), song.getAddedAt());
-        if(idFree)
-            copy.setId(song.getId());
-        list.add(Math.max(0, Math.min(index, list.size())), copy);
     }
 
     /** Moves the song so that it ends up at {@code toIndex} (clamped to the list). */
     public PlaylistFile moveSong(String name, String folder, String songId, int toIndex)
+    {
+        return moveSong(name, folder, songId, toIndex, NO_MORE);
+    }
+
+    /** As {@link #moveSong(String, String, String, int)}; {@code also} edits the playlist after the song moved, in the same write. */
+    PlaylistFile moveSong(String name, String folder, String songId, int toIndex, Consumer<PlaylistFile> also)
     {
         return update(name, folder, f ->
         {
             List<Song> list = f.getSongs();
             Song song = list.remove(indexOfSong(f, songId));
             list.add(Math.max(0, Math.min(toIndex, list.size())), song);
+            also.accept(f);
         });
     }
 
@@ -665,7 +686,7 @@ public class PlaylistStore
     }
 
     /** Where the song with this id is in the list; {@link NoSuchElementException} when there is none. */
-    static int indexOfSong(PlaylistFile file, String songId)
+    private static int indexOfSong(PlaylistFile file, String songId)
     {
         List<Song> songs = file.getSongs();
         for(int i = 0; i < songs.size(); i++)
@@ -1151,11 +1172,17 @@ public class PlaylistStore
 
     private static Entry entryOf(PlaylistFile file, String folder)
     {
+        return new Entry(file.getName(), folder, file.getSongs().size(), durationOf(file), file.getCreatedBy(),
+                file.getUpdatedAt(), file.isLegacy());
+    }
+
+    /** Total length of the playlist's songs in milliseconds. */
+    static long durationOf(PlaylistFile file)
+    {
         long duration = 0;
         for(Song song : file.getSongs())
             duration += song.getDurationMs();
-        return new Entry(file.getName(), folder, file.getSongs().size(), duration, file.getCreatedBy(),
-                file.getUpdatedAt(), file.isLegacy());
+        return duration;
     }
 
     private static List<Path> subfolders(List<Path> children)

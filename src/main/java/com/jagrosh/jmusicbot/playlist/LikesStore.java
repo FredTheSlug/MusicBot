@@ -29,12 +29,14 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -71,7 +73,6 @@ public class LikesStore
 
     private final Path dir;
     private final PlaylistStore store;
-    private final Clock clock;
     private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
 
     /**
@@ -82,7 +83,6 @@ public class LikesStore
     {
         this.dir = likesDir.toAbsolutePath().normalize();
         this.store = new PlaylistStore(likesDir, clock);
-        this.clock = clock;
     }
 
     /**
@@ -129,14 +129,8 @@ public class LikesStore
                 return current.getSongs().size();
             if(current.getSongs().size() >= PlaylistFile.MAX_SONGS)
                 throw new IllegalStateException(FULL);
-            return store.update(id, "", list ->
-            {
-                list.setCreatedBy(owner);
-                Set<String> ids = new HashSet<>();
-                for(Song existing : list.getSongs())
-                    ids.add(existing.getId());
-                list.getSongs().add(0, PlaylistFile.copyForPlaylist(song, ids, owner, clock.instant()));
-            }).getSongs().size();
+            return store.addSongs(id, "", Collections.singletonList(song), 0, owner, list -> list.setCreatedBy(owner))
+                    .getSongs().size();
         }
     }
 
@@ -174,15 +168,7 @@ public class LikesStore
         String id = ownerId(owner);
         synchronized(lockFor(id))
         {
-            Song[] song = new Song[1];
-            int[] index = new int[1];
-            PlaylistFile file = store.update(id, "", list ->
-            {
-                index[0] = PlaylistStore.indexOfSong(list, songId);
-                song[0] = list.getSongs().remove(index[0]);
-                list.setCreatedBy(owner);
-            });
-            return new PlaylistStore.Removed(song[0], index[0], file);
+            return store.removeSong(id, "", songId, list -> list.setCreatedBy(owner));
         }
     }
 
@@ -201,15 +187,14 @@ public class LikesStore
         synchronized(lockFor(id))
         {
             PlaylistFile current = store.get(id, "").orElse(null);
-            if(current != null && contains(current, song.getUri()))
-                return current;
-            return store.update(id, "", list ->
+            if(current != null)
             {
-                if(list.getSongs().size() >= PlaylistFile.MAX_SONGS)
+                if(contains(current, song.getUri()))
+                    return current;
+                if(current.getSongs().size() >= PlaylistFile.MAX_SONGS)
                     throw new IllegalStateException(FULL);
-                list.setCreatedBy(owner);
-                PlaylistStore.putBack(list, song, index);
-            });
+            }
+            return store.reinsertSong(id, "", song, index, list -> list.setCreatedBy(owner));
         }
     }
 
@@ -222,13 +207,7 @@ public class LikesStore
         String id = ownerId(owner);
         synchronized(lockFor(id))
         {
-            return store.update(id, "", list ->
-            {
-                List<Song> songs = list.getSongs();
-                Song song = songs.remove(PlaylistStore.indexOfSong(list, songId));
-                songs.add(Math.max(0, Math.min(toIndex, songs.size())), song);
-                list.setCreatedBy(owner);
-            });
+            return store.moveSong(id, "", songId, toIndex, list -> list.setCreatedBy(owner));
         }
     }
 
@@ -243,10 +222,8 @@ public class LikesStore
         {
             if(list.getSongs().isEmpty())
                 continue;
-            long duration = 0;
-            for(Song song : list.getSongs())
-                duration += song.getDurationMs();
-            people.add(new Liker(list.getName(), ownerName(list), list.getSongs().size(), duration, list.getUpdatedAt()));
+            people.add(new Liker(list.getName(), ownerName(list), list.getSongs().size(), PlaylistStore.durationOf(list),
+                    list.getUpdatedAt()));
         }
         return people;
     }
@@ -268,21 +245,22 @@ public class LikesStore
     }
 
     /**
-     * Every person's likes in one list: the lists in the order of {@link #people}, each from its newest like, and
-     * only the first song of each uri. Stops at {@code cap} songs. The songs are copies read from disk, not shuffled.
+     * Every person's likes in one list: the lists in the order of {@link #people}, only the first song of each uri
+     * (the one from the earliest list, newest first), then shuffled with {@code random} and cut to {@code cap}
+     * songs, so that whose songs make the cut doesn't depend on the order of the names. The songs are the copies
+     * read from disk.
      */
-    public List<Song> everyone(int cap)
+    public List<Song> everyone(Random random, int cap)
     {
         List<Song> merged = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for(PlaylistFile list : lists())
             for(Song song : list.getSongs())
-            {
-                if(merged.size() >= cap)
-                    return merged;
                 if(song.getUri() != null && seen.add(song.getUri()))
                     merged.add(song);
-            }
+        Collections.shuffle(merged, random);
+        if(cap < merged.size())
+            merged.subList(Math.max(0, cap), merged.size()).clear();
         return merged;
     }
 

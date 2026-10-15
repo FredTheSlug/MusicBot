@@ -36,6 +36,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -225,7 +226,7 @@ public class LikesStoreTest
         assertTrue(likes.uris(FRED.getId()).isEmpty());
         assertTrue(likes.people().isEmpty());
         assertTrue(likes.whoLiked(uri("a"), null).isEmpty());
-        assertTrue(likes.everyone(2000).isEmpty());
+        assertTrue(likes.everyone(new Random(1), 2000).isEmpty());
         assertFalse("reading never makes the folder", Files.exists(dir));
     }
 
@@ -478,15 +479,67 @@ public class LikesStoreTest
         likes.like(FRED, song("s1"));
         likes.like(FRED, song("s4")); // [s4, s1]
 
-        List<Song> all = likes.everyone(2000);
+        List<Song> all = likes.everyone(new Random(1), 2000);
 
-        assertEquals("people order, first occurrence of each uri kept", Arrays.asList("s2", "s1", "s3", "s4"), keys(all));
-        assertEquals("the kept copy is the first one", ANNA.getId(), all.get(0).getAddedBy().getId());
-        assertEquals(BOB.getId(), all.get(2).getAddedBy().getId());
-        assertEquals(Arrays.asList("s2", "s1", "s3"), keys(likes.everyone(3)));
-        assertEquals(Collections.singletonList("s2"), keys(likes.everyone(1)));
-        assertTrue(likes.everyone(0).isEmpty());
-        assertEquals(4, likes.everyone(2000).size());
+        assertEquals(4, all.size());
+        assertEquals("every uri once", new HashSet<>(Arrays.asList("s1", "s2", "s3", "s4")), new HashSet<>(keys(all)));
+        Map<String, String> addedBy = new LinkedHashMap<>();
+        for(Song song : all)
+            addedBy.put(keys(Collections.singletonList(song)).get(0), song.getAddedBy().getId());
+        assertEquals("the copy kept is the first one, in name order", ANNA.getId(), addedBy.get("s2"));
+        assertEquals(ANNA.getId(), addedBy.get("s1"));
+        assertEquals(BOB.getId(), addedBy.get("s3"));
+        assertEquals(FRED.getId(), addedBy.get("s4"));
+
+        for(int cap : new int[]{3, 1})
+        {
+            List<String> some = keys(likes.everyone(new Random(2), cap));
+            assertEquals("cap " + cap, cap, some.size());
+            assertEquals("cap " + cap + " without repeats", cap, new HashSet<>(some).size());
+            assertTrue(new HashSet<>(Arrays.asList("s1", "s2", "s3", "s4")).containsAll(some));
+        }
+        assertTrue(likes.everyone(new Random(2), 0).isEmpty());
+        assertTrue("a cap below zero is nothing", likes.everyone(new Random(2), -1).isEmpty());
+        assertEquals("room to spare", 4, likes.everyone(new Random(2), 5000).size());
+    }
+
+    @Test
+    public void everyoneIsShuffledWithTheRandomItIsGiven() throws Exception
+    {
+        for(int i = 0; i < 6; i++)
+            likes.like(ANNA, song("a" + i));
+
+        Set<List<String>> orders = new HashSet<>();
+        for(int seed = 0; seed < 20; seed++)
+            orders.add(keys(likes.everyone(new Random(seed), 2000)));
+
+        assertTrue("different seeds, different orders: " + orders.size(), orders.size() > 1);
+        assertNotEquals("not the order of the list", Arrays.asList("a5", "a4", "a3", "a2", "a1", "a0"), keys(likes.everyone(new Random(3), 2000)));
+        assertEquals("same seed, same order", keys(likes.everyone(new Random(7), 2000)), keys(likes.everyone(new Random(7), 2000)));
+    }
+
+    @Test
+    public void everyoneCutsAfterTheShuffleNotInNameOrder() throws Exception
+    {
+        for(int i = 0; i < 5; i++)
+        {
+            likes.like(ANNA, song("a" + i));
+            likes.like(BOB, song("b" + i)); // "anna" comes before "Bob" in name order
+        }
+
+        Set<String> everSeen = new HashSet<>();
+        boolean bobMadeTheCut = false;
+        for(int seed = 0; seed < 20; seed++)
+        {
+            List<String> some = keys(likes.everyone(new Random(seed), 4)); // fewer than anna's five
+            assertEquals(4, some.size());
+            assertEquals("no repeats", 4, new HashSet<>(some).size());
+            everSeen.addAll(some);
+            for(String key : some)
+                bobMadeTheCut |= key.startsWith("b");
+        }
+        assertTrue("songs of the last person in name order can make the cut", bobMadeTheCut);
+        assertTrue("and it is not the same few songs every time: " + everSeen, everSeen.size() > 4);
     }
 
     @Test
