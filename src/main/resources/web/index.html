@@ -2206,6 +2206,56 @@
             .pl-add-btn { padding: 8px 10px; opacity: 0.8; }
         }
 
+        /* ♥ Like: beside "Add to playlist" on every song row (the same size), and a pill among the now-playing toggles.
+           aria-pressed is the state: filled, in the accent colour, while the song is in your likes. */
+        .like-row {
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            line-height: 1;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            opacity: 0.55;
+            transition: all 0.2s;
+        }
+
+        .like-icon { width: 16px; height: 16px; display: block; flex-shrink: 0; }
+        .np-toggle .like-icon { width: 14px; height: 14px; }
+
+        .queue-item:hover .like-row,
+        .history-item:hover .like-row,
+        .search-result-item:hover .like-row,
+        .pl-song:hover .like-row { opacity: 1; }
+        .like-row:hover { color: var(--accent-light); background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1); opacity: 1; }
+        .like-btn[aria-pressed="true"] { color: var(--accent); }
+        .like-btn[aria-pressed="true"] .like-icon { fill: currentColor; }
+        .like-row[aria-pressed="true"] { opacity: 1; }
+        .np-toggle.like-btn[aria-pressed="true"] {
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12);
+        }
+        .like-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+
+        @media (hover: none) and (pointer: coarse) {
+            .like-row { padding: 8px 10px; opacity: 0.8; }
+        }
+
+        /* "♥ anna, fred" under the now-playing artist: friends who liked this song. */
+        .np-liked-by {
+            margin: -14px 0 18px;
+            font-size: 0.8rem;
+            color: var(--accent-light);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .np-liked-by[hidden] { display: none; }
+
         /* Wide screens: the popup sits next to the button (left/top or bottom set by script). Narrow: centred over a scrim. */
         .plpick-backdrop {
             position: fixed;
@@ -6053,6 +6103,7 @@
     <script src="/web/theme-apply.js"></script>
     <script src="/web/theme-creator.js"></script>
     <script src="/web/whats-new.js"></script>
+    <script src="/web/likes.js"></script>
 
     <script>
         let currentGuild = localStorage.getItem('defaultGuild') || '';
@@ -9155,6 +9206,7 @@
                     '<div class="search-result-info"><div class="search-result-title">' + escHtml(t.title || 'Unknown') + '</div>' +
                     '<div class="search-result-meta">' + escHtml(t.author || '') + '</div></div>' +
                     '<span class="search-result-duration">' + escHtml(dur) + '</span>' +
+                    likeButtonHtml('search', i) +
                     plAddButtonHtml('search', i) +
                     '<button class="search-result-add">+</button></div>';
             }).join('');
@@ -9266,6 +9318,7 @@
                 refreshAll();
                 plRefreshAfterReconnect();
                 scheduleThemesReload();
+                likesRefreshSoon(); // "likes" messages may have been missed while the connection was down
             };
             ws.onmessage = function(e) {
                 try {
@@ -9288,6 +9341,8 @@
                         plOnPlaylistsMessage(data.data);
                     } else if (data.type === 'playlist-import') {
                         plOnImportMessage(data.data);
+                    } else if (data.type === 'likes') {
+                        likesRefreshSoon(); // {userId} only: whoever it was, your ♥s and the "liked by" line are read again
                     } else if (data.type === 'error') {
                         var errText = data.message || 'Something went wrong';
                         searchResults.innerHTML = '<div class="status-message" style="color:#ef4444;">' + escHtml(errText) + '</div>';
@@ -9372,6 +9427,7 @@
                 npRenderKey = '';
                 lastNpLyricsKey = '';
                 plNowPlayingSong = null;
+                likesNowPlayingChanged();
                 nowPlayingContent.innerHTML = '<div class="empty-state"><div class="icon">&#9835;</div><p>Nothing playing</p></div>';
                 clearInterval(progressInterval);
                 clearLyricsPane();
@@ -9382,6 +9438,7 @@
             currentDuration = data.duration || 0;
             isPaused = data.paused || false;
             plNowPlayingSong = plSongFromTrack(data);
+            likesNowPlayingChanged();
 
             var stableKey = nowPlayingStableKey(data);
             if (stableKey === npRenderKey && document.getElementById('progressFill')) {
@@ -9410,10 +9467,12 @@
                 artHtml +
                 '<div class="track-title">' + escHtml(data.title || 'Unknown') + repeatBadge + '</div>' +
                 '<div class="track-author">' + escHtml(data.author || '') + (data.requestedBy ? ' &middot; ' + escHtml(data.requestedBy) : '') + '</div>' +
+                '<div class="np-liked-by" id="npLikedBy" hidden></div>' +
                 '<div class="progress-container">' +
                 '<div class="progress-bar-bg" onclick="seekTo(event)"><div class="progress-bar-fill" id="progressFill" style="width:' + progressPct + '%"></div></div>' +
                 '<div class="progress-times"><span id="posTime">' + posFmt + '</span><span>' + durFmt + '</span></div></div>' +
                 renderControls(data);
+            likesPaintWho();
 
             clearInterval(progressInterval);
             if (!isPaused && !data.isStream) {
@@ -9511,7 +9570,7 @@
                 '<input type="range" class="volume-slider" min="0" max="150" value="' + vol + '" oninput="setVolume(this.value)" />' +
                 '<span class="volume-value" id="volVal">' + vol + '%</span>' +
                 '</div>' +
-                '<div class="np-toggles">' + renderAutoplayButton(data) + renderSponsorBlockButton(data) + renderAddToPlaylistButton() + '</div>';
+                '<div class="np-toggles">' + renderAutoplayButton(data) + renderSponsorBlockButton(data) + likeNowPlayingHtml() + renderAddToPlaylistButton() + '</div>';
         }
 
         function updateProgress() {
@@ -9685,6 +9744,7 @@
                     '<div class="queue-info"><div class="queue-title">' + escHtml(t.title) + '</div>' +
                     '<div class="queue-meta">' + escHtml(t.author || '') + (t.requestedBy ? ' &middot; ' + escHtml(t.requestedBy) : '') + '</div></div>' +
                     '<span class="queue-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
+                    likeButtonHtml('queue', i) +
                     plAddButtonHtml('queue', i) +
                     '<button class="queue-remove" onclick="removeQueueItem(' + i + ')" title="Remove">&#10005;</button></li>';
             }).join('');
@@ -9811,8 +9871,12 @@
                 .replace(/\n/g, '&#10;');
         }
 
+        // opts.keep401: the caller reads a 401 answer itself and the login screen stays away. The likes API answers 401
+        // when web login is off (nobody to like songs as); with login on, the caller's next ordinary request shows it.
         async function authFetch(url, opts) {
             opts = opts || {};
+            var keep401 = opts.keep401 === true;
+            delete opts.keep401;
             if (!opts.credentials) opts.credentials = 'same-origin';
             opts.headers = Object.assign({}, opts.headers || {});
             if (authToken) opts.headers['Authorization'] = 'Bearer ' + authToken;
@@ -9820,7 +9884,7 @@
                 opts.headers['Content-Type'] = 'application/json';
             }
             var resp = await fetch(url, opts);
-            if (resp.status === 401) {
+            if (resp.status === 401 && !keep401) {
                 authToken = '';
                 localStorage.removeItem('authToken');
                 authRequired = true;
@@ -10391,6 +10455,196 @@
             }
         }
 
+        // ---- Likes: a ♥ on the now-playing card and every song row, and "♥ liked by …" ---------------------------
+        // Same rule as Add to playlist: a ♥ in markup carries only a source name and an integer index (data-like-src,
+        // data-like-index), read back through plNowPlayingSong / plRowSongs; a ♥ built as DOM (playlist rows) keeps
+        // its song in likeSongs. likes.js decides what each ♥ shows (a click flips it at once, the latest click wins);
+        // this section asks the server and paints. The queue and History are not redrawn when their songs are
+        // unchanged, so a change of likes repaints the buttons already on the page (likesPaint) instead.
+        var LIKES_REFRESH_MS = 300;
+        var LIKE_ICON = '<svg class="like-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
+        var likesState = window.Likes ? Likes.createState() : null;  // null: likes.js did not load, so no ♥ anywhere
+        var likesToasted = false;      // "Added to Liked songs" is said for the first like of a page load only
+        var likeSongs = new WeakMap(); // ♥ buttons built as DOM -> their song
+        var likesMine = { timer: null, busy: false, again: false };
+        // "liked by": playing = the now-playing uri; uri + text = the last answer, shown only while that song plays
+        var likesWho = { playing: '', uri: '', text: '', timer: null, busy: false, again: false };
+
+        function likeSongOf(btn) {
+            if (likeSongs.has(btn)) return likeSongs.get(btn);
+            var source = btn.getAttribute('data-like-src');
+            if (source === 'np') return plNowPlayingSong;
+            if (!Object.prototype.hasOwnProperty.call(plRowSongs, source)) return null;
+            return plRowSongs[source][Number(btn.getAttribute('data-like-index'))] || null;
+        }
+
+        function likeIsOn(song) {
+            return !!likesState && !!song && Likes.isLiked(likesState, song.uri);
+        }
+
+        function likeAttrs(source, index, on) {
+            return ' data-like-src="' + source + '" data-like-index="' + index + '" aria-pressed="' + on + '" title="' + (on ? 'Unlike' : 'Like') + '" onclick="likeClick(this, event)"';
+        }
+
+        // The ♥ of a song row drawn as HTML (queue, History, Most played, Add Music search).
+        function likeButtonHtml(source, index) {
+            var song = plRowSongs[source][index];
+            if (!likesState || !song) return '';
+            return '<button type="button" class="like-btn like-row" aria-label="Like"' + likeAttrs(source, index, likeIsOn(song)) + '>' + LIKE_ICON + '</button>';
+        }
+
+        function likeNowPlayingHtml() {
+            if (!likesState || !plNowPlayingSong) return '';
+            return '<button type="button" class="np-toggle like-btn"' + likeAttrs('np', 0, likeIsOn(plNowPlayingSong)) + '>' + LIKE_ICON + 'Like</button>';
+        }
+
+        // The ♥ of a row built as DOM (playlist pages); song is {uri, title, author, durationMs, artworkUrl}.
+        function likeButtonFor(song) {
+            if (!likesState || !song || !song.uri) return null;
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'like-btn like-row';
+            b.setAttribute('aria-label', 'Like');
+            b.innerHTML = LIKE_ICON;
+            likeSongs.set(b, song);
+            likePaintButton(b);
+            b.addEventListener('click', function (e) { likeClick(b, e); });
+            return b;
+        }
+
+        function likePaintButton(btn) {
+            var song = likeSongOf(btn);
+            if (!song) return;
+            var on = likeIsOn(song);
+            if (btn.getAttribute('aria-pressed') === String(on)) return;
+            btn.setAttribute('aria-pressed', String(on));
+            btn.title = on ? 'Unlike' : 'Like';
+        }
+
+        function likesPaint() {
+            document.querySelectorAll('.like-btn').forEach(likePaintButton);
+        }
+
+        // The click must not also reach the row it sits in (a search result plays itself when clicked).
+        function likeClick(btn, event) {
+            if (event) event.stopPropagation();
+            var song = likeSongOf(btn);
+            if (likesState && song) likeToggle(song);
+        }
+
+        async function likeToggle(song) {
+            var uri = song.uri;
+            var click = Likes.toggle(likesState, uri, song);
+            var want = Likes.isLiked(click.state, uri);
+            likesState = click.state;
+            likesPaint();
+            var ok = false;
+            var liked = null;
+            var message = '';
+            try {
+                var resp = await authFetch(click.request.path, { method: 'POST', body: JSON.stringify(click.request.body), keep401: true });
+                var data = await readApiJson(resp);
+                if (!data || typeof data !== 'object') data = {};
+                ok = resp.ok;
+                liked = data.liked;
+                if (!ok) message = plErrorText({ data: data }, '');
+                // With login on, a 401 means the session ended: reading the likes again brings up the login screen.
+                if (resp.status === 401) likesRefreshSoon();
+            } catch (e) {}
+            likesState = Likes.settle(likesState, uri, ok, liked, click.id);
+            likesPaint();
+            if (!ok) {
+                plToast(message || 'Could not update your likes', { error: true });
+            } else if (want && !likesToasted && Likes.isLiked(likesState, uri)) {
+                likesToasted = true;
+                plToast('Added to Liked songs', {});
+            }
+        }
+
+        // A WebSocket "likes" message, a reconnect, the page opening: read your likes and the "liked by" line again.
+        // A burst is one read each, and one read at a time.
+        function likesRefreshSoon() {
+            if (!likesState) return;
+            if (!likesMine.timer) likesMine.timer = setTimeout(likesLoadMine, LIKES_REFRESH_MS);
+            likesWhoSoon();
+        }
+
+        async function likesLoadMine() {
+            likesMine.timer = null;
+            if (likesMine.busy) {
+                likesMine.again = true;
+                return;
+            }
+            likesMine.busy = true;
+            var since = Likes.stamp(likesState);
+            try {
+                var res = await plApi('GET', '/api/likes/mine');
+                if (res.ok) {
+                    // a ♥ clicked since the request went out keeps what the click (and its answer) say
+                    likesState = Likes.applyMine(likesState, Likes.fromMine(res.data), since);
+                    likesPaint();
+                }
+            } catch (e) {
+            } finally {
+                likesMine.busy = false;
+                if (likesMine.again) {
+                    likesMine.again = false;
+                    likesLoadMine();
+                }
+            }
+        }
+
+        // Called by renderNowPlaying with every update: a new song (by uri) hides the old line and asks again.
+        function likesNowPlayingChanged() {
+            var uri = plNowPlayingSong ? plNowPlayingSong.uri : '';
+            if (uri === likesWho.playing) return;
+            likesWho.playing = uri;
+            likesWho.uri = '';
+            likesWho.text = '';
+            likesPaintWho();
+            if (uri) likesWhoSoon();
+        }
+
+        function likesWhoSoon() {
+            if (!likesState || likesWho.timer) return;
+            likesWho.timer = setTimeout(likesLoadWho, LIKES_REFRESH_MS);
+        }
+
+        async function likesLoadWho() {
+            likesWho.timer = null;
+            if (likesWho.busy) {
+                likesWho.again = true;
+                return;
+            }
+            var uri = likesWho.playing;
+            if (!uri) return;
+            likesWho.busy = true;
+            try {
+                var res = await plApi('GET', '/api/likes/who?uri=' + encodeURIComponent(uri));
+                // an answer for a song that is no longer playing is dropped
+                if (res.ok && uri === likesWho.playing) {
+                    likesWho.uri = uri;
+                    likesWho.text = Likes.likedByText(res.data.names);
+                    likesPaintWho();
+                }
+            } catch (e) {
+            } finally {
+                likesWho.busy = false;
+                if (likesWho.again) {
+                    likesWho.again = false;
+                    likesLoadWho();
+                }
+            }
+        }
+
+        function likesPaintWho() {
+            var line = document.getElementById('npLikedBy');
+            if (!line) return;
+            var text = likesWho.playing && likesWho.uri === likesWho.playing ? likesWho.text : '';
+            line.textContent = text;
+            line.hidden = !text;
+        }
+
         function lyricsKeyFromNp(data) {
             if (!data || !data.playing) return '';
             return (data.identifier || '') + '|' + (data.uri || '') + '|' + (data.title || '') + '|' + (data.author || '');
@@ -10717,6 +10971,7 @@
                     '<div class="history-info"><div class="history-title">' + escHtml(t.title || 'Unknown') + '</div>' +
                     '<div class="history-meta">' + escHtml(t.author || '') + (t.requestedBy ? ' &middot; ' + escHtml(t.requestedBy) : '') + '</div></div>' +
                     '<span class="history-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
+                    likeButtonHtml('history', i) +
                     plAddButtonHtml('history', i) +
                     '<button class="history-replay" onclick="replayHistory(\'' + escJsAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
             }).join('');
@@ -10765,6 +11020,7 @@
                     '<div class="history-meta">' + escHtml(t.author || '') + '</div></div>' +
                     '<span class="frequent-count" title="Times played">' + plays + '×</span>' +
                     '<span class="history-duration">' + escHtml(t.durationFormatted || '') + '</span>' +
+                    likeButtonHtml('frequent', i) +
                     plAddButtonHtml('frequent', i) +
                     '<button class="history-replay" onclick="replayHistory(\'' + escJsAttr(t.uri || '') + '\')" title="Play again">&#9654;</button></li>';
             }).join('');
@@ -12056,6 +12312,8 @@
             }
             li.appendChild(info);
             if (!broken && song.durationMs > 0) li.appendChild(plEl('span', 'pl-song-len', formatTime(song.durationMs)));
+            var like = broken ? null : likeButtonFor(plPickerSong(song));
+            if (like) li.appendChild(like);
             if (!editable) return li;
 
             if (broken) {
@@ -13366,6 +13624,7 @@
         plRenderTree();
         plLoadPaneTree();
         plLoadMigration();
+        likesRefreshSoon();
         (function checkDiscordLoginError() {
             try {
                 var u = new URL(window.location.href);
