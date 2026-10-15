@@ -1519,6 +1519,10 @@
         .btn-sm.pl-primary:hover { filter: brightness(1.1); }
         .btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        /* "♥ Liked songs" above the playlists: rows look like playlist rows */
+        .pl-liked { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+        .pl-liked-head { padding: 6px 4px; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); }
+
         .pl-deleted { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); }
 
         .pl-deleted-head {
@@ -6070,6 +6074,7 @@
                         <button class="btn-sm" onclick="savePlaylistFromQueue()">Save</button>
                         <button class="btn-sm" onclick="hideSaveDialog()">Cancel</button>
                     </div>
+                    <div id="plLiked" class="pl-liked" hidden></div>
                     <ul class="playlist-list" id="playlistList"></ul>
                     <div class="empty-state" id="playlistEmpty" style="display:none">
                         <p>No playlists yet</p>
@@ -9353,7 +9358,9 @@
                     } else if (data.type === 'playlist-import') {
                         plOnImportMessage(data.data);
                     } else if (data.type === 'likes') {
-                        likesRefreshSoon(); // {userId} only: whoever it was, your ♥s and the "liked by" line are read again
+                        // {userId} only: whoever it was, your ♥s, the "liked by" line and the Liked section are read again
+                        likesRefreshSoon();
+                        plOnLikesMessage(data.data); // and that person's Liked page, if it is open
                     } else if (data.type === 'error') {
                         var errText = data.message || 'Something went wrong';
                         searchResults.innerHTML = '<div class="status-message" style="color:#ef4444;">' + escHtml(errText) + '</div>';
@@ -10579,12 +10586,13 @@
             if (answer.request) likeSend(uri, answer.request);
         }
 
-        // A WebSocket "likes" message, a reconnect, the page opening: read your likes and the "liked by" line again.
-        // A burst is one read each, and one read at a time.
+        // A WebSocket "likes" message, a reconnect, the page opening: read your likes, the "liked by" line and the
+        // Liked songs section of the playlists pane again. A burst is one read each, and one read at a time.
         function likesRefreshSoon() {
             if (!likesState) return;
             if (!likesMine.timer) likesMine.timer = setTimeout(likesLoadMine, LIKES_REFRESH_MS);
             likesWhoSoon();
+            plLikedSoon();
         }
 
         async function likesLoadMine() {
@@ -11155,6 +11163,7 @@
         const plActions = document.getElementById('plActions');
         const plMigrationBanner = document.getElementById('plMigration');
         const plDeletedBox = document.getElementById('plDeleted');
+        const plLikedBox = document.getElementById('plLiked');
         const plToastBox = document.getElementById('plToasts');
         const plLinkBox = document.getElementById('plLinkRow');
 
@@ -11194,6 +11203,9 @@
         var plImportStarting = false; // the request that starts an import is on its way
         var plImportEarly = Object.create(null);  // progress that arrived before the answer naming its job: jobId -> message
         var plLinkForm = null;        // the "New from link" form, built the first time it is opened
+        // The Liked songs section. me: {id, name} from /api/me, null with web login off (meKnown once asked);
+        // people: the section's rows (Likes.peopleOrder), null until the first answer; sig: what is drawn.
+        var plLiked = { me: null, meKnown: false, people: null, sig: '', timer: null, busy: false, again: false };
 
         // ---- small helpers --------------------------------------------------------------------------------------
 
@@ -11512,10 +11524,11 @@
             plCheckOpenPage();
         }
 
-        // The open page's playlist was renamed, moved or deleted by someone else: back to the tree.
+        // The open page's playlist was renamed, moved or deleted by someone else: back to the tree. (A Liked page is
+        // not in the tree; it shows an empty list when its person has none.)
         function plCheckOpenPage() {
             var page = plPage;
-            if (!page || !page.loaded || page.structureOps > 0 || !plTree) return;
+            if (!page || page.likes || !page.loaded || page.structureOps > 0 || !plTree) return;
             var there = plTree.playlists.some(function (pl) { return pl.name === page.name && pl.folder === page.folder; });
             if (!there) plPageGone(page);
         }
@@ -11529,6 +11542,7 @@
         function plRefreshAll() {
             plLoadPaneTree();
             plLoadMigration();
+            likesRefreshSoon(); // your ♥s and the Liked songs section
         }
 
         // The WebSocket (re)opened, after a bot restart or a dropped connection, say, and missed every "playlists"
@@ -11662,6 +11676,107 @@
                 }, 'danger'));
             }
             li.addEventListener('click', function () { plOpenPage(pl.name, pl.folder); });
+            return li;
+        }
+
+        // ---- the Liked songs section ----------------------------------------------------------------------------
+        // At the top of the tree: "My likes (n)" whenever someone is logged in (also at 0), each friend's "anna's
+        // likes (n)", then "▶ Everyone's likes" (only when somebody has likes). Read again on every "likes" message,
+        // a reconnect and Refresh (likesRefreshSoon), a burst being one read. A row opens that person's Liked page.
+
+        function plLikedSoon() {
+            if (!window.Likes || plLiked.timer) return;
+            plLiked.timer = setTimeout(plLikedLoad, LIKES_REFRESH_MS);
+        }
+
+        async function plLikedLoad() {
+            plLiked.timer = null;
+            if (plLiked.busy) {
+                plLiked.again = true;
+                return;
+            }
+            plLiked.busy = true;
+            try {
+                if (!plLiked.meKnown) {
+                    var me = await plApi('GET', '/api/me');
+                    // 404: web login is off, so nobody is "me" (friends' lists still show, read-only)
+                    if (me.ok || me.status === 404) {
+                        plLiked.me = me.ok && typeof me.data.id === 'string' && me.data.id
+                            ? { id: me.data.id, name: plPersonName(me.data) } : null;
+                        plLiked.meKnown = true;
+                    }
+                }
+                var res = await plApi('GET', '/api/likes/people');
+                if (res.ok) {
+                    plLiked.people = Likes.peopleOrder(res.data, plLiked.me);
+                    plRenderLiked();
+                }
+            } catch (e) {
+            } finally {
+                plLiked.busy = false;
+                if (plLiked.again) {
+                    plLiked.again = false;
+                    plLikedLoad();
+                }
+            }
+        }
+
+        function plRenderLiked() {
+            var box = plLikedBox;
+            var rows = plLiked.people || [];
+            var sig = JSON.stringify(rows);
+            if (sig === plLiked.sig) return; // unchanged: no redraw under the pointer or the keyboard
+            plLiked.sig = sig;
+            // the button that had keyboard focus gets it back: {id: its row, at: which button of the row}
+            var el = document.activeElement;
+            var row = el && box.contains(el) ? el.closest('li') : null;
+            var keep = row ? { id: row.dataset.likedId, at: Array.prototype.indexOf.call(row.querySelectorAll('button'), el) } : null;
+            box.textContent = '';
+            box.hidden = !rows.length;
+            if (!rows.length) return;
+            var head = plEl('div', 'pl-liked-head', '♥ Liked songs');
+            head.setAttribute('role', 'heading');
+            head.setAttribute('aria-level', '3');
+            box.appendChild(head);
+            var ul = plEl('ul', 'playlist-list');
+            rows.forEach(function (p) { ul.appendChild(plLikedRow(p)); });
+            if (rows.some(function (p) { return p.count > 0; })) ul.appendChild(plEveryoneRow());
+            box.appendChild(ul);
+            if (!keep) return;
+            var again = Array.prototype.find.call(ul.children, function (li) { return li.dataset.likedId === keep.id; });
+            var button = again ? again.querySelectorAll('button')[keep.at] : null;
+            if (button) button.focus({ preventScroll: true });
+        }
+
+        // p: {id, name, count, mine}. Names are text only, the friend's bidi-isolated (Likes.likesLabel).
+        function plLikedRow(p) {
+            var label = Likes.likesLabel(p.name, p.mine);
+            var li = plEl('li', 'playlist-item');
+            li.dataset.likedId = p.id;
+            li.appendChild(plEl('span', 'playlist-icon', '♥'));
+            var text = plEl('div', 'playlist-text');
+            var name = plEl('button', 'playlist-name', label + ' (' + p.count + ')');
+            name.type = 'button';
+            name.title = label;
+            text.appendChild(name);
+            li.appendChild(text);
+            if (p.count > 0) li.appendChild(plIconBtn('▶', 'Play', function () { plPlayLikes(p.id, 'all'); }));
+            li.addEventListener('click', function () { plOpenPage('', '', { userId: p.id, ownerName: p.name, mine: p.mine }); });
+            return li;
+        }
+
+        // Plays at once: the server merges everyone's likes, drops repeats and shuffles. There is no page for it.
+        function plEveryoneRow() {
+            var li = plEl('li', 'playlist-item');
+            li.dataset.likedId = 'everyone';
+            li.appendChild(plEl('span', 'playlist-icon', '▶'));
+            var text = plEl('div', 'playlist-text');
+            var name = plEl('button', 'playlist-name', "Everyone's likes");
+            name.type = 'button';
+            name.title = "Play everyone's likes, shuffled";
+            text.appendChild(name);
+            li.appendChild(text);
+            li.addEventListener('click', function () { plPlayLikes('everyone', 'all'); });
             return li;
         }
 
@@ -11916,20 +12031,36 @@
         // ---- playing --------------------------------------------------------------------------------------------
 
         // mode: all, shuffle or from (then songId is the song to start with).
-        async function plPlay(name, folder, mode, songId) {
+        function plPlay(name, folder, mode, songId) {
+            var body = { name: name, folder: folder, mode: mode };
+            if (songId) body.songId = songId;
+            return plPlayAt('/playlists/play', body, 'Loading playlist…', "Couldn't play that playlist");
+        }
+
+        // Someone's likes (userId), or "everyone": all likes merged, without repeats, shuffled by the server.
+        function plPlayLikes(userId, mode, songId) {
+            var body = { userId: userId, mode: mode };
+            if (songId) body.songId = songId;
+            return plPlayAt('/likes/play', body, 'Loading liked songs…', "Couldn't play those likes");
+        }
+
+        // Play, Shuffle and play from here of the open page, a playlist or someone's likes.
+        function plPlayPage(page, mode, songId) {
+            return page.likes ? plPlayLikes(page.likes.userId, mode, songId) : plPlay(page.name, page.folder, mode, songId);
+        }
+
+        async function plPlayAt(path, body, loading, failed) {
             if (!currentGuild) {
                 plToast('Pick a server first', { error: true });
                 return;
             }
-            var body = { name: name, folder: folder, mode: mode };
-            if (songId) body.songId = songId;
             try {
-                var res = await plApi('POST', '/api/guild/' + encodeURIComponent(currentGuild) + '/playlists/play', body);
+                var res = await plApi('POST', '/api/guild/' + encodeURIComponent(currentGuild) + path, body);
                 if (res.ok) {
-                    plToast(typeof res.data.message === 'string' && res.data.message ? res.data.message : 'Loading playlist…', {});
+                    plToast(typeof res.data.message === 'string' && res.data.message ? res.data.message : loading, {});
                     refreshAll();
                 } else {
-                    plToast(plErrorText(res, "Couldn't play that playlist"), { error: true });
+                    plToast(plErrorText(res, failed), { error: true });
                 }
             } catch (e) {
                 plCatch(e);
@@ -12006,13 +12137,16 @@
             plRenderTree();
         }
 
-        function plOpenPage(name, folder) {
+        // likes: open someone's Liked songs instead of a playlist ({userId, ownerName, mine}; name and folder are '').
+        // It is the same page: header, rows, reads and edits, with page.likes deciding where requests go (plSongEdit)
+        // and what may change (plEditable: only your own likes; a friend's are read-only).
+        function plOpenPage(name, folder, likes) {
             plCloseMenu(false);
             plCloseConfirm(false);
             hidePlaylistDialog();
             hideSaveDialog();
             var page = {
-                name: name, folder: folder || '', version: 0, latestSeen: 0, seq: 0,
+                name: name, folder: folder || '', likes: likes || null, version: 0, latestSeen: 0, seq: 0,
                 loaded: false, error: '', legacy: false, shuffle: false, createdBy: '', songs: [],
                 rowBySong: new Map(), retrying: new Set(), removing: new Set(),
                 dragSong: null, dropGap: -1, moving: false, deferred: false, structureOps: 0, add: null, els: null
@@ -12037,8 +12171,8 @@
             title.tabIndex = -1;
             var meta = plEl('div', 'pl-page-meta');
             var actions = plEl('div', 'pl-page-actions');
-            var playBtn = plBtn('▶ Play', 'pl-primary', function () { plPlay(page.name, page.folder, 'all'); });
-            var shuffleBtn = plBtn('Shuffle', '', function () { plPlay(page.name, page.folder, 'shuffle'); });
+            var playBtn = plBtn('▶ Play', 'pl-primary', function () { plPlayPage(page, 'all'); });
+            var shuffleBtn = plBtn('Shuffle', '', function () { plPlayPage(page, 'shuffle'); });
             var addBtn = plBtn('+ Add songs', '', function () { plOpenAddSongs(page); });
             var menuBtn = plBtn('⋯', 'pl-more', function () { plOpenMenu(menuBtn, plPageMenu(page)); });
             menuBtn.title = 'More';
@@ -12098,14 +12232,15 @@
                 h.crumb.appendChild(plLinkSpan(seg, function () { plShowTree(path); }));
             });
             h.crumb.appendChild(plEl('span', 'bc-sep', '/'));
-            h.crumb.appendChild(plEl('span', 'bc-current', page.name));
+            var title = plPageTitle(page);
+            h.crumb.appendChild(plEl('span', 'bc-current', title));
 
-            h.title.textContent = page.name;
+            h.title.textContent = title;
             h.meta.textContent = '';
             var count = page.songs.length;
             if (page.loaded) {
                 var parts = [];
-                if (page.createdBy) parts.push('by ' + page.createdBy);
+                if (page.createdBy && !page.likes) parts.push('by ' + page.createdBy);
                 parts.push(count + ' ' + pluralUnit(count, 'song', 'songs'));
                 var total = page.songs.reduce(function (sum, s) { return sum + s.durationMs; }, 0);
                 if (total > 0) parts.push(plFormatTotal(total));
@@ -12115,9 +12250,20 @@
 
             h.note.hidden = !page.legacy;
             if (page.legacy && page.add) plCloseAddSongs(page, false);
-            h.addBtn.hidden = !page.loaded || page.legacy;
-            h.menuBtn.hidden = !page.loaded || page.legacy;
+            // Liked songs are added with the ♥ and have no name, folder or settings to change
+            h.addBtn.hidden = !page.loaded || page.legacy || !!page.likes;
+            h.menuBtn.hidden = !page.loaded || page.legacy || !!page.likes;
             h.playBtn.disabled = h.shuffleBtn.disabled = !page.loaded || count === 0;
+        }
+
+        // "Road trip"; "My likes", "anna's likes" (the name bidi-isolated, current as of the last read).
+        function plPageTitle(page) {
+            return page.likes ? Likes.likesLabel(page.likes.ownerName, page.likes.mine) : page.name;
+        }
+
+        // Rows can be dragged, moved and removed: a playlist that is not being upgraded, or your own likes.
+        function plEditable(page) {
+            return page.likes ? page.likes.mine : !page.legacy;
         }
 
         function plRenderStatus(page) {
@@ -12138,14 +12284,16 @@
                     s.appendChild(retry);
                 } else {
                     s.appendChild(plEl('span', 'loading-spinner'));
-                    s.appendChild(document.createTextNode('Loading playlist…'));
+                    s.appendChild(document.createTextNode(page.likes ? 'Loading liked songs…' : 'Loading playlist…'));
                 }
                 return;
             }
             var empty = page.songs.length === 0;
             page.els.list.hidden = empty;
             s.hidden = !empty;
-            if (empty) s.textContent = page.legacy ? 'This playlist is empty' : 'No songs yet — use “Add songs” to fill it';
+            if (!empty) return;
+            if (page.likes) s.textContent = page.likes.mine ? 'Songs you ♥ show up here' : 'No liked songs yet';
+            else s.textContent = page.legacy ? 'This playlist is empty' : 'No songs yet — use “Add songs” to fill it';
         }
 
         async function plLoadPage(page, opts) {
@@ -12154,27 +12302,30 @@
             var name = page.name;
             var folder = page.folder;
             try {
-                var url = '/api/playlists/item?name=' + encodeURIComponent(name) + (folder ? '&folder=' + encodeURIComponent(folder) : '');
+                var url = page.likes ? '/api/likes/' + encodeURIComponent(page.likes.userId)
+                    : '/api/playlists/item?name=' + encodeURIComponent(name) + (folder ? '&folder=' + encodeURIComponent(folder) : '');
                 var res = await plApi('GET', url);
                 if (plPage !== page || seq !== page.seq) return;
                 if (name !== page.name || folder !== page.folder) {
                     plLoadPage(page, opts); // renamed or moved from here while the request was on its way: ask again
                     return;
                 }
-                if (res.ok) {
+                // Someone with no likes at all (the server says "No liked songs") has an empty Liked page.
+                var noLikes = !!page.likes && res.status === 404;
+                if (res.ok || noLikes) {
                     if (plPageBusy(page)) {
                         // A drag or a move is under way and this answer may be older than it: read again afterwards.
                         page.deferred = true;
                         return;
                     }
-                    plApplyItem(page, res.data);
+                    plApplyItem(page, noLikes ? { songs: [] } : res.data);
                 } else if (res.status === 404) {
                     if (page.structureOps === 0) plPageGone(page); // else a rename, move or delete from here is under way
                 } else if (!page.loaded) {
-                    page.error = plErrorText(res, "Couldn't load this playlist");
+                    page.error = plErrorText(res, page.likes ? "Couldn't load these liked songs" : "Couldn't load this playlist");
                     plRenderStatus(page);
                 } else if (!quiet) {
-                    plToast(plErrorText(res, "Couldn't refresh this playlist"), { error: true });
+                    plToast(plErrorText(res, page.likes ? "Couldn't refresh these liked songs" : "Couldn't refresh this playlist"), { error: true });
                 }
             } catch (e) {
                 if (plPage !== page || seq !== page.seq) return;
@@ -12188,8 +12339,15 @@
         }
 
         function plApplyItem(page, d) {
-            if (typeof d.name === 'string' && d.name) page.name = d.name;
-            if (typeof d.folder === 'string') page.folder = d.folder;
+            if (page.likes) {
+                // a Liked page answers with the owner's current name, and whether the list is yours (by your login)
+                var owner = plPersonName(d.owner);
+                if (owner) page.likes.ownerName = owner;
+                if (typeof d.mine === 'boolean') page.likes.mine = d.mine;
+            } else {
+                if (typeof d.name === 'string' && d.name) page.name = d.name;
+                if (typeof d.folder === 'string') page.folder = d.folder;
+            }
             page.version = Number(d.version) || 0;
             page.latestSeen = Math.max(page.latestSeen, page.version);
             page.createdBy = plPersonName(d.createdBy);
@@ -12290,8 +12448,10 @@
             return plEl('span', 'pl-thumb pl-thumb-ph', '♪');
         }
 
+        // A playlist being upgraded shows bare rows. Any other row has ▶ (play from here) and a ⋯ menu; only an
+        // editable list (plEditable) also has the drag handle and the menu's Move and Remove items.
         function plBuildRow(page, song) {
-            var editable = !page.legacy;
+            var editable = plEditable(page);
             var broken = song.unresolved && editable;
             var li = plEl('li', 'pl-song' + (broken ? ' unresolved' : '') + (page.removing.has(song.id) ? ' pending' : ''));
             li.dataset.songId = song.id;
@@ -12321,7 +12481,7 @@
                 });
                 li.appendChild(handle);
             }
-            if (editable || song.artworkUrl) li.appendChild(plThumb(song));
+            if (!page.legacy || song.artworkUrl) li.appendChild(plThumb(song));
 
             var info = plEl('div', 'pl-song-info');
             info.appendChild(plEl('div', 'pl-song-title', song.title));
@@ -12332,14 +12492,21 @@
                 if (song.durationMs > 0) sub.appendChild(plEl('span', 'pl-song-len-inline', (song.author ? ' · ' : '') + formatTime(song.durationMs)));
                 info.appendChild(sub);
             }
-            // "added by fred · Oct 13" (plain text; the name is bidi-isolated by playlist-rows.js)
-            var added = window.PlaylistRows ? PlaylistRows.addedByText(song, Date.now()) : '';
+            // "added by fred · Oct 13" (plain text; the name is bidi-isolated by playlist-rows.js); a like says when
+            // it was liked: "liked Oct 13"
+            var added = '';
+            if (window.PlaylistRows && page.likes) {
+                var liked = PlaylistRows.shortDate(song.addedAt, Date.now());
+                if (liked) added = 'liked ' + liked;
+            } else if (window.PlaylistRows) {
+                added = PlaylistRows.addedByText(song, Date.now());
+            }
             if (added) info.appendChild(plEl('div', 'pl-song-added', added));
             li.appendChild(info);
             if (!broken && song.durationMs > 0) li.appendChild(plEl('span', 'pl-song-len', formatTime(song.durationMs)));
             var like = broken ? null : likeButtonFor(plPickerSong(song));
             if (like) li.appendChild(like);
-            if (!editable) return li;
+            if (page.legacy) return li;
 
             if (broken) {
                 if (page.retrying.has(song.id)) {
@@ -12352,7 +12519,7 @@
                     li.appendChild(retry);
                 }
             } else {
-                li.appendChild(plIconBtn('▶', 'Play from here', function () { plPlay(page.name, page.folder, 'from', song.id); }));
+                li.appendChild(plIconBtn('▶', 'Play from here', function () { plPlayPage(page, 'from', song.id); }));
             }
             var more = plIconBtn('⋯', 'More', function (btn) { plOpenMenu(btn, plSongMenu(page, song, btn)); });
             more.setAttribute('aria-haspopup', 'menu');
@@ -12360,15 +12527,20 @@
             return li;
         }
 
+        // A read-only list (a friend's likes) gets no Move or Remove items.
         function plSongMenu(page, song, anchor) {
-            var remove = { label: 'Remove', danger: true, run: function () { plRemoveSong(page, song); } };
-            var moves = plMoveMenuItems(page, song, !page.legacy, plMoveFromMenu);
-            if (song.unresolved) return moves.concat([remove]);
+            var editable = plEditable(page);
+            var remove = editable ? [{ label: 'Remove', danger: true, run: function () { plRemoveSong(page, song); } }] : [];
+            var moves = plMoveMenuItems(page, song, editable, plMoveFromMenu);
+            if (song.unresolved && editable) return moves.concat(remove);
             var items = [];
             // Only links: /play puts "ytsearch:" in front of anything else, so a stored search would be searched for as text
             if (plIsWebLink(song.uri)) items.push({ label: 'Play next', run: function () { plPlayNext(song); } });
-            items.push({ label: 'Add to another playlist', run: function () { openPlaylistPicker(plPickerSong(song), anchor, 'playlist'); } });
-            return items.concat(moves, [remove]);
+            items.push({
+                label: page.likes ? 'Add to playlist' : 'Add to another playlist',
+                run: function () { openPlaylistPicker(plPickerSong(song), anchor, 'playlist'); }
+            });
+            return items.concat(moves, remove);
         }
 
         // The Move up / Move down / Move to top / Move to bottom items of a song's ⋯ menu: [{label, run}]. None when
@@ -12400,7 +12572,7 @@
             plRefreshRow(page, song);
             var removed = false;
             try {
-                var res = await plApi('POST', '/api/playlists/songs/remove', { name: page.name, folder: page.folder, songId: song.id });
+                var res = await plSongEdit(page, 'remove', { songId: song.id });
                 if (res.ok) {
                     removed = true;
                     var token = typeof res.data.undo === 'string' ? res.data.undo : '';
@@ -12415,7 +12587,7 @@
                             plRenderPage(page);
                         }
                     }
-                    plLoadPaneTree();
+                    plCountsChanged(page);
                     plToast('Removed “' + plShort(song.title) + '”', token
                         ? { actionLabel: 'Undo', ms: PL_UNDO_MS, onAction: function () { plUndoRemove(page, token, song.title); } } : {});
                 } else {
@@ -12431,10 +12603,10 @@
 
         async function plUndoRemove(page, token, title) {
             try {
-                var res = await plApi('POST', '/api/playlists/songs/undo', { token: token });
+                var res = await plSongEdit(page, 'undo', { token: token });
                 if (res.ok) {
                     plToast('Put back “' + plShort(title) + '”', {});
-                    plLoadPaneTree();
+                    plCountsChanged(page);
                     if (plPage === page) {
                         plNoteOwnChange(page, res.data.version);
                         plLoadPage(page, { quiet: true });
@@ -12445,6 +12617,24 @@
             } catch (e) {
                 plCatch(e);
             }
+        }
+
+        // An edit of a page's songs: 'remove', 'undo' or 'move'. A playlist is named in the body. Liked songs go to
+        // the likes API, which changes only the list of whoever is logged in, so it is never sent an edit from a
+        // friend's page (the page offers none either).
+        function plSongEdit(page, action, fields) {
+            if (page.likes) {
+                if (!page.likes.mine) return Promise.resolve({ ok: false, status: 403, data: { error: 'Only your own likes can be changed' } });
+                return plApi('POST', '/api/likes/' + (action === 'remove' ? 'remove-song' : action), fields);
+            }
+            var body = action === 'undo' ? fields : Object.assign({ name: page.name, folder: page.folder }, fields);
+            return plApi('POST', '/api/playlists/songs/' + action, body);
+        }
+
+        // A song was removed or put back: the song counts in the tree, or for likes the Liked section and your ♥s.
+        function plCountsChanged(page) {
+            if (page.likes) likesRefreshSoon();
+            else plLoadPaneTree();
         }
 
         async function plRetrySong(page, song) {
@@ -12563,7 +12753,7 @@
             plRenderRows(page);
             var failed = false;
             try {
-                var res = await plApi('POST', '/api/playlists/songs/move', { name: page.name, folder: page.folder, songId: song.id, toIndex: to });
+                var res = await plSongEdit(page, 'move', { songId: song.id, toIndex: to });
                 if (res.ok) {
                     plNoteOwnChange(page, res.data.version);
                 } else {
@@ -12755,7 +12945,7 @@
 
         // The button opens the area, and closes it again.
         function plOpenAddSongs(page) {
-            if (!page.loaded || page.legacy) return;
+            if (!page.loaded || page.legacy || page.likes) return;
             if (page.add) {
                 plCloseAddSongs(page, true);
                 return;
@@ -13348,7 +13538,7 @@
         }
 
         function plIsOpenPage(name, folder) {
-            return !!plPage && plPage.loaded && plPage.name === name && plPage.folder === (typeof folder === 'string' ? folder : '');
+            return !!plPage && !plPage.likes && plPage.loaded && plPage.name === name && plPage.folder === (typeof folder === 'string' ? folder : '');
         }
 
         // {tree: true}: the tree changed. {name, folder, version}: the songs of one playlist changed.
@@ -13372,6 +13562,15 @@
             var forOpenPage = typeof d.playlist === 'string' && plIsOpenPage(d.playlist, d.folder);
             if (!finished && !forOpenPage) return;
             plScheduleRefresh({ tree: true, page: forOpenPage || (finished && !!plPage), force: true });
+        }
+
+        // {userId}: whose likes changed (no song data, no version). likesRefreshSoon has already asked for the Liked
+        // section and your ♥s; an open Liked page of that person is read again the live-refresh way: a drag or a move
+        // under way holds the read back (page.deferred), and a read older than this panel's own move is dropped (page.seq).
+        function plOnLikesMessage(d) {
+            var page = plPage;
+            if (!d || typeof d !== 'object' || !page || !page.likes) return;
+            if (typeof d.userId === 'string' && d.userId === page.likes.userId) plScheduleRefresh({ tree: false, page: true, force: true });
         }
 
         // ---- the "Upgrading playlists" banner ---------------------------------------------------------------------

@@ -1,6 +1,7 @@
 /*
- * Liked songs: what each ♥ shows, which like/unlike request to send, and the "♥ liked by …" line. Pure functions,
- * no DOM or requests: index.html sends the requests and paints the buttons; this file decides.
+ * Liked songs: what each ♥ shows, which like/unlike request to send, the "♥ liked by …" line, and the names and
+ * order of the Liked songs section. Pure functions, no DOM or requests: index.html sends the requests and paints
+ * the buttons; this file decides.
  * Loaded by the panel as a classic script (window.Likes) and by Node for tests (module.exports).
  *
  * At most one like/unlike request per song is on its way at a time, so the server gets them in click order. A click
@@ -143,14 +144,64 @@
      */
     function likedByText(names) {
         if (!Array.isArray(names)) return '';
-        var shownNames = names
-            .filter(function (n) { return typeof n === 'string'; })
-            .map(function (n) { return n.replace(BIDI_CONTROLS, '').trim(); })
-            .filter(Boolean)
-            .map(function (n) { return FSI + n + PDI; });
+        var shownNames = names.map(isolated).filter(Boolean);
         if (!shownNames.length) return '';
         if (shownNames.length <= 2) return '♥ ' + shownNames.join(', ');
         return '♥ ' + shownNames[0] + ' and ' + (shownNames.length - 1) + ' others';
+    }
+
+    /* A name ready to sit next to other text: trimmed, its own bidi controls dropped, in an isolate. "" if none. */
+    function isolated(name) {
+        var n = typeof name === 'string' ? name.replace(BIDI_CONTROLS, '').trim() : '';
+        return n ? FSI + n + PDI : '';
+    }
+
+    /*
+     * The name of someone's Liked songs: "My likes" for your own, else "anna's likes" with the name bidi-isolated
+     * ("Someone's likes" when there is no name to show). Plain text: the panel sets it with textContent.
+     */
+    function likesLabel(name, isMe) {
+        if (isMe === true) return 'My likes';
+        return (isolated(name) || 'Someone') + "'s likes";
+    }
+
+    function wholeCount(n) {
+        return typeof n === 'number' && isFinite(n) && n >= 0 && Math.floor(n) === n ? n : 0;
+    }
+
+    function byName(a, b) {
+        var x = a.name.toLowerCase();
+        var y = b.name.toLowerCase();
+        if (x !== y) return x < y ? -1 : 1;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    }
+
+    /*
+     * The rows of the Liked songs section from a /api/likes/people answer and the logged-in person (/api/me, or
+     * null with web login off): [{id, name, count, mine}], yours first (also with no likes yet, at 0), then
+     * everyone else by name, ignoring case. Entries without a usable id are dropped, an id seen twice counts once,
+     * a blank name goes by the id (as the server does), and a count that is not a whole number is 0.
+     */
+    function peopleOrder(people, me) {
+        var myId = me && typeof me === 'object' && typeof me.id === 'string' && me.id ? me.id : null;
+        var seen = map();
+        var mine = null;
+        var others = [];
+        (Array.isArray(people) ? people : []).forEach(function (p) {
+            if (!p || typeof p !== 'object' || typeof p.id !== 'string' || !p.id || seen[p.id]) return;
+            seen[p.id] = true;
+            var name = typeof p.name === 'string' && p.name.trim() ? p.name.trim() : p.id;
+            var row = { id: p.id, name: name, count: wholeCount(p.count), mine: p.id === myId };
+            if (row.mine) mine = row;
+            else others.push(row);
+        });
+        others.sort(byName);
+        if (!myId) return others;
+        if (!mine) {
+            var myName = typeof me.name === 'string' && me.name.trim() ? me.name.trim() : myId;
+            mine = { id: myId, name: myName, count: 0, mine: true };
+        }
+        return [mine].concat(others);
     }
 
     return {
@@ -161,6 +212,8 @@
         stamp: stamp,
         applyMine: applyMine,
         fromMine: fromMine,
-        likedByText: likedByText
+        likedByText: likedByText,
+        likesLabel: likesLabel,
+        peopleOrder: peopleOrder
     };
 }));
