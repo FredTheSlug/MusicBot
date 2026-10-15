@@ -7,10 +7,10 @@ use crate::hotkeys;
 use crate::settings::Settings;
 use crate::sleep::{self, SleepInfo};
 use crate::state::BotState;
-use crate::theme::{self, PanelTheme};
+use crate::theme::{self, CustomMini, PanelTheme, ThemeMenu, UiTheme};
 use crate::{settings, show_main, AppState};
 use serde::Serialize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
@@ -26,6 +26,7 @@ const EXTRA_HEIGHT: f64 = 250.0;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 const LYRICS_TIMEOUT: Duration = Duration::from_secs(15);
+const THEMES_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -115,8 +116,11 @@ pub struct MiniPrefs {
     pub compact: bool,
     pub opacity: f64,
     pub match_panel: bool,
+    /// What the theme menu selects (see `theme::menu_selection`).
     pub theme: String,
-    pub effective: PanelTheme,
+    /// The custom themes the theme menu offers.
+    pub custom_themes: Vec<CustomMini>,
+    pub effective: UiTheme,
     pub hide_in_fullscreen: bool,
 }
 
@@ -196,6 +200,7 @@ pub fn toggle(app: &AppHandle) {
     let _ = window.show();
     let _ = window.set_focus();
     emit_state(app);
+    refresh_themes_in_background(app);
 }
 
 fn epoch_ms() -> u64 {
@@ -233,9 +238,65 @@ pub fn emit_sleep(app: &AppHandle) {
     let _ = app.emit_to(LABEL, "sleep-changed", sleep_info(app));
 }
 
+/// The custom themes with a mini-player version, as last fetched (empty until the first answer).
+fn custom_themes(app: &AppHandle) -> Vec<CustomMini> {
+    app.state::<AppState>().customs.lock().unwrap().clone()
+}
+
+/// What the mini-player wears now, for its UI.
+fn ui_theme(app: &AppHandle) -> UiTheme {
+    let customs = custom_themes(app);
+    let settings = app.state::<AppState>().settings.lock().unwrap().clone();
+    theme::effective(&settings, &customs).into_ui(settings.server_origin().as_deref())
+}
+
 pub fn emit_theme(app: &AppHandle) {
-    let effective = theme::effective(&app.state::<AppState>().settings.lock().unwrap());
-    let _ = app.emit_to(LABEL, "theme-changed", effective);
+    let _ = app.emit_to(LABEL, "theme-changed", ui_theme(app));
+}
+
+fn theme_menu(app: &AppHandle) -> ThemeMenu {
+    let customs = custom_themes(app);
+    theme::theme_menu(&app.state::<AppState>().settings.lock().unwrap(), &customs)
+}
+
+fn emit_theme_menu(app: &AppHandle) {
+    let _ = app.emit_to(LABEL, "themes-changed", theme_menu(app));
+}
+
+static THEMES_ASKED: AtomicU64 = AtomicU64::new(0);
+static THEMES_SHOWN: AtomicU64 = AtomicU64::new(0);
+
+/// Asks the bot for its custom themes and, if the list changed, restyles the mini-player and its theme menu.
+/// Blocks while it waits for the panel's answer: call it from a worker thread or an async command, never the main thread.
+pub fn refresh_themes(app: &AppHandle) -> Result<ThemeMenu, String> {
+    let ticket = THEMES_ASKED.fetch_add(1, Ordering::SeqCst) + 1;
+    let data = bridge::send_command_fetch(app, BotCommand::Themes, THEMES_TIMEOUT)?;
+    let fresh = theme::custom_minis(&data);
+    // Two asks can be out at once; an older answer arriving late must not undo a newer one.
+    if THEMES_SHOWN.fetch_max(ticket, Ordering::SeqCst) < ticket {
+        let changed = {
+            let state = app.state::<AppState>();
+            let mut customs = state.customs.lock().unwrap();
+            let changed = *customs != fresh;
+            *customs = fresh;
+            changed
+        };
+        if changed {
+            emit_theme_menu(app);
+            emit_theme(app);
+        }
+    }
+    Ok(theme_menu(app))
+}
+
+/// `refresh_themes` without waiting, for the places that run on the main or the bridge's thread.
+fn refresh_themes_in_background(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = refresh_themes(&app) {
+            log::info!("could not refresh the custom themes: {e}");
+        }
+    });
 }
 
 fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
@@ -255,6 +316,8 @@ pub fn on_panel_theme(app: &AppHandle, raw: PanelTheme) {
     }
     update_settings(app, |s| s.panel_theme = Some(clean));
     emit_theme(app);
+    // The panel just changed what it shows: a theme may have been edited, or made, or taken away.
+    refresh_themes_in_background(app);
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -431,14 +494,16 @@ pub fn mini_get_sleep(app: AppHandle) -> SleepInfo {
 
 #[tauri::command]
 pub fn mini_get_prefs(app: AppHandle) -> MiniPrefs {
-    let state = app.state::<AppState>();
-    let settings = state.settings.lock().unwrap();
+    let customs = custom_themes(&app);
+    let settings = app.state::<AppState>().settings.lock().unwrap().clone();
+    let menu = theme::theme_menu(&settings, &customs);
     MiniPrefs {
         compact: settings.mini_player_compact,
         opacity: settings.opacity(),
         match_panel: settings.mini_player_match_panel,
-        theme: settings.mini_player_theme.clone(),
-        effective: theme::effective(&settings),
+        theme: menu.theme,
+        custom_themes: menu.custom_themes,
+        effective: theme::effective(&settings, &customs).into_ui(settings.server_origin().as_deref()),
         hide_in_fullscreen: settings.hide_in_fullscreen,
     }
 }
@@ -519,16 +584,19 @@ pub fn mini_set_opacity(app: AppHandle, value: f64) {
     update_settings(&app, |s| s.mini_player_opacity = settings::clamp_opacity(value));
 }
 
-/// An unknown theme id keeps the current pick.
+/// A built-in id or `custom:<id>`; anything else keeps the current pick.
 #[tauri::command]
 pub fn mini_set_theme(app: AppHandle, match_panel: bool, theme: String) {
-    update_settings(&app, |s| {
-        s.mini_player_match_panel = match_panel;
-        if theme::THEME_IDS.contains(&theme.as_str()) {
-            s.mini_player_theme = theme;
-        }
-    });
+    let customs = custom_themes(&app);
+    update_settings(&app, |s| theme::choose(s, match_panel, &theme, &customs));
     emit_theme(&app);
+}
+
+/// Asks the bot for its custom themes again (the settings are opening); what changed also arrives as events.
+/// Async: waiting for the panel's answer must not block the main thread.
+#[tauri::command]
+pub async fn mini_refresh_themes(app: AppHandle) -> Result<ThemeMenu, String> {
+    blocking(move || refresh_themes(&app)).await
 }
 
 #[tauri::command]

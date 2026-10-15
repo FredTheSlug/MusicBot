@@ -20,6 +20,7 @@
     "allow-mini-get-prefs",
     "allow-mini-set-opacity",
     "allow-mini-set-theme",
+    "allow-mini-refresh-themes",
     "allow-mini-set-panel",
     "allow-mini-history",
     "allow-mini-frequent",

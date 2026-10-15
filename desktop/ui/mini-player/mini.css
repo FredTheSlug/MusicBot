@@ -76,6 +76,23 @@ html, body {
   background: radial-gradient(ellipse 60% 80% at 100% 0%, var(--accent-glow), transparent 70%);
 }
 
+/*
+ * A custom theme's picture, at the very back of the card: the picture (-3), a dark layer over it (-2), then the glow (-1)
+ * and the content, as the panel's theme creator previews it. Both fade with the Background slider like the card does.
+ * The canvas holds the picture's first frame while Reduce motion is on.
+ */
+.bg-pic,
+.bg-dim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--card-alpha);
+}
+
+.bg-pic { z-index: -3; width: 100%; height: 100%; object-fit: cover; }
+.bg-dim { z-index: -2; }
+.bg-pic[hidden], .bg-dim[hidden] { display: none; }
+
 .low-alpha .title,
 .low-alpha .meta,
 .low-alpha .status { text-shadow: var(--legibility-shadow); }

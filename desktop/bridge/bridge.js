@@ -38,12 +38,22 @@
   }
   function notice(level, message) { report({ type: 'notice', level: level, message: message }); }
 
-  /** Tells the app which theme the panel shows and its colors, for the mini-player. */
+  var lastTheme = '';
+
+  /**
+   * Tells the app which theme the panel shows (the built-in id, or custom:<id>) and its colors, for the mini-player.
+   * Says nothing while the theme creator previews, and nothing when the app already has this theme (one it didn't
+   * get is sent again on the next change or heartbeat).
+   */
   function reportTheme() {
     var root = document.documentElement;
     var style = getComputedStyle(root);
-    var theme = core.readTheme(root.getAttribute('data-theme'), function (name) { return style.getPropertyValue(name); });
-    report({ type: 'theme', theme: theme });
+    var theme = core.readTheme(root.getAttribute('data-theme'), function (name) { return style.getPropertyValue(name); },
+      root.getAttribute('data-custom-theme'));
+    if (!theme) return;
+    var key = JSON.stringify(theme);
+    if (key === lastTheme) return;
+    invoke('bridge_report', { report: { type: 'theme', theme: theme } }).then(function () { lastTheme = key; }, function () {});
   }
 
   function selectedGuild() {
@@ -161,7 +171,7 @@
       result(true);
       return;
     }
-    if (!guildId) { result(false, 'Pick a server in the panel first'); return; }
+    if (!guildId && core.needsServer(cmd)) { result(false, 'Pick a server in the panel first'); return; }
     var req = core.commandToRequest(guildId, cmd, core.toBotState(snap));
     if (!req) { result(true); return; }
     if (cmd.type === 'RemoveFromQueue' || cmd.type === 'MoveToTop') {
@@ -194,12 +204,17 @@
   function start() {
     connect();
     reportTheme();
-    new MutationObserver(reportTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    // A custom theme is its base theme (data-theme) plus values set one by one on <html> (style), and
+    // data-custom-theme says which one it is.
+    new MutationObserver(reportTheme).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'data-custom-theme', 'style']
+    });
     var sel = document.getElementById('guildSelect');
     if (sel) sel.addEventListener('change', function () { if (selectedGuild() !== guildId) connect(); });
     // Same-document localStorage writes fire no 'storage' event, so watch the selection directly.
     setInterval(function () { if (selectedGuild() !== guildId) connect(); }, GUILD_POLL_MS);
-    setInterval(reportState, HEARTBEAT_MS);
+    setInterval(function () { reportState(); reportTheme(); }, HEARTBEAT_MS);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

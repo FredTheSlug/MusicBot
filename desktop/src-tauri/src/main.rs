@@ -42,6 +42,8 @@ pub struct AppState {
     pub spotify: Mutex<spotify::SpotifyStatus>,
     /// Sleep timer for this session.
     pub sleep: Mutex<sleep::SleepMode>,
+    /// The custom themes that have a mini-player version, as last fetched from the bot (empty until then).
+    pub customs: Mutex<Vec<theme::CustomMini>>,
 }
 
 /// Fans state changes out to the tray, mini-player, media keys and notifier.
@@ -253,6 +255,7 @@ fn main() {
                 media: Mutex::new(None),
                 spotify: Mutex::new(spotify::SpotifyStatus::default()),
                 sleep: Mutex::new(sleep::SleepMode::Off),
+                customs: Mutex::new(Vec::new()),
             });
             // The remote panel page may call exactly one command: bridge_report.
             app.add_capability(
@@ -316,6 +319,7 @@ fn main() {
             mini_player::mini_get_prefs,
             mini_player::mini_set_opacity,
             mini_player::mini_set_theme,
+            mini_player::mini_refresh_themes,
             mini_player::mini_set_panel,
             mini_player::mini_history,
             mini_player::mini_frequent,

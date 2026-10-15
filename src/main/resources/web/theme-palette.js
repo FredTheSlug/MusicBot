@@ -136,6 +136,18 @@
         return ratio(over(parseHex(hexA), BLACK), over(parseHex(hexB), BLACK));
     }
 
+    var WHITE = { r: 255, g: 255, b: 255, a: 1 };
+
+    /*
+     * The color for what sits on top of the main color (the play icon on the accent): '#000000' or '#ffffff',
+     * whichever contrasts more with it (white when they tie). An accent with alpha counts as contrast() counts it,
+     * over black. The desktop mini-player derives the same color from the same rule (desktop/ui/mini-player/view.js).
+     */
+    function onAccent(accentHex) {
+        var accent = over(parseHex(accentHex), BLACK);
+        return ratio(BLACK, accent) > ratio(WHITE, accent) ? '#000000' : '#ffffff';
+    }
+
     /* ---- Readability ---- */
 
     /* The page color over black, and the card over the page: what the text really sits on. */
@@ -391,6 +403,7 @@
         SLOTS: SLOTS,
         MINI_SLOTS: MINI_SLOTS,
         contrast: contrast,
+        onAccent: onAccent,
         generate: generate,
         readability: readability,
         fixReadability: fixReadability,

@@ -61,6 +61,8 @@ pub enum BotCommand {
     CreatePlaylist { name: String, folder: Option<String> },
     /// The page opens its "What's new" history; needs no server selected and sends nothing to the bot.
     ShowWhatsNew,
+    /// Fetch: the custom themes people made (`GET /api/themes`); the same for every server, so none needs picking.
+    Themes,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +221,30 @@ mod tests {
         assert_eq!(serde_json::to_string(&BotCommand::ShowWhatsNew).unwrap(), r#"{"type":"ShowWhatsNew"}"#);
         let back: BotCommand = serde_json::from_str(r#"{"type":"ShowWhatsNew"}"#).unwrap();
         assert_eq!(back, BotCommand::ShowWhatsNew);
+    }
+
+    #[test]
+    fn themes_command_is_a_unit_fetch_the_bridge_maps_to_the_theme_list() {
+        // A unit variant: no "value" key, which is what core.js's commandToRequest looks for by "type" alone.
+        assert_eq!(serde_json::to_string(&BotCommand::Themes).unwrap(), r#"{"type":"Themes"}"#);
+        let back: BotCommand = serde_json::from_str(r#"{"type":"Themes"}"#).unwrap();
+        assert_eq!(back, BotCommand::Themes);
+        assert_eq!(command_js(5, &BotCommand::Themes), r#"window.__cksBridge && window.__cksBridge.run(5, {"type":"Themes"});"#);
+    }
+
+    #[test]
+    fn theme_report_carries_the_panels_choice() {
+        let r: BridgeReport = serde_json::from_str(
+            r##"{"type":"theme","theme":{"id":"ember","vars":{"--accent":"#7c5cff"},"choice":"custom:k3j9x0q2m7ab"}}"##,
+        )
+        .unwrap();
+        let BridgeReport::Theme { theme } = r else { panic!("expected theme") };
+        assert_eq!((theme.id.as_str(), theme.choice.as_deref()), ("ember", Some("custom:k3j9x0q2m7ab")));
+        assert_eq!(theme.vars["--accent"], "#7c5cff");
+        // the bridge before this version sent none
+        let r: BridgeReport = serde_json::from_str(r#"{"type":"theme","theme":{"id":"neon","vars":{}}}"#).unwrap();
+        let BridgeReport::Theme { theme } = r else { panic!("expected theme") };
+        assert_eq!(theme.choice, None);
     }
 
     #[test]

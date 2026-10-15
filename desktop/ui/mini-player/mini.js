@@ -33,10 +33,73 @@
   }
   var view = MV.view;
   var appliedThemeVars = [];
+  var shownTheme = null;
 
   function showTheme(theme) {
+    shownTheme = theme;
     appliedThemeVars = MV.applyTheme(document.documentElement, theme, appliedThemeVars);
+    showPicture(MV.themePicture(theme, reduceMotion.matches));
   }
+
+  // ---- A custom theme's picture: at the back of the card, under a dark layer, faded like the card ----
+  // Reduce motion is the system's setting (the mini-player has no switch of its own): a picture that can move
+  // (GIF, WebP, PNG) is then drawn to the canvas once, so only its first frame is ever shown.
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var FRAME_MAX_SIDE = 1024;
+  var pictureSeq = 0;
+  var pictureWanted = ''; // the picture (and whether frozen) the last call asked for: on show, or loading
+
+  function hidePicture() {
+    pictureWanted = '';
+    ['bgPic', 'bgFrame', 'bgDim'].forEach(function (id) { el(id).hidden = true; });
+    el('bgPic').removeAttribute('src');
+  }
+
+  /** Draws the loaded picture (its first frame) to the canvas, at most FRAME_MAX_SIDE wide or tall; false if it can't. */
+  function drawFirstFrame(img) {
+    var w = img.naturalWidth;
+    var h = img.naturalHeight;
+    var canvas = el('bgFrame');
+    var g = w && h ? canvas.getContext('2d') : null;
+    if (!g) return false;
+    var shrink = Math.min(1, FRAME_MAX_SIDE / Math.max(w, h));
+    canvas.width = Math.max(1, Math.round(w * shrink));
+    canvas.height = Math.max(1, Math.round(h * shrink));
+    g.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return true;
+  }
+
+  /**
+   * layer = MV.pictureLayer(...) or null. The picture loads first: one that fails shows nothing, not a dark veil.
+   * The latest call wins over a load still on its way; asking again for what is already shown (or loading) does nothing.
+   */
+  function showPicture(layer) {
+    var key = layer ? layer.url + '\n' + layer.freeze : '';
+    if (layer) el('bgDim').style.setProperty('background-color', layer.overlay);
+    if (key === pictureWanted) return;
+    pictureWanted = key;
+    var seq = ++pictureSeq;
+    if (!layer) { hidePicture(); return; }
+    var probe = new Image();
+    probe.onload = function () {
+      if (seq !== pictureSeq) return;
+      if (layer.freeze) {
+        if (!drawFirstFrame(probe)) { hidePicture(); return; }
+        el('bgPic').removeAttribute('src');
+      } else {
+        el('bgPic').src = layer.url;
+      }
+      el('bgPic').hidden = layer.freeze;
+      el('bgFrame').hidden = !layer.freeze;
+      el('bgDim').hidden = false;
+    };
+    probe.onerror = function () { if (seq === pictureSeq) hidePicture(); };
+    probe.src = layer.url;
+  }
+
+  function pictureMotionChanged() { if (shownTheme) showPicture(MV.themePicture(shownTheme, reduceMotion.matches)); }
+  if (reduceMotion.addEventListener) reduceMotion.addEventListener('change', pictureMotionChanged);
+  else if (reduceMotion.addListener) reduceMotion.addListener(pictureMotionChanged);
 
   function render(u) {
     ui = u;
@@ -461,6 +524,8 @@
     el('results').hidden = show;
     el('settingsBtn').setAttribute('aria-pressed', String(show));
     showTabs(!show && !el('searchBox').value.trim());
+    // The theme list may have moved on since the mini-player opened; what changed comes back as `themes-changed`.
+    if (show) invoke('mini_refresh_themes').catch(function () { /* offline or signed out: the list on show stays */ });
   }
 
   // ---- Menu: quick picks while the search box is empty ----
@@ -863,19 +928,33 @@
   invoke('mini_get_sleep').then(setSleepInfo);
 
   // ---- Menu: mini-player settings ----
-  MV.THEMES.forEach(function (t) {
-    var option = document.createElement('option');
-    option.value = t.id;
-    option.textContent = t.label;
-    el('themeSelect').appendChild(option);
-  });
+
+  /** menu = {customThemes, theme}: the built-in themes, then the custom ones with a mini-player version (names as text only). */
+  function showThemeMenu(menu) {
+    var select = el('themeSelect');
+    while (select.firstChild) select.removeChild(select.firstChild);
+    MV.themeMenu(menu.customThemes).forEach(function (group) {
+      var optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      group.options.forEach(function (item) {
+        var option = document.createElement('option');
+        option.value = item.value;
+        option.textContent = item.label;
+        optgroup.appendChild(option);
+      });
+      select.appendChild(optgroup);
+    });
+    select.value = menu.theme;
+  }
+
+  listen('themes-changed', function (e) { showThemeMenu(e.payload); });
 
   function showPrefs(prefs) {
     var pct = Math.round(prefs.opacity * 100);
     el('opacity').value = pct;
     el('opacityValue').textContent = pct + '%';
     el('matchPanel').checked = prefs.matchPanel;
-    el('themeSelect').value = prefs.theme;
+    showThemeMenu(prefs);
     el('themeRow').hidden = prefs.matchPanel;
     el('hideFullscreen').checked = prefs.hideInFullscreen;
     el('compactOn').checked = prefs.compact;

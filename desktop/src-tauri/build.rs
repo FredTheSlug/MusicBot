@@ -18,6 +18,7 @@ fn main() {
             "mini_get_prefs",
             "mini_set_opacity",
             "mini_set_theme",
+            "mini_refresh_themes",
             "mini_set_panel",
             "mini_history",
             "mini_frequent",

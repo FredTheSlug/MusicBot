@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const P = require('../../main/resources/web/theme-palette.js');
-const { contrast, generate, readability, fixReadability, suggestBackgrounds, surprise, mini, cssVars, suggestDim } = P;
+const { contrast, generate, readability, fixReadability, suggestBackgrounds, surprise, mini, cssVars, suggestDim, onAccent } = P;
 
 const SLOTS = ['bgPrimary', 'bgSecondary', 'bgCard', 'bgElevated', 'bgHover', 'accent', 'accentLight', 'accent2',
   'textPrimary', 'textSecondary', 'textTertiary', 'border', 'borderLight', 'success', 'glass'];
@@ -446,4 +446,38 @@ test('suggestDimIsMonotonicAndClamped', () => {
     const d = suggestDim(odd);
     assert.ok(Number.isInteger(d) && d >= 0 && d <= 90, String(odd));
   }
+});
+
+test('onAccentIsDarkOnLightAccentsAndWhiteOnDarkOnes', () => {
+  assert.equal(onAccent('#ffffff'), '#000000');
+  assert.equal(onAccent('#f1c40f'), '#000000');
+  assert.equal(onAccent('#2dd4bf'), '#000000');
+  assert.equal(onAccent('#000000'), '#ffffff');
+  assert.equal(onAccent('#1e3a8a'), '#ffffff');
+  assert.equal(onAccent('#6d28d9'), '#ffffff');
+  // Black reaches 4.83:1 on this violet and white only 4.35:1, so the rule picks black.
+  assert.equal(onAccent('#7c5cff'), '#000000');
+  assert.equal(onAccent('#7C5CFF'), '#000000', 'upper case is the same color');
+});
+
+test('onAccentTreatsAnAccentWithAlphaAsContrastDoesOverBlack', () => {
+  assert.equal(onAccent('#ffffff00'), '#ffffff', 'nothing of it shows over black');
+  assert.equal(onAccent('#ffffffff'), '#000000');
+  assert.equal(onAccent('#ffffff40'), onAccent('#404040'), 'a quarter of white over black is that dark grey');
+});
+
+test('onAccentAlwaysPicksTheBetterOfBlackAndWhiteAndIsReadable', () => {
+  const rnd = seeded(7);
+  for (let i = 0; i < 500; i++) {
+    const c = randomHex(rnd);
+    const chosen = onAccent(c);
+    const other = chosen === '#000000' ? '#ffffff' : '#000000';
+    assert.ok(chosen === '#000000' || chosen === '#ffffff', c);
+    assert.ok(contrast(chosen, c) >= contrast(other, c), c);
+    assert.ok(contrast(chosen, c) >= 4.5, c + ' ' + contrast(chosen, c));
+  }
+});
+
+test('onAccentRefusesWhatIsNotAColor', () => {
+  for (const bad of ['red', '', null, undefined, 42, '#12']) assert.throws(() => onAccent(bad), TypeError, String(bad));
 });

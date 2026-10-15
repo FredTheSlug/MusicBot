@@ -17,6 +17,9 @@
       <div class="drawer-panel menu" id="menuPanel" hidden>
         <form class="search-row" id="searchForm" autocomplete="off">
           <input type="text" id="searchBox" class="search-box" placeholder="Search songs or paste a link" spellcheck="false" aria-label="Search songs or paste a link">
+          <button type="button" id="whatsNewBtn" class="icon-btn" title="What's new (shows the patch notes in the panel)" aria-label="What's new">
+            <svg viewBox="0 0 24 24"><path d="M23 12l-2.44-2.78.34-3.68-3.61-.82-1.89-3.18L12 3 8.6 1.54 6.71 4.72l-3.61.81.34 3.68L1 12l2.44 2.78-.34 3.69 3.61.82 1.89 3.18L12 21l3.4 1.46 1.89-3.18 3.61-.82-.34-3.68L23 12zm-10 5h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          </button>
           <button type="button" id="settingsBtn" class="icon-btn" title="Mini-player settings" aria-label="Mini-player settings" aria-pressed="false">
             <svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
           </button>
@@ -64,10 +67,6 @@
               <option value="end">End of this song</option>
             </select>
           </label>
-          <label class="setting">
-            <span>What's new</span>
-            <button type="button" id="whatsNewBtn" class="tab" title="Show the panel window with the patch notes">Show</button>
-          </label>
         </div>
       </div>
       <div class="drawer-panel lyrics" id="lyricsPanel" hidden>
@@ -104,6 +103,10 @@
     </section>
 
     <main class="mini" id="mini" data-tauri-drag-region>
+      <!-- A custom theme's picture, if it has one: behind everything else in the card (see .bg-pic in mini.css). -->
+      <img class="bg-pic" id="bgPic" alt="" hidden>
+      <canvas class="bg-pic" id="bgFrame" hidden></canvas>
+      <div class="bg-dim" id="bgDim" hidden></div>
       <div class="drop-hint" id="dropHint">Drop a Spotify playlist, album or song</div>
       <div class="disc" id="disc" data-tauri-drag-region>
         <img class="art" id="art" alt="" hidden>

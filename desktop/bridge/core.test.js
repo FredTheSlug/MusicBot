@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { toBotState, parseWsMessage, commandToRequest, isOwnLoadError, readTheme, THEME_VARS } = require('./core.js');
+const { toBotState, parseWsMessage, commandToRequest, isOwnLoadError, readTheme, needsServer, THEME_VARS } = require('./core.js');
 
 test('maps now playing, queue and me into BotState', () => {
   const s = toBotState({ connected: true, signedIn: true, me: { id: '1', name: 'fred', avatarUrl: '' }, guild: { id: '9', name: 'CK' },
@@ -103,11 +103,42 @@ test('fetch commands map to GET endpoints', () => {
   assert.deepEqual(commandToRequest('9', { type: 'Lyrics' }, {}), { method: 'GET', path: '/api/guild/9/lyrics', body: null });
 });
 
-test('readTheme builds id and vars', () => {
+test('readTheme builds id, vars and the panel\'s choice', () => {
   assert.equal(THEME_VARS.length, 16);
   const getVar = (name) => (name === '--accent' ? ' #fff ' : '');
-  assert.deepEqual(readTheme('neon', getVar), { id: 'neon', vars: { '--accent': '#fff' } });
-  assert.deepEqual(readTheme(null, () => ''), { id: 'nebula', vars: {} });
+  assert.deepEqual(readTheme('neon', getVar), { id: 'neon', vars: { '--accent': '#fff' }, choice: 'neon' });
+  assert.deepEqual(readTheme(null, () => ''), { id: 'nebula', vars: {}, choice: 'nebula' });
+});
+
+test('readTheme reports a custom theme as custom:<id> over its base theme', () => {
+  const getVar = (name) => (name === '--accent' ? '#7c5cff' : '');
+  // data-theme is the custom theme's base; data-custom-theme says which custom theme is on
+  assert.deepEqual(readTheme('ember', getVar, 'k3j9x0q2m7ab'), { id: 'ember', vars: { '--accent': '#7c5cff' }, choice: 'custom:k3j9x0q2m7ab' });
+  // Nebula has no data-theme at all
+  assert.deepEqual(readTheme(null, () => '', 'k3j9x0q2m7ab'), { id: 'nebula', vars: {}, choice: 'custom:k3j9x0q2m7ab' });
+});
+
+test('readTheme ignores a custom attribute that is not a theme id', () => {
+  for (const odd of ['', null, undefined, 'K3J9X0Q2M7AB', 'short', 'k3j9x0q2m7ab1', 'k3j9x0q2m7a;', ' k3j9x0q2m7ab', 'custom:k3j9x0q2m7ab', 42]) {
+    assert.equal(readTheme('aurora', () => '', odd).choice, 'aurora', String(odd));
+  }
+});
+
+test('readTheme reports nothing while the theme creator previews (themepreview is not a real choice)', () => {
+  // The creator wears a well-formed id that no real theme has; the page is "unchanged" until it steps aside.
+  assert.equal(readTheme('ember', () => '#fff', 'themepreview'), null);
+  assert.equal(readTheme(null, () => '', 'themepreview'), null);
+});
+
+test('Themes fetches the list of themes, with or without a server picked', () => {
+  const req = { method: 'GET', path: '/api/themes', body: null };
+  assert.deepEqual(commandToRequest('9', { type: 'Themes' }, {}), req);
+  assert.deepEqual(commandToRequest('', { type: 'Themes' }, {}), req, 'the list is the same for every server');
+  assert.deepEqual(commandToRequest(null, { type: 'Themes' }, {}), req);
+  assert.equal(commandToRequest('9', null, {}), null);
+  assert.equal(needsServer({ type: 'Themes' }), false);
+  for (const type of ['Skip', 'Search', 'History', 'Playlists', 'PlaylistsTreeV2', 'TogglePause']) assert.equal(needsServer({ type }), true, type);
+  assert.equal(needsServer(null), true);
 });
 
 test('queue and modes map into BotState', () => {

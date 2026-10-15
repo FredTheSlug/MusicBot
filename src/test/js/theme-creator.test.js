@@ -1702,9 +1702,41 @@ test('theMiniPlayerPreviewStylesUseOnlyTheSixteenMiniVariables', () => {
     for (const m of rule[2].matchAll(/var\((--[a-z0-9-]+)/g)) used.add(m[1]);
   }
   assert.ok(used.size >= 8, [...used].join(' '));
-  for (const name of used) assert.ok(C.MINI_VARS.includes(name), name + ' is not one of the mini-player variables');
+  // --on-accent is the mini-player's own extra (the play icon on the accent), not one of the 16 it copies from a theme
+  for (const name of used) {
+    assert.ok(C.MINI_VARS.includes(name) || name === '--on-accent', name + ' is not one of the mini-player variables');
+  }
   // and it does not paint with the creator's or the page's other colors
   for (const rule of rules) assert.doesNotMatch(rule[2], /--tc-|--glass|--accent2|--card-/, rule[1]);
+});
+
+test('theMiniPlayerPreviewPaintsItsIconsWithTheOnAccentColorNotWhite', () => {
+  function rule(selector) {
+    const at = INDEX.indexOf('\n        ' + selector + ' {');
+    assert.ok(at >= 0, selector + ' not found');
+    return INDEX.slice(at, INDEX.indexOf('}', at));
+  }
+  const art = rule('.tc-minip-art');
+  const play = rule('.tc-minip-ctrl.primary');
+  assert.match(art, /color:\s*var\(--on-accent\)/);
+  assert.match(play, /color:\s*var\(--on-accent\)/);
+  assert.doesNotMatch(art + play, /#fff\b|white/i, 'no hard-coded white on the accent');
+  // and the preview gives that variable to its own element, from the tested view
+  const fn = /function tcMiniPreview\(\) \{([\s\S]*?)\n        \}\n/.exec(CREATOR_CODE);
+  assert.ok(fn, 'tcMiniPreview not found');
+  assert.match(fn[1], /el\.style\.setProperty\('--on-accent', view\.onAccent\)/);
+});
+
+test('theMiniPlayerPreviewDerivesTheColorOnTheAccentFromTheMiniPlayersMainColor', () => {
+  let s = C.makeMini(C.startState('nebula'));
+  assert.equal(C.miniView(s).onAccent, P.onAccent(s.mini.colors.accent));
+  s = C.setMiniMain(s, '#fff200');
+  assert.equal(C.miniView(s).onAccent, '#000000', 'dark icons on a light main color');
+  s = C.setMiniMain(s, '#101a5c');
+  assert.equal(C.miniView(s).onAccent, '#ffffff', 'white icons on a dark main color');
+  assert.equal(C.miniView(s).onAccent, P.onAccent(s.mini.colors.accent));
+  // it is not one of the 16 variables a theme gives the mini-player
+  assert.equal('--on-accent' in C.miniView(s).vars, false);
 });
 
 test('theCreatorPreviewsThroughTheSameFunctionThatAppliesSavedThemes', () => {

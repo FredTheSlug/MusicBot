@@ -309,3 +309,319 @@ test('pickerError shows the bot\'s words, short and on one line', () => {
   assert.equal(html.length, 160);
   assert.ok(html.endsWith('…'));
 });
+
+// ---- Custom themes: the mini-player versions people made in the panel ----
+
+const {
+  customVars, onAccent, fontStack, themeMenu, themeLabel, pictureLayer, themePicture, CUSTOM_SLOTS, FONT_STACKS
+} = require('./view.js');
+const ThemePalette = require('../../../src/main/resources/web/theme-palette.js');
+const ThemeApply = require('../../../src/main/resources/web/theme-apply.js');
+
+const MINI_COLORS = {
+  bgPrimary: '#0b0d14', bgSecondary: '#10131c', bgCard: '#161a26', bgElevated: '#1c2131', bgHover: '#262c42',
+  accent: '#7c5cff', accentLight: '#a08bff', accent2: '#22d3ee', textPrimary: '#eef0f8', textSecondary: '#9aa0b8',
+  textTertiary: '#646a82', border: '#ffffff12', borderLight: '#ffffff1f', success: '#34d399'
+};
+const PIC = 'https://cloutkings.duckdns.org/theme-images/' + '9f2c4d6e8a0b1c3d5e7f9a1b3c5d7e9f' + '.webp';
+
+function custom(extra) {
+  return Object.assign({
+    id: 'k3j9x0q2m7ab', name: 'Midnight Drive', owner: 'fred', mine: false, private: false, base: 'ember', font: 'Outfit',
+    colors: Object.assign({}, MINI_COLORS), dim: 55, picture: null
+  }, extra);
+}
+
+test('CUSTOM_SLOTS are the 14 colors of a mini-player version (the theme\'s 15 without glass)', () => {
+  assert.equal(CUSTOM_SLOTS.length, 14);
+  assert.deepEqual(CUSTOM_SLOTS, ThemePalette.MINI_SLOTS);
+});
+
+test('customVars turns a mini palette into the 16 variables plus the color on the accent', () => {
+  const vars = customVars(custom());
+  const SIXTEEN = ['--bg-primary', '--bg-secondary', '--bg-card', '--bg-elevated', '--bg-hover', '--accent', '--accent-light',
+    '--accent-glow', '--accent-gradient', '--text-primary', '--text-secondary', '--text-tertiary', '--border', '--border-light',
+    '--success', '--font-family'];
+  assert.deepEqual(Object.keys(vars).sort(), SIXTEEN.concat(['--on-accent']).sort());
+  assert.equal(vars['--bg-card'], '#161a26');
+  assert.equal(vars['--accent'], '#7c5cff');
+  assert.equal(vars['--accent-light'], '#a08bff');
+  assert.equal(vars['--border'], '#ffffff12', 'colors with alpha stay as they are');
+  assert.equal(vars['--accent-glow'], '#7c5cff52', 'the accent at 32%');
+  assert.equal(vars['--accent-gradient'], 'linear-gradient(135deg, #7c5cff, #22d3ee)');
+  assert.equal(vars['--font-family'], FONT_STACKS.Outfit);
+  assert.equal(vars['--on-accent'], '#000000');
+});
+
+test('customVars gives the mini-player exactly what the panel\'s creator previews', () => {
+  // Same colors, same derived values as ThemePalette.cssVars (what the creator's mini-player preview wears).
+  for (const accent of ['#7c5cff', '#f1c40f', '#10b981cc']) {
+    const colors = Object.assign({}, MINI_COLORS, { accent });
+    const vars = customVars(custom({ colors }));
+    const panel = ThemePalette.cssVars(Object.assign({ glass: '#10131ce0' }, colors));
+    for (const name of Object.keys(vars)) {
+      if (name === '--font-family' || name === '--on-accent') continue;
+      assert.equal(vars[name], panel[name], name + ' for ' + accent);
+    }
+    assert.equal(vars['--on-accent'], ThemePalette.onAccent(accent));
+  }
+  for (const font of Object.keys(ThemeApply.FONT_STACKS)) {
+    assert.equal(fontStack(font), ThemeApply.FONT_STACKS[font], font);
+  }
+  assert.deepEqual(Object.keys(FONT_STACKS), Object.keys(ThemeApply.FONT_STACKS), 'the same eight fonts');
+});
+
+test('an unknown font is Inter', () => {
+  for (const font of [undefined, null, '', 'Comic Sans', 'constructor', '__proto__', 'Inter; color: red']) {
+    assert.equal(fontStack(font), FONT_STACKS.Inter, String(font));
+  }
+  assert.equal(customVars(custom({ font: 'Papyrus' }))['--font-family'], FONT_STACKS.Inter);
+});
+
+test('customVars refuses a palette with any color that is not #rrggbb or #rrggbbaa', () => {
+  for (const bad of ['red', '#fff', '#12345', '#1234567', '#12345678a', 'rgb(1,2,3)', '#ggg000', '', null, 5, '#7c5cff; background: url(x)',
+    'url(https://evil/x)', '#7c5cff\n', ' #7c5cff']) {
+    for (const slot of ['accent', 'bgCard', 'textPrimary', 'border']) {
+      const colors = Object.assign({}, MINI_COLORS, { [slot]: bad });
+      assert.equal(customVars(custom({ colors })), null, slot + ' = ' + bad);
+    }
+  }
+  const missing = Object.assign({}, MINI_COLORS);
+  delete missing.success;
+  assert.equal(customVars(custom({ colors: missing })), null);
+  assert.equal(customVars(custom({ colors: null })), null);
+  assert.equal(customVars(null), null);
+  assert.equal(customVars(undefined), null);
+  assert.ok(customVars(custom({ colors: Object.assign({}, MINI_COLORS, { accent: '#ABCDEF' }) })), 'upper case is fine');
+});
+
+test('onAccent is the same black-or-white rule as the panel\'s', () => {
+  assert.equal(onAccent('#ffffff'), '#000000');
+  assert.equal(onAccent('#000000'), '#ffffff');
+  assert.equal(onAccent('#7c5cff'), '#000000');
+  assert.equal(onAccent('#1e3a8a'), '#ffffff');
+  assert.equal(onAccent('#ffffff00'), '#ffffff', 'an accent with alpha counts over black, as contrast() counts it');
+  let seed = 12345;
+  const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let i = 0; i < 500; i++) {
+    const hex = '#' + Math.floor(rnd() * 0x1000000).toString(16).padStart(6, '0');
+    assert.equal(onAccent(hex), ThemePalette.onAccent(hex), hex);
+    const withAlpha = hex + Math.floor(rnd() * 256).toString(16).padStart(2, '0');
+    assert.equal(onAccent(withAlpha), ThemePalette.onAccent(withAlpha), withAlpha);
+  }
+});
+
+test('applyTheme wears a custom mini-player version on the neutral skin and takes all of it off again', () => {
+  const root = fakeRoot();
+  let applied = applyTheme(root, { id: 'ember', vars: {}, custom: custom() }, []);
+  assert.equal(root.attrs['data-theme'], 'custom', 'no built-in skin\'s decorations under someone else\'s colors');
+  assert.equal(applied.length, 17);
+  assert.equal(root.props['--accent'], '#7c5cff');
+  assert.equal(root.props['--on-accent'], '#000000');
+  assert.equal(root.props['--font-family'], FONT_STACKS.Outfit);
+  // back to a built-in skin: not one variable of the custom theme stays, the skin's own on-accent returns
+  applied = applyTheme(root, { id: 'aurora', vars: {} }, applied);
+  assert.deepEqual(root.props, {});
+  assert.equal(root.attrs['data-theme'], 'aurora');
+  // the panel's live values and a custom version never mix
+  applied = applyTheme(root, { id: 'neon', vars: { '--accent': '#0ff' } }, applied);
+  assert.deepEqual(root.props, { '--accent': '#0ff' });
+  applyTheme(root, { id: 'neon', vars: { '--accent': '#0ff' }, custom: custom() }, applied);
+  assert.equal(root.props['--accent'], '#7c5cff');
+});
+
+test('applyTheme falls back to the base skin when a custom palette is unusable', () => {
+  const root = fakeRoot();
+  const colors = Object.assign({}, MINI_COLORS, { accent: 'url(https://evil/x)' });
+  const applied = applyTheme(root, { id: 'ember', vars: {}, custom: custom({ colors }) }, []);
+  assert.equal(root.attrs['data-theme'], 'ember');
+  assert.deepEqual(applied, []);
+  assert.deepEqual(root.props, {});
+});
+
+test('the theme menu groups Built-in, Community and My themes', () => {
+  const themes = [
+    custom({ id: 'aaaaaaaaaaaa', name: 'Zed', owner: 'sam', mine: false }),
+    custom({ id: 'bbbbbbbbbbbb', name: 'Midnight Drive', owner: 'fred', mine: true, private: true }),
+    custom({ id: 'cccccccccccc', name: 'Harbor', mine: true })
+  ];
+  const groups = themeMenu(themes);
+  assert.deepEqual(groups.map((g) => g.label), ['Built-in', 'Community', 'My themes']);
+  assert.deepEqual(groups[0].options.map((o) => o.value), THEME_IDS);
+  assert.equal(groups[0].options[5].label, 'Dawn Dark');
+  assert.deepEqual(groups[1].options.map((o) => o.value), ['custom:aaaaaaaaaaaa']);
+  assert.deepEqual(groups[2].options.map((o) => o.value), ['custom:bbbbbbbbbbbb', 'custom:cccccccccccc'], 'the order the app sent');
+  assert.equal(groups[2].options[0].label, themeLabel(themes[1]));
+});
+
+test('the theme menu leaves out a group with nothing in it, and a theme with no usable id', () => {
+  assert.deepEqual(themeMenu([]).map((g) => g.label), ['Built-in']);
+  assert.deepEqual(themeMenu(null).map((g) => g.label), ['Built-in']);
+  assert.deepEqual(themeMenu(undefined).map((g) => g.label), ['Built-in']);
+  const only = themeMenu([custom({ id: 'dddddddddddd', mine: true })]);
+  assert.deepEqual(only.map((g) => g.label), ['Built-in', 'My themes']);
+  const odd = themeMenu([custom({ id: 'not an id' }), custom({ id: 'EEEEEEEEEEEE' }), custom({ id: 5 }), null, 'x', custom({ id: '../../x/y/z/w' })]);
+  assert.deepEqual(odd.map((g) => g.label), ['Built-in'], 'ids the panel would never make are not offered');
+});
+
+test('themeLabel reads like the panel\'s picker: community themes name their creator, private ones are marked', () => {
+  const FSI = '\u2068', PDI = '\u2069';
+  assert.equal(themeLabel(custom({ name: 'Midnight Drive', owner: 'fred', mine: false })),
+    FSI + 'Midnight Drive' + PDI + ' \u2014 by ' + FSI + 'fred' + PDI);
+  assert.equal(themeLabel(custom({ name: 'Mine', mine: true })), FSI + 'Mine' + PDI);
+  assert.equal(themeLabel(custom({ name: 'Mine', mine: true, private: true })), FSI + 'Mine' + PDI + ' (private)');
+  assert.equal(themeLabel(custom({ name: '', owner: '', mine: false })), FSI + 'Untitled theme' + PDI + ' \u2014 by ' + FSI + 'someone' + PDI);
+  assert.equal(themeLabel(custom({ name: 5, owner: null, mine: false })), FSI + 'Untitled theme' + PDI + ' \u2014 by ' + FSI + 'someone' + PDI);
+  // the panel's labels, for the same theme
+  const t = { name: 'Midnight Drive', owner: { name: 'fred' } };
+  assert.equal(themeLabel(custom({ name: t.name, owner: 'fred', mine: false })), ThemeApply.communityLabel(t));
+  assert.equal(themeLabel(custom({ name: t.name, mine: true, private: true })), ThemeApply.mineLabel({ name: t.name, visibility: 'private' }));
+  assert.equal(themeLabel(custom({ name: t.name, mine: true })), ThemeApply.mineLabel({ name: t.name, visibility: 'public' }));
+});
+
+test('the picture is a theme-images link of the bot and nothing else', () => {
+  assert.deepEqual(pictureLayer(custom({ picture: PIC }), false), { url: PIC, overlay: 'rgba(0, 0, 0, 0.55)', freeze: false });
+  for (const ext of ['jpg', 'png', 'webp', 'gif']) {
+    const url = 'https://bot.example/theme-images/' + 'a'.repeat(32) + '.' + ext;
+    assert.equal(pictureLayer(custom({ picture: url }), false).url, url, ext);
+  }
+  assert.equal(pictureLayer(custom({ picture: 'http://10.0.0.43:8888/theme-images/' + 'a'.repeat(32) + '.jpg' }), false).url,
+    'http://10.0.0.43:8888/theme-images/' + 'a'.repeat(32) + '.jpg', 'a bot on a plain address still has its link');
+  const bad = [
+    null, undefined, '', 5, 'javascript:alert(1)', 'data:image/gif;base64,AAAA', 'file:///C:/x.png', '//evil.example/theme-images/' + 'a'.repeat(32) + '.jpg',
+    '/theme-images/' + 'a'.repeat(32) + '.jpg', 'https://bot.example/theme-images/' + 'a'.repeat(31) + '.jpg',
+    'https://bot.example/theme-images/' + 'a'.repeat(33) + '.jpg', 'https://bot.example/theme-images/' + 'A'.repeat(32) + '.jpg',
+    'https://bot.example/theme-images/' + 'a'.repeat(32) + '.svg', 'https://bot.example/theme-images/' + 'a'.repeat(32) + '.jpg?x=1',
+    'https://bot.example/theme-images/' + 'a'.repeat(32) + '.jpg#x', 'https://bot.example/theme-images/../x/' + 'a'.repeat(32) + '.jpg',
+    'https://bot.example/other/' + 'a'.repeat(32) + '.jpg', 'https://bot.example/theme-images/' + 'a'.repeat(32) + '.jpg\n',
+    'https://bot.example/theme-images/' + 'a'.repeat(32) + '.jpg" onerror="x', ' https://bot.example/theme-images/' + 'a'.repeat(32) + '.jpg',
+    'https://bot.example/theme-images/' + 'a'.repeat(32) + '.jpg ', 'https://user:pw@bot.example/theme-images/' + 'a'.repeat(32) + '.jpg'
+  ];
+  for (const picture of bad) assert.equal(pictureLayer(custom({ picture }), false), null, String(picture));
+  assert.equal(pictureLayer(null, false), null);
+  assert.equal(pictureLayer(undefined, true), null);
+});
+
+test('a version that does not use the picture has no picture layer', () => {
+  // the app sends no picture for useImage false, or for useImage true when the theme has no background picture
+  assert.equal(pictureLayer(custom({ picture: null }), false), null);
+  assert.equal(pictureLayer(custom({}), true), null);
+});
+
+test('the picture is darkened by the version\'s own amount, held to 0-90', () => {
+  const dim = (value) => pictureLayer(custom({ picture: PIC, dim: value }), false).overlay;
+  assert.equal(dim(0), 'rgba(0, 0, 0, 0)');
+  assert.equal(dim(45), 'rgba(0, 0, 0, 0.45)');
+  assert.equal(dim(90), 'rgba(0, 0, 0, 0.9)');
+  assert.equal(dim(200), 'rgba(0, 0, 0, 0.9)');
+  assert.equal(dim(-5), 'rgba(0, 0, 0, 0)');
+  assert.equal(dim('30'), 'rgba(0, 0, 0, 0.3)');
+  for (const odd of [undefined, null, NaN, 'dark', Infinity]) assert.equal(dim(odd), 'rgba(0, 0, 0, 0)', String(odd));
+  // the same overlay the panel's own layer is drawn with
+  assert.equal(dim(45), ThemeApply.backdrop({ url: '/theme-images/' + 'a'.repeat(32) + '.jpg', dim: 45, blur: 0, fit: 'cover' }).overlay);
+});
+
+test('Reduce motion freezes the pictures that can move: GIF, WebP and PNG (an animated PNG is a .png)', () => {
+  const at = (ext, reduce) => pictureLayer(custom({ picture: 'https://bot.example/theme-images/' + 'b'.repeat(32) + '.' + ext }), reduce).freeze;
+  for (const ext of ['gif', 'webp', 'png']) {
+    assert.equal(at(ext, true), true, ext + ' with Reduce motion');
+    assert.equal(at(ext, false), false, ext + ' without it');
+  }
+  assert.equal(at('jpg', true), false, 'a JPEG never moves');
+  assert.equal(at('jpg', false), false);
+  // the same call the panel makes
+  for (const ext of ['gif', 'webp', 'png', 'jpg']) {
+    assert.equal(at(ext, true), ThemeApply.canAnimate('/theme-images/' + 'b'.repeat(32) + '.' + ext), ext);
+  }
+  assert.equal(pictureLayer(custom({ picture: PIC }), 'yes').freeze, true, 'any truthy answer from the system counts');
+  assert.equal(pictureLayer(custom({ picture: PIC }), undefined).freeze, false);
+});
+
+test('a theme brings its picture only while its own colors are the ones in use', () => {
+  const theme = { id: 'ember', vars: {}, custom: custom({ picture: PIC }) };
+  assert.deepEqual(themePicture(theme, false), pictureLayer(theme.custom, false));
+  assert.equal(themePicture(theme, true).freeze, true);
+  // a palette that can't be used shows the base skin, and a picture over that would be a stranger's
+  const broken = { id: 'ember', vars: {}, custom: custom({ picture: PIC, colors: Object.assign({}, MINI_COLORS, { accent: 'nope' }) }) };
+  assert.equal(themePicture(broken, false), null);
+  assert.equal(themePicture({ id: 'neon', vars: { '--accent': '#0ff' } }, false), null, 'a built-in theme has none');
+  assert.equal(themePicture({ id: 'neon', vars: {}, custom: null }, true), null);
+  assert.equal(themePicture(null, true), null);
+  assert.equal(themePicture(undefined, false), null);
+});
+
+// ---- the picture sits behind the content, under the dim, faded by the opacity slider ----
+
+const MINI_CSS = fs.readFileSync(path.join(__dirname, 'mini.css'), 'utf8').replace(/\r/g, '');
+const MINI_HTML = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8').replace(/\r/g, '');
+
+function cssRule(css, selector) {
+  const at = css.indexOf('\n' + selector + ' {');
+  assert.ok(at >= 0, selector + ' not found');
+  return css.slice(at, css.indexOf('}', at));
+}
+
+// The picture and the dark layer over it share one rule for what they have in common.
+const LAYERS = '.bg-pic,\n.bg-dim';
+
+test('the picture layers fade with the opacity slider, like the card', () => {
+  assert.match(cssRule(MINI_CSS, LAYERS), /opacity:\s*var\(--card-alpha\)/);
+  assert.match(cssRule(MINI_CSS, '.mini'), /background:\s*color-mix\(in srgb, var\(--bg-card\) calc\(var\(--card-alpha\) \* 100%\)/);
+  assert.match(cssRule(MINI_CSS, '.mini::before,\n.mini::after'), /opacity:\s*var\(--card-alpha\)/, 'as the glow does');
+  // and the slider reaches them through the one variable it sets
+  const { applyOpacity } = require('./view.js');
+  const root = fakeRoot();
+  root.classList = { toggle() {} };
+  applyOpacity(root, 0.4);
+  assert.equal(root.props['--card-alpha'], '0.4');
+});
+
+test('the picture is under the dim, which is under the glow and the content (the creator\'s own stacking)', () => {
+  // the rule whose selector is exactly this one and sets a z-index (.bg-dim also ends the shared rule above it)
+  const z = (selector) => {
+    const found = new RegExp('\\n' + selector.replace(/[.\[\]]/g, '\\$&') + ' \\{[^}]*z-index:\\s*(-?\\d+)').exec(MINI_CSS);
+    assert.ok(found, selector + ' sets no z-index');
+    return Number(found[1]);
+  };
+  const pic = z('.bg-pic');
+  const dim = z('.bg-dim');
+  const glow = z('.mini::before,\n.mini::after');
+  assert.ok(pic < dim && dim < glow && glow < 0, `${pic} < ${dim} < ${glow} < 0`);
+  assert.match(cssRule(MINI_CSS, '.mini'), /isolation:\s*isolate/, 'the layers stay inside the card');
+  assert.match(cssRule(MINI_CSS, '.mini'), /overflow:\s*hidden/, 'clipped by its rounded corners');
+  const shared = cssRule(MINI_CSS, LAYERS);
+  assert.match(shared, /position:\s*absolute/);
+  assert.match(shared, /inset:\s*0/);
+  assert.match(shared, /pointer-events:\s*none/, 'the card can still be dragged');
+  assert.match(cssRule(MINI_CSS, '.bg-pic'), /object-fit:\s*cover/, 'as the creator\'s preview fits it');
+});
+
+test('the picture layers live inside the player card, first, so the content is on top of them', () => {
+  const main = MINI_HTML.indexOf('<main class="mini"');
+  const disc = MINI_HTML.indexOf('<div class="disc"');
+  for (const id of ['bgPic', 'bgFrame', 'bgDim']) {
+    const at = MINI_HTML.indexOf('id="' + id + '"');
+    assert.ok(at > main && at < disc, id + ' is in the card before the artwork');
+    assert.match(MINI_HTML.slice(at, MINI_HTML.indexOf('>', at)), /\bhidden\b/, id + ' starts hidden');
+  }
+  assert.match(MINI_HTML.slice(MINI_HTML.indexOf('id="bgFrame"') - 40, MINI_HTML.indexOf('id="bgFrame"')), /<canvas/);
+  assert.match(MINI_HTML.slice(MINI_HTML.indexOf('id="bgPic"') - 40, MINI_HTML.indexOf('id="bgPic"')), /<img/);
+});
+
+test('What\'s new is a row of the menu\'s main view, not in the settings', () => {
+  const menu = MINI_HTML.indexOf('id="menuPanel"');
+  const search = MINI_HTML.indexOf('id="searchForm"');
+  const settings = MINI_HTML.indexOf('id="settings"');
+  const button = MINI_HTML.indexOf('id="whatsNewBtn"');
+  assert.ok(button > menu && button < settings, 'in the menu, before the settings pane starts');
+  assert.ok(button > search, 'with the search row\'s buttons');
+  assert.equal(MINI_HTML.split('id="whatsNewBtn"').length, 2, 'once');
+  const settingsBlock = MINI_HTML.slice(settings, MINI_HTML.indexOf('id="lyricsPanel"'));
+  assert.doesNotMatch(settingsBlock, /What's new|whatsNew/);
+});
+
+test('a custom skin has no rule of its own in themes.css, so it gets mini.css\'s base look (glow, 16px corners)', () => {
+  const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8');
+  assert.doesNotMatch(themes, /data-theme="custom"/);
+  assert.doesNotMatch(themes, /data-theme\^=|data-theme\*=|:not\(\[data-theme/);
+});

@@ -159,9 +159,17 @@
     };
   }
 
+  /** Everything but the theme list works on a selected server (the list is the same for every server). */
+  function needsServer(command) {
+    return !command || command.type !== 'Themes';
+  }
+
   /** command = {type, value?} (Rust BotCommand) → panel API request, or null when there's nothing to do. */
   function commandToRequest(guildId, command, state) {
-    if (!guildId || !command) return null;
+    if (!command) return null;
+    // The custom themes people made: the mini-player lists the ones that have a mini-player version.
+    if (command.type === 'Themes') return fetchRequest('/api/themes');
+    if (!guildId) return null;
     var base = '/api/guild/' + encodeURIComponent(guildId) + '/';
     switch (command.type) {
       case 'TogglePause': return request(base + 'pause', null);
@@ -238,19 +246,32 @@
     '--accent-light', '--accent-glow', '--accent-gradient', '--text-primary', '--text-secondary', '--text-tertiary',
     '--border', '--border-light', '--success', '--font-family'];
 
-  /** themeAttr = <html data-theme> (absent for Nebula); getVar(name) = the computed value. */
-  function readTheme(themeAttr, getVar) {
+  var CUSTOM_ID = /^[a-z0-9]{12}$/;
+  /** What the panel's theme creator wears while it previews: well-formed, but no real theme has it. */
+  var PREVIEW_ID = 'themepreview';
+
+  /**
+   * themeAttr = <html data-theme> (absent for Nebula; for a custom theme this is its base theme);
+   * getVar(name) = the computed value; customAttr = <html data-custom-theme> (the active custom theme's id, absent
+   * for a built-in one). Returns {id, vars, choice}, where choice is what the person picked in the panel: the built-in
+   * id, or custom:<id>. Returns null while the theme creator previews: the page isn't really on that theme.
+   */
+  function readTheme(themeAttr, getVar, customAttr) {
+    if (customAttr === PREVIEW_ID) return null;
     var vars = {};
     THEME_VARS.forEach(function (name) {
       var value = String(getVar(name) || '').trim();
       if (value) vars[name] = value;
     });
-    return { id: themeAttr || 'nebula', vars: vars };
+    var id = themeAttr || 'nebula';
+    var custom = typeof customAttr === 'string' && CUSTOM_ID.test(customAttr) ? customAttr : null;
+    return { id: id, vars: vars, choice: custom ? 'custom:' + custom : id };
   }
 
   var api = {
     toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest, fallbackRequest: fallbackRequest,
-    isOwnLoadError: isOwnLoadError, readTheme: readTheme, THEME_VARS: THEME_VARS, queueEditError: queueEditError
+    isOwnLoadError: isOwnLoadError, readTheme: readTheme, THEME_VARS: THEME_VARS, queueEditError: queueEditError,
+    needsServer: needsServer
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksCore = api;

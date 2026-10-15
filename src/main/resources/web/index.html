@@ -5709,7 +5709,7 @@
             border-radius: 10px;
             background: var(--accent-gradient);
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-            color: #fff;
+            color: var(--on-accent);
         }
         .tc-minip-art svg { width: 32px; height: 32px; fill: currentColor; opacity: 0.85; }
         .tc-minip-info { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; padding-right: 4px; }
@@ -5751,7 +5751,7 @@
             border-color: transparent;
             background: var(--accent-gradient);
             box-shadow: 0 4px 14px var(--accent-glow);
-            color: #fff;
+            color: var(--on-accent);
         }
         .tc-minip-ctrl.mode { width: 24px; height: 24px; border-color: transparent; background: transparent; color: var(--text-tertiary); }
         .tc-minip-ctrl.mode svg { width: 13px; height: 13px; }
@@ -7420,6 +7420,7 @@
                 update: function (view, src) {
                     var vars = view.vars;
                     Object.keys(vars).forEach(function (name) { el.style.setProperty(name, vars[name]); });
+                    el.style.setProperty('--on-accent', view.onAccent);
                     back = view.useImage && src ? themeKit.backdrop({ url: src, dim: view.dim, blur: 0, fit: 'cover' }, themeLocalPicture) : null;
                     if (back) {
                         dim.style.setProperty('background-color', back.overlay);

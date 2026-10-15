@@ -28,17 +28,175 @@
     ['neon', 'Neon'], ['revival', 'Revival']
   ].map(function (t) { return { id: t[0], label: t[1] }; });
 
+  // ---- Custom themes: the mini-player versions people made in the panel ----
+
+  /** The 14 colors of a mini-player version (a theme's 15 without glass). */
+  var CUSTOM_SLOTS = ['bgPrimary', 'bgSecondary', 'bgCard', 'bgElevated', 'bgHover', 'accent', 'accentLight', 'accent2',
+    'textPrimary', 'textSecondary', 'textTertiary', 'border', 'borderLight', 'success'];
+
+  /** The fonts a theme may use, with the fallbacks the panel gives each (ThemeApply.FONT_STACKS; a test keeps them equal). */
+  var FONT_STACKS = Object.freeze({
+    'Inter': "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    'DM Sans': "'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    'Outfit': "'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    'Syne': "'Syne', 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    'Fraunces': "'Fraunces', Georgia, 'Times New Roman', serif",
+    'IBM Plex Mono': "'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Consolas', monospace",
+    'Noto Sans JP': "'Noto Sans JP', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    'Shippori Mincho': "'Shippori Mincho', 'Noto Serif JP', 'Yu Mincho', Georgia, serif"
+  });
+
+  var COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
+  var THEME_ID = /^[a-z0-9]{12}$/;
+
+  /** The font-family value for a theme's font; anything unknown is Inter. */
+  function fontStack(font) {
+    return typeof font === 'string' && Object.prototype.hasOwnProperty.call(FONT_STACKS, font) ? FONT_STACKS[font] : FONT_STACKS.Inter;
+  }
+
+  function linear(channel) {
+    var c = channel / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+
+  /** Luminance of #rrggbb or #rrggbbaa laid over black (how the panel's contrast() counts a color with alpha). */
+  function luminanceOverBlack(hex) {
+    var m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})?$/i.exec(hex);
+    var alpha = m[4] === undefined ? 1 : parseInt(m[4], 16) / 255;
+    var rgb = [m[1], m[2], m[3]].map(function (part) { return linear(Math.max(0, Math.min(255, Math.round(parseInt(part, 16) * alpha)))); });
+    return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+  }
+
   /**
-   * Shows theme {id, vars}: data-theme picks the built-in skin, inline vars (the panel's live colors)
-   * override it. Vars from the previous theme that this one lacks are removed. Returns the names set.
+   * The color for what sits on the accent (the play icon): '#000000' or '#ffffff', whichever has the higher WCAG
+   * contrast with it, white when they tie. The same rule as the panel's ThemePalette.onAccent (a test keeps them equal).
+   * Anything that is not a color gets white, the mini-player's own default.
+   */
+  function onAccent(accentHex) {
+    if (typeof accentHex !== 'string' || !COLOR.test(accentHex)) return '#ffffff';
+    var l = luminanceOverBlack(accentHex);
+    var againstBlack = (l + 0.05) / 0.05;
+    var againstWhite = 1.05 / (l + 0.05);
+    return againstBlack > againstWhite ? '#000000' : '#ffffff';
+  }
+
+  /**
+   * The inline variables for a custom mini-player version: the 16 the panel's themes set (glow and gradient derived from
+   * the accent as the panel derives them, the font from the theme's font) and --on-accent. null when any of the 14
+   * colors is not a plain #rrggbb / #rrggbbaa, so nothing from the page's data ever becomes more than a color.
+   * custom = {colors, font, ...} as the app sends it.
+   */
+  function customVars(custom) {
+    var colors = custom && typeof custom === 'object' ? custom.colors : null;
+    if (!colors || typeof colors !== 'object') return null;
+    for (var i = 0; i < CUSTOM_SLOTS.length; i++) {
+      var color = colors[CUSTOM_SLOTS[i]];
+      if (typeof color !== 'string' || !COLOR.test(color)) return null;
+    }
+    return {
+      '--bg-primary': colors.bgPrimary,
+      '--bg-secondary': colors.bgSecondary,
+      '--bg-card': colors.bgCard,
+      '--bg-elevated': colors.bgElevated,
+      '--bg-hover': colors.bgHover,
+      '--accent': colors.accent,
+      '--accent-light': colors.accentLight,
+      // The accent at 32% (0x52 of 255), whatever alpha the accent has itself.
+      '--accent-glow': colors.accent.slice(0, 7).toLowerCase() + '52',
+      '--accent-gradient': 'linear-gradient(135deg, ' + colors.accent + ', ' + colors.accent2 + ')',
+      '--text-primary': colors.textPrimary,
+      '--text-secondary': colors.textSecondary,
+      '--text-tertiary': colors.textTertiary,
+      '--border': colors.border,
+      '--border-light': colors.borderLight,
+      '--success': colors.success,
+      '--font-family': fontStack(custom.font),
+      '--on-accent': onAccent(colors.accent)
+    };
+  }
+
+  /**
+   * Shows theme {id, vars, custom?}: data-theme picks the built-in skin, inline vars (the panel's live colors)
+   * override it. A custom mini-player version (custom) wears the neutral skin ("custom": the base look of mini.css, no
+   * built-in decorations) with its own variables; when its palette is unusable the base skin (id) shows instead.
+   * Vars from the previous theme that this one lacks are removed. Returns the names set.
    */
   function applyTheme(root, theme, previous) {
     var vars = (theme && theme.vars) || {};
+    var skin = (theme && theme.id) || 'nebula';
+    var custom = theme && theme.custom ? customVars(theme.custom) : null;
+    if (custom) {
+      vars = custom;
+      skin = 'custom';
+    }
     var names = Object.keys(vars);
     (previous || []).forEach(function (name) { if (names.indexOf(name) < 0) root.style.removeProperty(name); });
     names.forEach(function (name) { root.style.setProperty(name, vars[name]); });
-    root.setAttribute('data-theme', (theme && theme.id) || 'nebula');
+    root.setAttribute('data-theme', skin);
     return names;
+  }
+
+  /* Direction controls could reorder the text around a name; what leaves nothing to see is no name at all. */
+  var BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+  var INVISIBLE = /[\u0000-\u0020\u007F-\u00A0\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]/gu;
+  var FSI = '\u2068';
+  var PDI = '\u2069';
+
+  function visibleName(name) {
+    if (typeof name !== 'string') return '';
+    var text = name.replace(BIDI_CONTROLS, '');
+    return text.replace(INVISIBLE, '') === '' ? '' : text.trim();
+  }
+
+  /**
+   * How a custom theme reads in the theme menu, as the panel's picker words it: a community theme names its creator
+   * ("Name — by creator"); one of yours is marked when private. Each name is isolated so it can't reorder the text around it.
+   */
+  function themeLabel(theme) {
+    var t = theme || {};
+    var name = FSI + (visibleName(t.name) || 'Untitled theme') + PDI;
+    if (t.mine === true) return t.private === true ? name + ' (private)' : name;
+    return name + ' \u2014 by ' + FSI + (visibleName(t.owner) || 'someone') + PDI;
+  }
+
+  /**
+   * The theme menu's groups, each {label, options: [{value, label}]}: the built-in themes, then Community and My themes
+   * (each only when it has something). A custom option's value is custom:<id>. customs come from the app in the order to show.
+   */
+  function themeMenu(customs) {
+    var groups = [{ label: 'Built-in', options: THEMES.map(function (t) { return { value: t.id, label: t.label }; }) }];
+    var community = [];
+    var mine = [];
+    (Array.isArray(customs) ? customs : []).forEach(function (theme) {
+      if (!theme || typeof theme !== 'object' || typeof theme.id !== 'string' || !THEME_ID.test(theme.id)) return;
+      (theme.mine === true ? mine : community).push({ value: 'custom:' + theme.id, label: themeLabel(theme) });
+    });
+    if (community.length) groups.push({ label: 'Community', options: community });
+    if (mine.length) groups.push({ label: 'My themes', options: mine });
+    return groups;
+  }
+
+  /* The bot's secret picture link, exactly as the app builds it from the bot's address; anything else is not shown. */
+  var PICTURE_URL = /^https?:\/\/(?:[A-Za-z0-9.\-]+|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?\/theme-images\/[0-9a-f]{32}\.(?:jpg|png|webp|gif)$/;
+  /* Any type but JPEG may move: GIF, animated WebP and an animated PNG (which the bot stores as .png). */
+  var ANIMATED_PICTURE = /\.(?:gif|webp|png)$/;
+
+  /**
+   * The picture behind a custom version's card, or null for none: {url, overlay, freeze}. overlay is the dark layer over it
+   * (the version's dim, 0-90%); freeze says to show only its first frame (Reduce motion, and a picture that can move).
+   * The app sends a picture only when the version uses the theme's picture and the theme has one.
+   */
+  function pictureLayer(custom, reduceMotion) {
+    var url = custom && typeof custom.picture === 'string' ? custom.picture : '';
+    if (!PICTURE_URL.test(url)) return null;
+    var dim = Number(custom.dim);
+    dim = isFinite(dim) ? Math.max(0, Math.min(90, dim)) : 0;
+    return { url: url, overlay: 'rgba(0, 0, 0, ' + dim / 100 + ')', freeze: !!reduceMotion && ANIMATED_PICTURE.test(url) };
+  }
+
+  /** The picture for theme {id, vars, custom?}: only a custom version whose colors are in use brings one (else its base skin shows). */
+  function themePicture(theme, reduceMotion) {
+    return theme && theme.custom && customVars(theme.custom) ? pictureLayer(theme.custom, reduceMotion) : null;
   }
 
   var LOW_ALPHA = 0.6;
@@ -257,6 +415,8 @@
     repeatView: repeatView, seekPosition: seekPosition, queueRows: queueRows,
     lyricsButtonEnabled: lyricsButtonEnabled,
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
+    customVars: customVars, onAccent: onAccent, fontStack: fontStack, themeMenu: themeMenu, themeLabel: themeLabel,
+    pictureLayer: pictureLayer, themePicture: themePicture, CUSTOM_SLOTS: CUSTOM_SLOTS, FONT_STACKS: FONT_STACKS,
     spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly,
     currentLyricIndex: currentLyricIndex, trackKey: trackKey
   };

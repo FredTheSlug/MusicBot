@@ -788,7 +788,9 @@
             hasPicture: picture,
             useImage: state.mini.useImage === true && picture,
             dim: clampInt(state.mini.dim, 0, 90, DEFAULT_DIM),
-            vars: miniVars(state)
+            vars: miniVars(state),
+            /* The mini-player's own --on-accent: the play icon's color on the main color (dark on light, white on dark). */
+            onAccent: palette.onAccent(colors.accent)
         };
     }
 

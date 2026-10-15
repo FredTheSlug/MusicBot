@@ -31,8 +31,10 @@ pub struct Settings {
     /// Background card opacity; see `opacity()`.
     pub mini_player_opacity: f64,
     pub mini_player_match_panel: bool,
-    /// The mini-player's own theme, used when it doesn't match the panel.
+    /// The mini-player's own theme, used when it doesn't match the panel: a built-in id, or `custom:<id>`.
     pub mini_player_theme: String,
+    /// The built-in theme a custom pick is built on: the skin it falls back to when that theme is gone.
+    pub mini_player_theme_base: String,
     /// The last theme the panel reported.
     pub panel_theme: Option<PanelTheme>,
     /// Hide the mini-player while a fullscreen game, video or presentation runs.
@@ -56,6 +58,7 @@ impl Default for Settings {
             mini_player_opacity: 1.0,
             mini_player_match_panel: true,
             mini_player_theme: "nebula".to_string(),
+            mini_player_theme_base: "nebula".to_string(),
             panel_theme: None,
             hide_in_fullscreen: true,
             hotkeys: Hotkeys::default(),
@@ -135,6 +138,29 @@ mod tests {
         let old = load(&path);
         assert!(!old.notify_up_next && old.mini_player_match_panel);
         assert_eq!(old.mini_player_opacity, 1.0);
+    }
+
+    #[test]
+    fn a_custom_pick_is_stored_with_its_base_and_an_old_file_still_loads() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        fs::write(&path, r#"{"miniPlayerTheme": "ember"}"#).unwrap();
+        let old = load(&path);
+        assert_eq!((old.mini_player_theme.as_str(), old.mini_player_theme_base.as_str()), ("ember", "nebula"));
+
+        let picked = Settings {
+            mini_player_theme: "custom:k3j9x0q2m7ab".into(),
+            mini_player_theme_base: "grove".into(),
+            panel_theme: Some(PanelTheme { id: "grove".into(), choice: Some("custom:k3j9x0q2m7ab".into()), ..PanelTheme::default() }),
+            ..Settings::default()
+        };
+        save(&path, &picked).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains(r#""miniPlayerThemeBase": "grove""#) && text.contains(r#""choice": "custom:k3j9x0q2m7ab""#));
+        assert_eq!(load(&path), picked);
+        // a panel theme saved before the choice existed has none
+        fs::write(&path, r##"{"panelTheme": {"id": "neon", "vars": {"--accent": "#0ff"}}}"##).unwrap();
+        assert_eq!(load(&path).panel_theme.unwrap().choice, None);
     }
 
     #[test]
