@@ -70,6 +70,8 @@ pub enum BotCommand {
 pub enum BridgeReport {
     State { state: BotState },
     Theme { theme: PanelTheme },
+    /// The bot said a custom theme was made, edited or removed: the app asks for the list again, whatever the panel wears.
+    Themes,
     Notice { level: String, message: String },
     Result {
         id: u64,
@@ -159,6 +161,7 @@ pub async fn bridge_report(app: AppHandle, report: BridgeReport) {
         }
         BridgeReport::Notice { level, message } => dispatch_notice(&app, &level, &message),
         BridgeReport::Theme { theme } => crate::mini_player::on_panel_theme(&app, theme),
+        BridgeReport::Themes => crate::mini_player::on_themes_changed(&app),
         BridgeReport::Result { id, ok, message, data } => {
             if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
                 let outcome = if ok { Ok(data) } else { Err(message.unwrap_or_else(|| "The bot rejected the request".into())) };
@@ -245,6 +248,13 @@ mod tests {
         let r: BridgeReport = serde_json::from_str(r#"{"type":"theme","theme":{"id":"neon","vars":{}}}"#).unwrap();
         let BridgeReport::Theme { theme } = r else { panic!("expected theme") };
         assert_eq!(theme.choice, None);
+    }
+
+    #[test]
+    fn themes_report_is_a_bare_type_the_bridge_sends_when_the_bot_says_a_theme_changed() {
+        // No payload: the app asks the bot for the list itself, so an edit that leaves the panel's own theme as it was still shows.
+        let r: BridgeReport = serde_json::from_str(r#"{"type":"themes"}"#).unwrap();
+        assert!(matches!(r, BridgeReport::Themes));
     }
 
     #[test]

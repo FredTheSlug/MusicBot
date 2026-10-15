@@ -10,6 +10,7 @@
 
   var HEARTBEAT_MS = 30000;
   var GUILD_POLL_MS = 2000;
+  var THEMES_DEBOUNCE_MS = 300;
   var BACKOFF_START_MS = 1000;
   var BACKOFF_MAX_MS = 30000;
 
@@ -54,6 +55,18 @@
     var key = JSON.stringify(theme);
     if (key === lastTheme) return;
     invoke('bridge_report', { report: { type: 'theme', theme: theme } }).then(function () { lastTheme = key; }, function () {});
+  }
+
+  var themesTimer = null;
+
+  /**
+   * The bot says a custom theme changed (made, edited, deleted, hidden). The theme the panel wears can come out the same
+   * (a person who only changed the mini-player half of theirs), which reportTheme would not pass on, so the app is told
+   * on its own and asks the bot for the list. Changes that come together make one report, a moment after the last.
+   */
+  function reportThemesChanged() {
+    clearTimeout(themesTimer);
+    themesTimer = setTimeout(function () { report({ type: 'themes' }); }, THEMES_DEBOUNCE_MS);
   }
 
   function selectedGuild() {
@@ -135,6 +148,7 @@
       }
       if (msg.type === 'player') { setNowPlaying(msg.data); reportState(); }
       else if (msg.type === 'queue') { snap.queue = msg.data; reportState(); }
+      else if (msg.type === 'themes') reportThemesChanged();
     };
     ws.onclose = function (event) {
       snap.connected = false;

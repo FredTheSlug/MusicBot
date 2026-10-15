@@ -1,6 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { unseenNotes, shouldAutoShow } = require('../../main/resources/web/whats-new.js');
 
 // Newest first, like patch-notes.json.
@@ -52,4 +54,10 @@ test('noAutoShowWithoutStorage', () => {
   assert.equal(shouldAutoShow(true, []), false);
   assert.equal(shouldAutoShow(true, undefined), false);
   assert.equal(shouldAutoShow(true, [NOTES[0]]), true);
+});
+
+test('theNewestShippedEntryIsShownToSomeoneWhoSawThePlaylistsOne', () => {
+  const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, '../../main/resources/web/patch-notes.json'), 'utf8')).notes;
+  assert.deepEqual(unseenNotes(shipped, '2026-10-14').map((n) => n.id), ['2026-10-14-2']);
+  assert.deepEqual(unseenNotes(shipped, '2026-10-14-2'), []);
 });

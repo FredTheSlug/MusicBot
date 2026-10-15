@@ -52,7 +52,8 @@ test('theTinyScriptInTheHeadKnowsTheSameBuiltInThemes', () => {
 });
 
 test('applyThemeKnowsTheSameBuiltInThemes', () => {
-  const ok = /var ok = \{([^}]*)\};/.exec(INDEX);
+  // the list applyTheme checks against, which the no-scripts fallback for a custom pick checks its stored base against too
+  const ok = /var BUILTIN_THEMES = \{([^}]*)\};/.exec(INDEX);
   assert.ok(ok, 'applyTheme list not found');
   const listed = [...ok[1].matchAll(/(?:^|,)\s*'?([a-z-]+)'?\s*:\s*1/g)].map((m) => m[1]);
   assert.deepEqual(listed, [...ThemeApply.BUILT_IN]);

@@ -1,6 +1,20 @@
 {
   "notes": [
     {
+      "id": "2026-10-14-2",
+      "date": "2026-10-14",
+      "title": "Make your own themes",
+      "app": "0.5.0",
+      "items": [
+        { "area": "Panel", "text": "Create your own theme, step by step, with the \"＋ Create a theme\" button next to the theme menu." },
+        { "area": "Panel", "text": "Add your own background picture (JPG, PNG, WebP or an animated GIF, up to 8 MB). Darken and blur it so the text stays easy to read." },
+        { "area": "Panel", "text": "Share a theme with everyone or keep it private. You can edit or delete your themes any time." },
+        { "area": "Panel", "text": "\"Reduce motion\" (in the Panels menu) keeps animated backgrounds still." },
+        { "area": "Mini-player", "text": "A theme can come with a mini-player version, picture included. You need the updated app (0.5.0) to see it." },
+        { "area": "App", "text": "After the app updates, What's new opens by itself. You can also open it any time from the ☰ menu in the mini-player." }
+      ]
+    },
+    {
       "id": "2026-10-14",
       "date": "2026-10-14",
       "title": "Playlists, rebuilt",

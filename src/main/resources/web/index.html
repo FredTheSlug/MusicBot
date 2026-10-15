@@ -6177,11 +6177,12 @@
             else document.documentElement.setAttribute('data-theme', id);
         }
 
+        var BUILTIN_THEMES = { nebula: 1, aurora: 1, ember: 1, crimson: 1, dawn: 1, 'dawn-dark': 1, steel: 1, verdant: 1, grove: 1, grapevine: 1, sumi: 1, rasta: 1, cipher: 1, signal: 1, victory: 1, neon: 1, revival: 1 };
+
         // A built-in theme; anything unknown is Nebula. No trace of a custom theme stays.
         function applyTheme(themeId) {
-            var ok = { nebula: 1, aurora: 1, ember: 1, crimson: 1, dawn: 1, 'dawn-dark': 1, steel: 1, verdant: 1, grove: 1, grapevine: 1, sumi: 1, rasta: 1, cipher: 1, signal: 1, victory: 1, neon: 1, revival: 1 };
             if (themeId === 'nihon') themeId = 'sumi';
-            if (!ok[themeId]) themeId = 'nebula';
+            if (!BUILTIN_THEMES[themeId]) themeId = 'nebula';
             clearCustomTheme();
             setBaseThemeAttribute(themeId);
             setThemeBackdrop(null);
@@ -6238,7 +6239,17 @@
         // `choice` is a built-in id or custom:<id>. A custom theme that is gone (or isn't known yet) shows its base.
         function applyThemeChoice(choice) {
             if (!themeKit) {
-                applyTheme(typeof choice === 'string' && choice.indexOf('custom:') === 0 ? readStoredThemeBase() : choice);
+                // The scripts that know custom themes didn't load. A custom pick wears its base theme and nothing is
+                // written down (applyTheme would store the base as the choice), so the pick is still there next time.
+                if (typeof choice === 'string' && choice.indexOf('custom:') === 0) {
+                    var stored = readStoredThemeBase();
+                    themeShown = BUILTIN_THEMES[stored] ? stored : 'nebula';
+                    setBaseThemeAttribute(themeShown);
+                    themeChoice = choice;
+                    syncThemePicker();
+                    return;
+                }
+                applyTheme(choice);
                 return;
             }
             var res = themeKit.resolveChoice(choice, customThemes.list, themeBase || readStoredThemeBase());
@@ -6517,7 +6528,7 @@
         }
 
         function askHideTheme(entry, returnTo) {
-            var text = 'Hide ' + themeQuoted(entry.name) + ' by ' + themeKit.isolate(entry.creator) + '? Only its creator will see it until you un-hide it.';
+            var text = 'Hide ' + themeQuoted(entry.name) + ' by ' + themeKit.isolate(entry.creator) + '? Only its creator will see it until you un-hide it. Its picture link keeps working. Use Delete to remove the picture.';
             plShowConfirm(placeThemeConfirm, text, 'Hide', function () { setThemeHidden(entry, true); }, returnTo);
         }
 
@@ -7609,6 +7620,7 @@
                 drawName();
             });
             input.addEventListener('keydown', function (e) {
+                if (e.isComposing || e.keyCode === 229) return; // Enter that picks a candidate in an input method is not "save"
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     tcSave(s);

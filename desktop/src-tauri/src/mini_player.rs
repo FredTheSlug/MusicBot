@@ -327,6 +327,12 @@ pub fn on_panel_theme(app: &AppHandle, raw: PanelTheme) {
     }
 }
 
+/// The bot announced a change to the custom themes (the panel's bridge heard it). The panel's own theme may be the
+/// same as before while its mini-player version is not, so this asks for the list whatever the panel reported.
+pub fn on_themes_changed(app: &AppHandle) {
+    refresh_themes_in_background(app);
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Open {
     direction: Direction,

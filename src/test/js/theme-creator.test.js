@@ -1768,3 +1768,32 @@ test('whileTheCreatorStandsAsideItTakesNoKeysSoThePagesOwnDialogsKeepTheirEscape
   // and nothing in it brings the creator back from aside: that is the pill's job
   assert.doesNotMatch(fn[1], /tcSetAside\(/);
 });
+
+test('enterThatEndsAnImeCompositionInTheNameFieldDoesNotSaveTheTheme', () => {
+  // Enter that picks a candidate (Japanese, Chinese, Korean input) is the input method's, not the person's "save".
+  assert.match(CREATOR_CODE,
+    /input\.addEventListener\('keydown', function \(e\) \{\s*if \(e\.isComposing \|\| e\.keyCode === 229\) return;[^\n]*\s*if \(e\.key === 'Enter'\) \{\s*e\.preventDefault\(\);\s*tcSave\(s\);/);
+});
+
+test('whenTheThemeScriptsFailToLoadACustomPickIsNotOverwrittenWithItsBase', () => {
+  const fn = /function applyThemeChoice\(choice\) \{([\s\S]*?)\n        \}\n/.exec(INDEX);
+  assert.ok(fn, 'applyThemeChoice not found');
+  const missing = /if \(!themeKit\) \{([\s\S]*?)\n            \}\n/.exec(fn[1]);
+  assert.ok(missing, 'the themeKit-missing branch not found');
+  const custom = /indexOf\('custom:'\) === 0\) \{([\s\S]*?)\n                    return;\n/.exec(missing[1]);
+  assert.ok(custom, 'the custom-pick part of that branch not found');
+  // the base theme goes on the page directly...
+  assert.match(custom[1], /setBaseThemeAttribute\(/);
+  assert.match(custom[1], /readStoredThemeBase\(\)/);
+  // ...and nothing is written down: applyTheme and storeThemeChoice both store the choice
+  assert.doesNotMatch(custom[1], /applyTheme\(|storeThemeChoice\(|localStorage/);
+  // a built-in pick still goes the usual way
+  assert.match(missing[1], /applyTheme\(choice\)/);
+});
+
+test('theOwnersHideConfirmSaysThePictureLinkOfAHiddenThemeKeepsWorking', () => {
+  const fn = /function askHideTheme\(entry, returnTo\) \{([\s\S]*?)\n        \}\n/.exec(INDEX);
+  assert.ok(fn, 'askHideTheme not found');
+  assert.match(fn[1], /Only its creator will see it until you un-hide it\./);
+  assert.match(fn[1], /Its picture link keeps working\. Use Delete to remove the picture\./);
+});
