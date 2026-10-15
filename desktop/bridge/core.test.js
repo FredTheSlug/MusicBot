@@ -261,3 +261,56 @@ test('only play has a fallback', () => {
   assert.equal(fallbackRequest('9', { type: 'PlayPlaylist', value: {} }, 404, null), null);
   assert.equal(fallbackRequest('9', null, 404, null), null);
 });
+
+// ---- Likes: the ♥s and "My likes" ----
+
+const { likesChangeIsMine } = require('./core.js');
+
+test('your likes are read and changed with or without a server picked (they are the same on every server)', () => {
+  for (const g of ['9', '', null]) {
+    assert.deepEqual(commandToRequest(g, { type: 'LikesMine' }, {}), { method: 'GET', path: '/api/likes/mine', body: null }, String(g));
+    assert.deepEqual(commandToRequest(g, { type: 'Like', value: { song: SONG } }, {}),
+      { method: 'POST', path: '/api/likes/add', body: { song: SONG } }, String(g));
+    assert.deepEqual(commandToRequest(g, { type: 'Unlike', value: { uri: 'https://youtu.be/abc' } }, {}),
+      { method: 'POST', path: '/api/likes/remove', body: { uri: 'https://youtu.be/abc' } }, String(g));
+  }
+  for (const type of ['LikesMine', 'Like', 'Unlike', 'Themes']) assert.equal(needsServer({ type }), false, type);
+  assert.equal(needsServer({ type: 'PlayLikes' }), true, 'playing needs a server to play on');
+  for (const odd of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) assert.equal(needsServer({ type: odd }), true, odd);
+});
+
+test('a like sends only the five song fields, cleaned; nothing to like or unlike sends nothing', () => {
+  const dirty = { uri: 'u', title: 5, author: null, durationMs: -3, artworkUrl: '', addedBy: { id: '1', name: 'evil' }, userId: '2' };
+  assert.deepEqual(commandToRequest('9', { type: 'Like', value: { song: dirty } }, {}).body,
+    { song: { uri: 'u', title: '', author: '', durationMs: 0, artworkUrl: null } });
+  assert.equal(commandToRequest('9', { type: 'Like', value: { song: { uri: '' } } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'Like', value: {} }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'Like' }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'Unlike', value: { uri: '   ' } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'Unlike', value: { uri: 5 } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'Unlike' }, {}), null);
+  assert.deepEqual(commandToRequest('9', { type: 'Unlike', value: { uri: 'u', userId: '2' } }, {}).body, { uri: 'u' }, 'only the uri goes');
+});
+
+test('PlayLikes plays a person\'s whole list on the picked server', () => {
+  assert.deepEqual(commandToRequest('9', { type: 'PlayLikes', value: { userId: '123' } }, {}),
+    { method: 'POST', path: '/api/guild/9/likes/play', body: { userId: '123', mode: 'all' } });
+  assert.equal(commandToRequest('9/../x', { type: 'PlayLikes', value: { userId: '1' } }, {}).path, '/api/guild/9%2F..%2Fx/likes/play');
+  assert.equal(commandToRequest('', { type: 'PlayLikes', value: { userId: '123' } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'PlayLikes', value: { userId: '' } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'PlayLikes', value: { userId: 123 } }, {}), null);
+  assert.equal(commandToRequest('9', { type: 'PlayLikes' }, {}), null);
+  assert.equal(fallbackRequest('9', { type: 'PlayLikes', value: { userId: '123' } }, 404, null), null, 'no old route to fall back to');
+});
+
+test('a likes message counts when it is about your own list, or when it is not known whose', () => {
+  const me = { id: '1', name: 'fred' };
+  assert.equal(likesChangeIsMine({ userId: '1' }, me), true);
+  assert.equal(likesChangeIsMine({ userId: 1 }, me), true, 'an id sent as a number is the same id');
+  assert.equal(likesChangeIsMine({ userId: '2' }, me), false, 'a friend\'s likes change nothing the app shows');
+  assert.equal(likesChangeIsMine({ userId: '2' }, null), true, 'who is signed in is not known yet');
+  assert.equal(likesChangeIsMine({ userId: '2' }, { id: '' }), true);
+  for (const data of [null, undefined, {}, { userId: '' }, { userId: null }, { userId: {} }, 'x']) {
+    assert.equal(likesChangeIsMine(data, me), true, JSON.stringify(data));
+  }
+});

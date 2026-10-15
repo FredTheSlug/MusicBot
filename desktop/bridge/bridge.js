@@ -11,6 +11,7 @@
   var HEARTBEAT_MS = 30000;
   var GUILD_POLL_MS = 2000;
   var THEMES_DEBOUNCE_MS = 300;
+  var LIKES_DEBOUNCE_MS = 300;
   var BACKOFF_START_MS = 1000;
   var BACKOFF_MAX_MS = 30000;
 
@@ -67,6 +68,18 @@
   function reportThemesChanged() {
     clearTimeout(themesTimer);
     themesTimer = setTimeout(function () { report({ type: 'themes' }); }, THEMES_DEBOUNCE_MS);
+  }
+
+  var likesTimer = null;
+
+  /**
+   * The bot says someone's likes changed (data = {userId}, never a song). Only the signed-in person's own matter to the
+   * app, which then asks for the list itself; changes that come together make one report, a moment after the last.
+   */
+  function reportLikesChanged(data) {
+    if (!core.likesChangeIsMine(data, snap.me)) return;
+    clearTimeout(likesTimer);
+    likesTimer = setTimeout(function () { report({ type: 'likes' }); }, LIKES_DEBOUNCE_MS);
   }
 
   function selectedGuild() {
@@ -149,6 +162,7 @@
       if (msg.type === 'player') { setNowPlaying(msg.data); reportState(); }
       else if (msg.type === 'queue') { snap.queue = msg.data; reportState(); }
       else if (msg.type === 'themes') reportThemesChanged();
+      else if (msg.type === 'likes') reportLikesChanged(msg.data);
     };
     ws.onclose = function (event) {
       snap.connected = false;

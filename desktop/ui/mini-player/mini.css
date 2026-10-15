@@ -327,7 +327,8 @@ html.compact .controls { grid-area: controls; gap: 4px; }
 html.compact .bottom-row { display: contents; }
 html.compact #menuBtn { grid-area: menu; }
 html.compact #restart, html.compact .ctrl.mode, html.compact .volume,
-html.compact #spotifyBtn, html.compact #lyricsBtn, html.compact #queueBtn, html.compact #addBtn, html.compact .sleep-badge { display: none; }
+html.compact #spotifyBtn, html.compact #lyricsBtn, html.compact #queueBtn, html.compact #addBtn, html.compact #likeBtn,
+html.compact .sleep-badge { display: none; }
 
 /* A message takes the artist line's place for a moment. */
 html.compact .status { grid-area: meta; display: none; }
@@ -373,6 +374,11 @@ html.compact[data-theme="revival"] .spindle { width: 4px; height: 4px; margin: -
 .icon-btn:hover:not(:disabled) { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 .icon-btn:disabled { opacity: 0.4; cursor: default; }
 .icon-btn[aria-pressed="true"] { color: var(--accent-light); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* ♥ (the bottom row's, and each song's in the menu): an outline, filled while the song is in your likes. */
+.like svg path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.like[aria-pressed="true"] svg path { fill: currentColor; }
+.like[hidden] { display: none; }
 
 /* The Spotify logo: green when there's a song to queue, grey otherwise. */
 .spotify { padding: 2px; }
@@ -600,6 +606,10 @@ html.compact[data-theme="revival"] .spindle { width: 4px; height: 4px; margin: -
 .result-row .result { flex: 1 1 0; width: auto; min-width: 0; }
 .result-row .q-act { width: 22px; height: 22px; padding: 0; opacity: 0; font: 700 1.2rem/1 var(--font-family); }
 .result-row:hover .q-act, .result-row:focus-within .q-act { opacity: 1; }
+/* A song's ♥ stays in sight once it's liked, without the pressed tint a whole list of them would make. */
+.result-row .like { padding: 4px; }
+.result-row .like[aria-pressed="true"] { opacity: 1; }
+.result-row .like[aria-pressed="true"]:not(:hover) { background: transparent; }
 .result:disabled { opacity: 0.45; cursor: default; }
 .result:disabled:hover { background: transparent; }
 

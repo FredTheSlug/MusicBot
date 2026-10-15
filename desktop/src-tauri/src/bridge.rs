@@ -63,6 +63,16 @@ pub enum BotCommand {
     ShowWhatsNew,
     /// Fetch: the custom themes people made (`GET /api/themes`); the same for every server, so none needs picking.
     Themes,
+    /// Fetch: the signed-in person's liked songs (`GET /api/likes/mine`). Likes are the same on every server, and so
+    /// are the two changes below: none of the three needs a server picked.
+    LikesMine,
+    /// ♥ a song (`POST /api/likes/add`); the bot takes whose list it is from the login, never from the request.
+    Like { song: PlaylistSong },
+    /// Takes the ♥ off a song (`POST /api/likes/remove`).
+    Unlike { uri: String },
+    /// Plays a person's whole list of likes on the selected server.
+    #[serde(rename_all = "camelCase")]
+    PlayLikes { user_id: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,6 +82,8 @@ pub enum BridgeReport {
     Theme { theme: PanelTheme },
     /// The bot said a custom theme was made, edited or removed: the app asks for the list again, whatever the panel wears.
     Themes,
+    /// The bot said the signed-in person's likes changed: the app asks for the list again.
+    Likes,
     Notice { level: String, message: String },
     Result {
         id: u64,
@@ -162,6 +174,7 @@ pub async fn bridge_report(app: AppHandle, report: BridgeReport) {
         BridgeReport::Notice { level, message } => dispatch_notice(&app, &level, &message),
         BridgeReport::Theme { theme } => crate::mini_player::on_panel_theme(&app, theme),
         BridgeReport::Themes => crate::mini_player::on_themes_changed(&app),
+        BridgeReport::Likes => crate::mini_player::on_likes_changed(&app),
         BridgeReport::Result { id, ok, message, data } => {
             if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
                 let outcome = if ok { Ok(data) } else { Err(message.unwrap_or_else(|| "The bot rejected the request".into())) };
@@ -255,6 +268,66 @@ mod tests {
         // No payload: the app asks the bot for the list itself, so an edit that leaves the panel's own theme as it was still shows.
         let r: BridgeReport = serde_json::from_str(r#"{"type":"themes"}"#).unwrap();
         assert!(matches!(r, BridgeReport::Themes));
+    }
+
+    #[test]
+    fn likes_commands_have_the_wire_shape_core_js_reads() {
+        let song = PlaylistSong {
+            uri: "https://youtu.be/abc".into(),
+            title: "T".into(),
+            author: "A".into(),
+            duration_ms: 1000,
+            artwork_url: None,
+        };
+        assert_eq!(serde_json::to_value(&BotCommand::LikesMine).unwrap(), serde_json::json!({"type": "LikesMine"}));
+        assert_eq!(
+            serde_json::to_value(BotCommand::Like { song }).unwrap(),
+            serde_json::json!({"type": "Like", "value": {"song": {
+                "uri": "https://youtu.be/abc", "title": "T", "author": "A", "durationMs": 1000, "artworkUrl": null
+            }}})
+        );
+        assert_eq!(
+            serde_json::to_value(BotCommand::Unlike { uri: "https://youtu.be/abc".into() }).unwrap(),
+            serde_json::json!({"type": "Unlike", "value": {"uri": "https://youtu.be/abc"}})
+        );
+        assert_eq!(
+            serde_json::to_value(BotCommand::PlayLikes { user_id: "123".into() }).unwrap(),
+            serde_json::json!({"type": "PlayLikes", "value": {"userId": "123"}})
+        );
+        assert_eq!(command_js(6, &BotCommand::LikesMine), r#"window.__cksBridge && window.__cksBridge.run(6, {"type":"LikesMine"});"#);
+        assert_eq!(
+            command_js(8, &BotCommand::PlayLikes { user_id: "123".into() }),
+            r#"window.__cksBridge && window.__cksBridge.run(8, {"type":"PlayLikes","value":{"userId":"123"}});"#
+        );
+    }
+
+    #[test]
+    fn like_round_trips_hostile_song_text() {
+        // Song text comes from YouTube: it reaches the page only as JSON inside the eval'd call.
+        let cmd = BotCommand::Like {
+            song: PlaylistSong {
+                uri: "https://y/watch?v=\u{2028}</script>".into(),
+                title: "'); alert(1); //\n${x}`".into(),
+                author: "Ke$ha \\ 🎵".into(),
+                duration_ms: 1,
+                artwork_url: Some("https://i.ytimg.com/vi/x/hq.jpg".into()),
+            },
+        };
+        let js = command_js(10, &cmd);
+        let prefix = "window.__cksBridge && window.__cksBridge.run(10, ";
+        let back: BotCommand = serde_json::from_str(&js[prefix.len()..js.len() - 2]).unwrap();
+        assert_eq!(back, cmd);
+        let unlike = BotCommand::Unlike { uri: "a\"b\\c</script>".into() };
+        let js = command_js(11, &unlike);
+        let prefix = "window.__cksBridge && window.__cksBridge.run(11, ";
+        assert_eq!(serde_json::from_str::<BotCommand>(&js[prefix.len()..js.len() - 2]).unwrap(), unlike);
+    }
+
+    #[test]
+    fn likes_report_is_a_bare_type_the_bridge_sends_when_your_likes_changed() {
+        // No payload (the bot's message names whose list changed, never a song): the app asks for the list itself.
+        let r: BridgeReport = serde_json::from_str(r#"{"type":"likes"}"#).unwrap();
+        assert!(matches!(r, BridgeReport::Likes));
     }
 
     #[test]

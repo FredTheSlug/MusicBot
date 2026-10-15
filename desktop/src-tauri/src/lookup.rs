@@ -3,7 +3,7 @@
 
 use crate::bridge::{BotCommand, PlaylistSong};
 use crate::spotify::parse_spotify_link;
-use crate::state::Track;
+use crate::state::{Me, Track};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -18,6 +18,10 @@ const MAX_FOLDER_DEPTH: usize = 8;
 const MAX_FIELD_CHARS: usize = 200;
 const MAX_LYRIC_LINES: usize = 500;
 const MAX_LINE_CHARS: usize = 300;
+/// The bot keeps at most 2000 likes a person; this only bounds what an odd answer can put in the UI.
+const MAX_LIKED_URIS: usize = 5000;
+/// The bot stores a uri cut to 300 chars, so a longer one in its answer is not one of its own.
+const MAX_LIKED_URI_CHARS: usize = 2000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -194,6 +198,61 @@ pub fn playlists_v2(tree: &Value) -> Vec<PlaylistEntry> {
     });
     found.truncate(MAX_PLAYLIST_ENTRIES);
     found
+}
+
+/// The signed-in person's liked songs, as the ♥s need them: each liked uri once (newest first) and how many there are.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Likes {
+    pub uris: Vec<String>,
+    pub count: u32,
+}
+
+/// The bot's `/api/likes/mine` answer (`{uris, count, max}`) → the like state, or None when the answer is something else
+/// (an error, or a bot from before likes). A uri decides which ♥ fills, so one is used whole or left out, never cut.
+pub fn likes(data: &Value) -> Option<Likes> {
+    let listed = data.get("uris")?.as_array()?;
+    let mut uris: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for uri in listed.iter().filter_map(Value::as_str) {
+        if uris.len() >= MAX_LIKED_URIS {
+            break;
+        }
+        if !uri.trim().is_empty() && uri.chars().count() <= MAX_LIKED_URI_CHARS && seen.insert(uri) {
+            uris.push(uri.to_string());
+        }
+    }
+    let count = match data.get("count").and_then(Value::as_u64) {
+        Some(n) => n.min(u64::from(u32::MAX)) as u32,
+        None => uris.len() as u32,
+    };
+    Some(Likes { uris, count })
+}
+
+/// ♥ `song`; refused here when there is no uri to like.
+pub fn like_command(song: PlaylistSong) -> Result<BotCommand, String> {
+    if song.uri.trim().is_empty() {
+        return Err("That song can't be liked".to_string());
+    }
+    Ok(BotCommand::Like { song })
+}
+
+/// Takes the ♥ off the song with this uri.
+pub fn unlike_command(uri: String) -> Result<BotCommand, String> {
+    if uri.trim().is_empty() {
+        return Err("No song to unlike".to_string());
+    }
+    Ok(BotCommand::Unlike { uri })
+}
+
+/// Plays your own likes: the list is named by the signed-in person's Discord id (1–20 digits, as the bot checks it),
+/// from the panel's login; the UI never names it.
+pub fn play_likes_command(me: Option<&Me>) -> Result<BotCommand, String> {
+    let id = me
+        .map(|me| me.id.as_str())
+        .filter(|id| (1..=20).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_digit()))
+        .ok_or_else(|| "Sign in from the panel to play your likes".to_string())?;
+    Ok(BotCommand::PlayLikes { user_id: id.to_string() })
 }
 
 /// True when the page's error for a fetch says the bot has no such route ("HTTP 404" is how it reports a
@@ -504,6 +563,68 @@ mod tests {
             Ok(BotCommand::CreatePlaylist { name: "Road trip".into(), folder: Some("Fred".into()) })
         );
         assert_eq!(create_command("   ".into(), None), Err("Give the playlist a name".to_string()));
+    }
+
+    #[test]
+    fn likes_map_the_mine_answer() {
+        let likes = likes(&json!({"uris": ["https://y/2", "https://y/1"], "count": 2, "max": 2000})).unwrap();
+        assert_eq!(likes, Likes { uris: vec!["https://y/2".into(), "https://y/1".into()], count: 2 }, "newest first, as the bot sends them");
+        assert_eq!(serde_json::to_value(&likes).unwrap(), json!({"uris": ["https://y/2", "https://y/1"], "count": 2}));
+        // Nobody signed in on a bot with the login off: an empty list, which is still a list.
+        assert_eq!(likes_of(json!({"uris": [], "count": 0, "max": 2000})), Some(Likes { uris: vec![], count: 0 }));
+    }
+
+    fn likes_of(data: serde_json::Value) -> Option<Likes> {
+        likes(&data)
+    }
+
+    #[test]
+    fn likes_keep_each_usable_uri_once_and_whole() {
+        let found = likes_of(json!({"uris": ["a", 5, null, "", "   ", "b", "a", {"uri": "c"}, "b"], "count": 4})).unwrap();
+        assert_eq!(found.uris, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(found.count, 4, "the bot's own count");
+        let long = "u".repeat(2000);
+        let found = likes_of(json!({"uris": [long.clone(), "x".repeat(2001)]})).unwrap();
+        assert_eq!(found.uris, vec![long], "a uri is used whole or not at all");
+        assert_eq!(found.count, 1, "no count: as many as listed");
+        let many: Vec<_> = (0..6000).map(|i| format!("u{i}")).collect();
+        let found = likes_of(json!({ "uris": many, "count": 6000 })).unwrap();
+        assert_eq!(found.uris.len(), 5000);
+        assert_eq!(found.uris[0], "u0");
+        assert_eq!(found.count, 6000);
+    }
+
+    #[test]
+    fn likes_count_is_a_sane_number() {
+        assert_eq!(likes_of(json!({"uris": ["a"], "count": -3})).unwrap().count, 1);
+        assert_eq!(likes_of(json!({"uris": ["a"], "count": "7"})).unwrap().count, 1);
+        assert_eq!(likes_of(json!({"uris": ["a"], "count": 2.5})).unwrap().count, 1);
+        assert_eq!(likes_of(json!({"uris": [], "count": 1_000_000_000_000u64})).unwrap().count, u32::MAX);
+    }
+
+    #[test]
+    fn likes_of_something_else_is_unknown() {
+        for data in [json!({}), json!([]), json!(null), json!({"error": "Log in with Discord to like songs"}), json!({"uris": "a"}), json!("x")] {
+            assert_eq!(likes(&data), None, "{data}");
+        }
+    }
+
+    #[test]
+    fn like_changes_and_play_are_checked_before_they_are_sent() {
+        assert_eq!(like_command(song()), Ok(BotCommand::Like { song: song() }));
+        assert_eq!(like_command(PlaylistSong { uri: "  ".into(), ..song() }), Err("That song can't be liked".to_string()));
+        assert_eq!(unlike_command("https://youtu.be/abc".into()), Ok(BotCommand::Unlike { uri: "https://youtu.be/abc".into() }));
+        assert_eq!(unlike_command(" ".into()), Err("No song to unlike".to_string()));
+        let me = |id: &str| crate::state::Me { id: id.into(), name: "fred".into(), avatar_url: None };
+        assert_eq!(play_likes_command(Some(&me("123456789012345678"))), Ok(BotCommand::PlayLikes { user_id: "123456789012345678".into() }));
+        for odd in ["", "abc", "12a", "everyone", "../1", "123456789012345678901", " 1"] {
+            assert_eq!(
+                play_likes_command(Some(&me(odd))),
+                Err("Sign in from the panel to play your likes".to_string()),
+                "only a Discord id names your own list: {odd:?}"
+            );
+        }
+        assert_eq!(play_likes_command(None), Err("Sign in from the panel to play your likes".to_string()));
     }
 
     #[test]

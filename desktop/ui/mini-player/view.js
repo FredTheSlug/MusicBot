@@ -16,8 +16,17 @@
     if (s && !u.stale && !signedIn) return { title: 'Not signed in', meta: 'Sign in from the panel', track: null, live: true, signedIn: false };
     if (!live) return { title: 'Reconnecting…', meta: "Can't reach the bot right now", track: null, live: false, signedIn: signedIn };
     if (!track) return { title: 'Nothing playing', meta: s.guild && s.guild.name ? s.guild.name : '', track: null, live: true, signedIn: true };
-    var meta = track.author + (track.requestedBy ? ' · requested by ' + track.requestedBy : '');
+    var meta = [track.author, requestedByText(s)].filter(Boolean).join(' · ');
     return { title: track.title || 'Unknown', meta: meta, track: track, live: true, signedIn: true };
+  }
+
+  /**
+   * "requested by fred" for the song playing (the name isolated, so it can't reorder the line around it), or "" when
+   * nobody is known: an autoplay pick comes with no requester.
+   */
+  function requestedByText(state) {
+    var name = visibleName(state && state.track ? state.track.requestedBy : null);
+    return name ? 'requested by ' + FSI + name + PDI : '';
   }
 
   /** The panel's themes, in its picker's order. */
@@ -425,7 +434,82 @@
     return text.length > PICKER_ERROR_MAX ? text.slice(0, PICKER_ERROR_MAX - 1) + '…' : text;
   }
 
+  // ---- Likes: the ♥s and "My likes" ----
+
+  function hasOwn(object, key) { return !!object && Object.prototype.hasOwnProperty.call(object, key); }
+
+  /**
+   * The app's like state ({version, likes: {uris, count} or null}) → what the ♥s look up: {version, uris: a Set, count},
+   * with uris null while the likes are unknown. A copy older than `current` changes nothing: the answer to a click and an
+   * event can cross on the way. Junk never replaces what is known.
+   */
+  function likesState(payload, current) {
+    var version = payload && typeof payload.version === 'number' && isFinite(payload.version) ? payload.version : -1;
+    if (current && version < current.version) return current;
+    var likes = payload ? payload.likes : null;
+    if (!likes || !Array.isArray(likes.uris)) return { version: version, uris: null, count: 0 };
+    var uris = new Set(likes.uris.filter(function (uri) { return typeof uri === 'string' && uri !== ''; }));
+    var count = typeof likes.count === 'number' && likes.count >= 0 && isFinite(likes.count) ? Math.floor(likes.count) : uris.size;
+    return { version: version, uris: uris, count: count };
+  }
+
+  /** Whether the ♥ for `uri` shows filled: a click still on its way shows what it asked for, else the bot's list says. */
+  function isLiked(likes, clicks, uri) {
+    if (typeof uri !== 'string' || !uri) return false;
+    if (hasOwn(clicks, uri)) return clicks[uri].liked;
+    return !!(likes && likes.uris && likes.uris.has(uri));
+  }
+
+  /** A copy of clicks (uri → {id, liked}: the latest click per song still waiting for its answer); the given one never changes. */
+  function copyClicks(clicks) {
+    var copy = Object.create(null);
+    Object.keys(clicks || {}).forEach(function (uri) { copy[uri] = clicks[uri]; });
+    return copy;
+  }
+
+  /** A click on the ♥ for `uri`: {clicks, liked}. The ♥ flips at once (to `liked`) and stays so until click `id` is answered. */
+  function likeClicked(likes, clicks, uri, id) {
+    var liked = !isLiked(likes, clicks, uri);
+    var next = copyClicks(clicks);
+    next[uri] = { id: id, liked: liked };
+    return { clicks: next, liked: liked };
+  }
+
+  /**
+   * Click `id` on `uri` was answered, yes or no: the ♥ shows the bot's list again (fresh after a yes; as it was after a
+   * no, which is the revert), unless a newer click on the song is still on its way.
+   */
+  function likeAnswered(clicks, uri, id) {
+    if (!hasOwn(clicks, uri) || clicks[uri].id !== id) return clicks;
+    var next = copyClicks(clicks);
+    delete next[uri];
+    return next;
+  }
+
+  /**
+   * A ♥ button for `song` ({uri, ...} or null): hidden while the likes are unknown (no answer yet, or a bot from before
+   * likes), off with no song or when nothing can be sent (signed out, unreachable), filled when liked.
+   */
+  function heartView(likes, clicks, song, canControl) {
+    var liked = !!song && isLiked(likes, clicks, song.uri);
+    return {
+      hidden: !(likes && likes.uris),
+      disabled: !canControl || !song,
+      liked: liked,
+      title: liked ? 'Unlike' : 'Like'
+    };
+  }
+
+  /** The row pinned first in the Playlists tab, {title, count}, or null: only someone signed in has a list of their own. */
+  function myLikesRow(likes, state) {
+    var signedIn = !!(state && state.signedIn && state.me && typeof state.me.id === 'string' && state.me.id);
+    if (!signedIn || !likes || !likes.uris) return null;
+    return { title: '♥ My likes (' + likes.count + ')', count: likes.count };
+  }
+
   var api = {
+    requestedByText: requestedByText, likesState: likesState, isLiked: isLiked, likeClicked: likeClicked,
+    likeAnswered: likeAnswered, heartView: heartView, myLikesRow: myLikesRow,
     pickerRows: pickerRows, playlistKey: playlistKey, rememberRecent: rememberRecent, playlistSong: playlistSong,
     pickerError: pickerError, playlistCount: playlistCount,
     accelFromEvent: accelFromEvent,

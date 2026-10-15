@@ -153,6 +153,10 @@
           <button type="button" id="addBtn" class="icon-btn" disabled title="Add to playlist" aria-label="Add to playlist" aria-pressed="false">
             <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>
           </button>
+          <!-- ♥ the song playing: filled when it's in your likes. Shown once the bot has said what you like. -->
+          <button type="button" id="likeBtn" class="icon-btn like" disabled hidden title="Like" aria-label="Like" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg>
+          </button>
           <span class="sleep-badge" id="sleepBadge" hidden>☾</span>
           <div class="status" id="status" role="status" aria-live="polite"></div>
           <button type="button" id="menuBtn" class="icon-btn" title="Search and settings" aria-label="Search and settings" aria-pressed="false">

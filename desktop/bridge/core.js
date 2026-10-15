@@ -159,16 +159,35 @@
     };
   }
 
-  /** Everything but the theme list works on a selected server (the list is the same for every server). */
+  /** What is the same on every server: the theme list, and your own likes (reading and changing them; playing needs one). */
+  var SERVERLESS = ['Themes', 'LikesMine', 'Like', 'Unlike'];
+
+  /** Everything else works on a selected server. */
   function needsServer(command) {
-    return !command || command.type !== 'Themes';
+    return !command || SERVERLESS.indexOf(command.type) < 0;
+  }
+
+  function serverlessRequest(command) {
+    var value = command.value || {};
+    switch (command.type) {
+      // The custom themes people made: the mini-player lists the ones that have a mini-player version.
+      case 'Themes': return fetchRequest('/api/themes');
+      case 'LikesMine': return fetchRequest('/api/likes/mine');
+      // Whose likes change comes from the login: the bot never reads it from the request, and none is sent.
+      case 'Like': {
+        var liked = songBody(value.song);
+        return liked ? request('/api/likes/add', { song: liked }) : null;
+      }
+      case 'Unlike':
+        return typeof value.uri === 'string' && value.uri.trim() ? request('/api/likes/remove', { uri: value.uri }) : null;
+      default: return null;
+    }
   }
 
   /** command = {type, value?} (Rust BotCommand) → panel API request, or null when there's nothing to do. */
   function commandToRequest(guildId, command, state) {
     if (!command) return null;
-    // The custom themes people made: the mini-player lists the ones that have a mini-player version.
-    if (command.type === 'Themes') return fetchRequest('/api/themes');
+    if (!needsServer(command)) return serverlessRequest(command);
     if (!guildId) return null;
     var base = '/api/guild/' + encodeURIComponent(guildId) + '/';
     switch (command.type) {
@@ -223,8 +242,22 @@
         if (typeof create.name !== 'string' || !create.name.trim()) return null;
         return request('/api/playlists', { name: create.name.trim(), folder: str(create.folder) });
       }
+      case 'PlayLikes': {
+        var who = (command.value || {}).userId;
+        return typeof who === 'string' && who ? request(base + 'likes/play', { userId: who, mode: 'all' }) : null;
+      }
       default: return null;
     }
+  }
+
+  /**
+   * True when a `likes` message (data = {userId}) is about the signed-in person's own list, the only one the app shows;
+   * also when either id is not known (better one needless refresh than a missed one).
+   */
+  function likesChangeIsMine(data, me) {
+    var who = data && (typeof data.userId === 'string' || typeof data.userId === 'number') ? String(data.userId) : '';
+    var mine = me && typeof me.id === 'string' ? me.id : '';
+    return !who || !mine || who === mine;
   }
 
   /**
@@ -271,7 +304,7 @@
   var api = {
     toBotState: toBotState, parseWsMessage: parseWsMessage, commandToRequest: commandToRequest, fallbackRequest: fallbackRequest,
     isOwnLoadError: isOwnLoadError, readTheme: readTheme, THEME_VARS: THEME_VARS, queueEditError: queueEditError,
-    needsServer: needsServer
+    needsServer: needsServer, likesChangeIsMine: likesChangeIsMine
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.__cksCore = api;

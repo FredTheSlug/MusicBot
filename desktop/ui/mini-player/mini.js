@@ -129,6 +129,7 @@
 
     el('volume').disabled = !(v.live && v.signedIn);
     if (!volumeDragging && s) el('volume').value = s.volume;
+    paintLikes();
 
     var canControl = !!(v.live && v.signedIn);
     var shuffleOn = !!(s && s.shuffle);
@@ -178,6 +179,86 @@
   function send(cmd) {
     invoke('mini_command', { cmd: cmd }).catch(function (e) { showStatus(String(e)); });
   }
+
+  // ---- ♥: the song playing (bottom row) and each song in the menu; "♥ My likes (n)" first in the Playlists tab ----
+  var likes = null; // MV.likesState of what the app last sent: unknown (null, or uris null) until the bot answers
+  var likeClicks = {}; // uri → the latest click still waiting for its answer (see MV.likeClicked)
+  var likeSeq = 0;
+  var likeSongs = new WeakMap(); // a song row's ♥ → the song it likes (never written into the markup)
+  var listing = ''; // what the results list shows: 'playlists' while it is the Playlists tab
+
+  function canLike() {
+    var v = view(ui);
+    return !!(v.live && v.signedIn);
+  }
+
+  function paintHeart(button, song) {
+    var hv = MV.heartView(likes, likeClicks, song, canLike());
+    button.hidden = hv.hidden;
+    button.disabled = hv.disabled;
+    button.setAttribute('aria-pressed', String(hv.liked));
+    button.title = hv.title;
+  }
+
+  /** The row pinned first in the Playlists tab: plays your own likes. Text only. */
+  function myLikesItem(row) {
+    var li = resultRow('playlist my-likes', row.title, '', '', function () { runAction('mini_play_likes'); });
+    li.firstChild.title = 'Play your liked songs';
+    return li;
+  }
+
+  /** Every ♥ and the "My likes" count, from the bot's list and the clicks on their way. */
+  function paintLikes() {
+    paintHeart(el('likeBtn'), MV.playlistSong(view(ui).track));
+    Array.prototype.forEach.call(el('results').querySelectorAll('.like'), function (button) {
+      paintHeart(button, likeSongs.get(button) || null);
+    });
+    if (listing !== 'playlists') return;
+    var list = el('results');
+    var shown = list.querySelector('.my-likes');
+    var row = MV.myLikesRow(likes, ui && ui.state);
+    if (!row) { if (shown) list.removeChild(shown.parentNode); return; }
+    if (shown) shown.querySelector('.r-title').textContent = row.title;
+    else list.insertBefore(myLikesItem(row), list.firstChild);
+  }
+
+  function takeLikes(payload) { likes = MV.likesState(payload, likes); }
+
+  /** Flips the ♥ at once; the answer brings the bot's fresh list, or its own words (and the ♥ goes back). */
+  function toggleLike(song) {
+    if (!song || !canLike() || !likes || !likes.uris) return;
+    var id = ++likeSeq;
+    var click = MV.likeClicked(likes, likeClicks, song.uri, id);
+    likeClicks = click.clicks;
+    paintLikes();
+    var asked = click.liked ? invoke('mini_like', { song: song }) : invoke('mini_unlike', { uri: song.uri });
+    asked.then(function (fresh) {
+      takeLikes(fresh);
+      likeClicks = MV.likeAnswered(likeClicks, song.uri, id);
+      paintLikes();
+    }, function (e) {
+      likeClicks = MV.likeAnswered(likeClicks, song.uri, id);
+      paintLikes();
+      showStatus(String(e));
+    });
+  }
+
+  /** A song row's ♥ (beside its +). */
+  function likeAction(song) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'icon-btn q-act like';
+    button.setAttribute('aria-label', 'Like');
+    button.appendChild(el('likeBtn').querySelector('svg').cloneNode(true));
+    likeSongs.set(button, song);
+    button.addEventListener('click', function () { toggleLike(song); });
+    paintHeart(button, song);
+    return button;
+  }
+
+  el('likeBtn').addEventListener('click', function () { toggleLike(MV.playlistSong(view(ui).track)); });
+  listen('likes-changed', function (e) { takeLikes(e.payload); paintLikes(); });
+  invoke('mini_likes').then(function (payload) { takeLikes(payload); paintLikes(); });
 
   el('restart').addEventListener('click', function () { send({ type: 'RestartTrack' }); });
   el('toggle').addEventListener('click', function () { send({ type: 'TogglePause' }); });
@@ -458,16 +539,19 @@
     return li;
   }
 
-  function setResults(items) {
+  /** kind 'playlists': the Playlists tab, which gets "♥ My likes (n)" pinned first (see paintLikes). */
+  function setResults(items, kind) {
     var list = el('results');
     while (list.firstChild) list.removeChild(list.firstChild);
     items.forEach(function (item) { list.appendChild(item); });
+    listing = kind || '';
+    if (listing) paintLikes();
   }
 
-  /** onAdd (optional) puts a + beside the row that adds this song to a playlist. */
-  function resultRow(kind, title, artist, time, onPick, onAdd) {
+  /** onAdd (optional) puts a + beside the row that adds this song to a playlist; likeSong (optional) a ♥ before it. */
+  function resultRow(kind, title, artist, time, onPick, onAdd, likeSong) {
     var li = document.createElement('li');
-    if (onAdd) li.className = 'result-row';
+    if (onAdd || likeSong) li.className = 'result-row';
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'result' + (kind ? ' ' + kind : '');
@@ -481,6 +565,7 @@
     button.title = artist ? title + ' – ' + artist : title;
     button.addEventListener('click', onPick);
     li.appendChild(button);
+    if (likeSong) li.appendChild(likeAction(likeSong));
     if (onAdd) li.appendChild(queueAction('Add to playlist', '+', onAdd));
     return li;
   }
@@ -512,7 +597,8 @@
       if (!searches.isLatest(n)) return;
       if (!results.length) { setResults([note('No results')]); return; }
       setResults(results.map(function (r) {
-        return resultRow('', r.title || 'Unknown', r.author, MV.formatDuration(r.durationMs, r.isStream), function () { queue(r); }, addHandler(r));
+        return resultRow('', r.title || 'Unknown', r.author, MV.formatDuration(r.durationMs, r.isStream), function () { queue(r); },
+          addHandler(r), MV.playlistSong(r));
       }));
     }).catch(function (e) {
       if (searches.isLatest(n)) setResults([note(String(e))]);
@@ -546,19 +632,22 @@
     setResults([note('Loading…')]);
     var current = tab;
     var cmd = current === 'playlists' ? 'mini_playlists_v2' : current === 'frequent' ? 'mini_frequent' : 'mini_history';
+    // The Playlists tab's "♥ My likes (n)" goes first whatever the playlists answer is (see paintLikes).
+    var kind = current === 'playlists' ? 'playlists' : '';
     invoke(cmd).then(function (items) {
       if (!searches.isLatest(n)) return;
-      if (!items.length) { setResults([note(current === 'playlists' ? 'No saved playlists' : 'Nothing here yet')]); return; }
+      if (!items.length) { setResults([note(current === 'playlists' ? 'No saved playlists' : 'Nothing here yet')], kind); return; }
       setResults(items.map(function (it) {
         if (current === 'playlists') {
           return resultRow('playlist', it.name, it.folder || '', MV.playlistCount(it), function () {
             runAction('mini_play_playlist', { name: it.name, folder: it.folder });
           });
         }
-        return resultRow('', it.title || 'Unknown', it.author, MV.formatDuration(it.durationMs, it.isStream), function () { queue(it); }, addHandler(it));
-      }));
+        return resultRow('', it.title || 'Unknown', it.author, MV.formatDuration(it.durationMs, it.isStream), function () { queue(it); },
+          addHandler(it), MV.playlistSong(it));
+      }), kind);
     }).catch(function (e) {
-      if (searches.isLatest(n)) setResults([note(String(e))]);
+      if (searches.isLatest(n)) setResults([note(String(e))], kind);
     });
   }
 

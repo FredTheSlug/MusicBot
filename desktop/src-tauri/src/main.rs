@@ -44,6 +44,8 @@ pub struct AppState {
     pub sleep: Mutex<sleep::SleepMode>,
     /// The custom themes that have a mini-player version, as last fetched from the bot (empty until then).
     pub customs: Mutex<Vec<theme::CustomMini>>,
+    /// The signed-in person's liked songs, as last fetched from the bot (unknown until then).
+    pub likes: Mutex<mini_player::LikesState>,
 }
 
 /// Fans state changes out to the tray, mini-player, media keys and notifier.
@@ -54,6 +56,7 @@ fn dispatch(app: &AppHandle, changes: Vec<Change>) {
     show_toasts(app, &changes);
     tray::refresh(app);
     mini_player::emit_state(app);
+    mini_player::on_state_changes(app, &changes);
     update_media_keys(app);
 }
 
@@ -256,6 +259,7 @@ fn main() {
                 spotify: Mutex::new(spotify::SpotifyStatus::default()),
                 sleep: Mutex::new(sleep::SleepMode::Off),
                 customs: Mutex::new(Vec::new()),
+                likes: Mutex::new(mini_player::LikesState::default()),
             });
             // The remote panel page may call exactly one command: bridge_report.
             app.add_capability(
@@ -328,6 +332,10 @@ fn main() {
             mini_player::mini_add_to_playlist,
             mini_player::mini_create_playlist,
             mini_player::mini_play_playlist,
+            mini_player::mini_likes,
+            mini_player::mini_like,
+            mini_player::mini_unlike,
+            mini_player::mini_play_likes,
             mini_player::mini_set_sleep,
             mini_player::mini_get_sleep,
             mini_player::mini_set_hide_in_fullscreen,

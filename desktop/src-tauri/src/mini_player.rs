@@ -1,12 +1,12 @@
 //! The always-on-top mini-player window and the commands its bundled UI may call.
 
 use crate::bridge::{self, BotCommand, PlaylistSong};
-use crate::lookup::{self, Lyrics, PlaylistEntry, PlaylistInfo, SearchResult};
+use crate::lookup::{self, Likes, Lyrics, PlaylistEntry, PlaylistInfo, SearchResult};
 use crate::spotify::{self, SpotifyStatus};
 use crate::hotkeys;
 use crate::settings::Settings;
 use crate::sleep::{self, SleepInfo};
-use crate::state::BotState;
+use crate::state::{BotState, Change};
 use crate::theme::{self, CustomMini, PanelTheme, ThemeMenu, UiTheme};
 use crate::{settings, show_main, AppState};
 use serde::Serialize;
@@ -27,6 +27,7 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 const LYRICS_TIMEOUT: Duration = Duration::from_secs(15);
 const THEMES_TIMEOUT: Duration = Duration::from_secs(10);
+const LIKES_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -201,6 +202,7 @@ pub fn toggle(app: &AppHandle) {
     let _ = window.set_focus();
     emit_state(app);
     refresh_themes_in_background(app);
+    refresh_likes_in_background(app);
 }
 
 fn epoch_ms() -> u64 {
@@ -331,6 +333,120 @@ pub fn on_panel_theme(app: &AppHandle, raw: PanelTheme) {
 /// same as before while its mini-player version is not, so this asks for the list whatever the panel reported.
 pub fn on_themes_changed(app: &AppHandle) {
     refresh_themes_in_background(app);
+}
+
+// ---- Likes: the ♥s and "My likes" ----
+
+/// The like state the mini-player shows. `version` numbers the ask whose answer this is, so the UI can drop an older
+/// copy: an event and a command's answer can cross on the way.
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LikesState {
+    pub version: u64,
+    /// None while unknown: no answer yet, signed out, or a bot from before likes (the UI then hides the ♥s).
+    pub likes: Option<Likes>,
+}
+
+impl LikesState {
+    /// Takes `likes`, the answer to the ask numbered `ticket`, unless a later ask's answer is already here (two can be
+    /// out at once, and an older one answering late must not undo a newer one). True when what shows changed.
+    pub fn offer(&mut self, ticket: u64, likes: Option<Likes>) -> bool {
+        if ticket <= self.version {
+            return false;
+        }
+        self.version = ticket;
+        let changed = self.likes != likes;
+        self.likes = likes;
+        changed
+    }
+}
+
+/// What a state report means for the like state.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LikesAfter {
+    Keep,
+    /// Ask the bot again: the song changed, or the panel (re)connected signed in.
+    Refresh,
+    /// Signed out: these likes are not the next person's.
+    Forget,
+}
+
+pub fn likes_after(changes: &[Change]) -> LikesAfter {
+    if changes.iter().any(|c| matches!(c, Change::ConnectionChanged { signed_in: false, .. })) {
+        return LikesAfter::Forget;
+    }
+    let refresh = changes
+        .iter()
+        .any(|c| matches!(c, Change::TrackChanged { .. } | Change::ConnectionChanged { connected: true, signed_in: true }));
+    if refresh { LikesAfter::Refresh } else { LikesAfter::Keep }
+}
+
+static LIKES_ASKED: AtomicU64 = AtomicU64::new(0);
+
+fn likes_state(app: &AppHandle) -> LikesState {
+    app.state::<AppState>().likes.lock().unwrap().clone()
+}
+
+/// Keeps the answer to ask `ticket` (see `LikesState::offer`) and tells the mini-player when what it shows changed.
+fn offer_likes(app: &AppHandle, ticket: u64, likes: Option<Likes>) -> LikesState {
+    let (changed, now) = {
+        let state = app.state::<AppState>();
+        let mut current = state.likes.lock().unwrap();
+        (current.offer(ticket, likes), current.clone())
+    };
+    if changed {
+        let _ = app.emit_to(LABEL, "likes-changed", &now);
+    }
+    now
+}
+
+/// Asks the bot for the signed-in person's likes and keeps them. Every call asks: the answer to an ask made after a
+/// change always includes it, and only an older ask's late answer is dropped.
+/// Blocks while it waits for the panel's answer: call it from a worker thread or an async command, never the main thread.
+pub fn refresh_likes(app: &AppHandle) -> Result<LikesState, String> {
+    let ticket = LIKES_ASKED.fetch_add(1, Ordering::SeqCst) + 1;
+    let data = bridge::send_command_fetch(app, BotCommand::LikesMine, LIKES_TIMEOUT)?;
+    let likes = lookup::likes(&data).ok_or_else(|| "The bot sent no likes".to_string())?;
+    Ok(offer_likes(app, ticket, Some(likes)))
+}
+
+fn refresh_likes_in_background(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = refresh_likes(&app) {
+            log::info!("could not refresh the likes: {e}");
+        }
+    });
+}
+
+/// The bot said the signed-in person's likes changed (the panel's bridge heard it).
+pub fn on_likes_changed(app: &AppHandle) {
+    refresh_likes_in_background(app);
+}
+
+/// Keeps the like state in step with the player: asked again when the song changes or on signing in, dropped on signing out.
+pub fn on_state_changes(app: &AppHandle, changes: &[Change]) {
+    match likes_after(changes) {
+        LikesAfter::Keep => {}
+        LikesAfter::Refresh => refresh_likes_in_background(app),
+        LikesAfter::Forget => {
+            let ticket = LIKES_ASKED.fetch_add(1, Ordering::SeqCst) + 1;
+            offer_likes(app, ticket, None);
+        }
+    }
+}
+
+/// Sends a ♥ change, then asks for the list again whatever the bot answered, so the ♥s show what it holds. On a yes the
+/// fresh list comes back with the answer; a no is the bot's own words, and the fresh list follows as `likes-changed`.
+fn change_like(app: &AppHandle, cmd: BotCommand) -> Result<LikesState, String> {
+    if let Err(e) = bridge::send_command_await(app, cmd, COMMAND_TIMEOUT) {
+        refresh_likes_in_background(app);
+        return Err(e);
+    }
+    refresh_likes(app).or_else(|e| {
+        log::info!("could not refresh the likes after a change: {e}");
+        Ok(likes_state(app))
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -698,6 +814,40 @@ pub async fn mini_play_playlist(app: AppHandle, name: String, folder: Option<Str
     .await
 }
 
+/// The like state as last fetched (unknown until the bot first answers); what changes after arrives as `likes-changed`.
+#[tauri::command]
+pub fn mini_likes(app: AppHandle) -> LikesState {
+    likes_state(&app)
+}
+
+/// ♥ the song the UI names (the one the user clicked, which may not be playing any more); answers the fresh list.
+#[tauri::command]
+pub async fn mini_like(app: AppHandle, song: PlaylistSong) -> Result<LikesState, String> {
+    let cmd = lookup::like_command(song)?;
+    blocking(move || change_like(&app, cmd)).await
+}
+
+#[tauri::command]
+pub async fn mini_unlike(app: AppHandle, uri: String) -> Result<LikesState, String> {
+    let cmd = lookup::unlike_command(uri)?;
+    blocking(move || change_like(&app, cmd)).await
+}
+
+/// Plays the signed-in person's own likes on the selected server.
+#[tauri::command]
+pub async fn mini_play_likes(app: AppHandle) -> Result<String, String> {
+    let cmd = {
+        let app_state = app.state::<AppState>();
+        let store = app_state.store.lock().unwrap();
+        lookup::play_likes_command(store.current().and_then(|s| s.me.as_ref()))?
+    };
+    blocking(move || {
+        bridge::send_command_await(&app, cmd, COMMAND_TIMEOUT)?;
+        Ok("Playing your likes".to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn mini_play_link(app: AppHandle, text: String) -> Result<String, String> {
     blocking(move || {
@@ -774,6 +924,49 @@ mod tests {
         assert_eq!(resized_origin((100, 964), 64, 170, SCREEN), (100, 858));
         // Growing back near the top of the screen stays on it.
         assert_eq!(resized_origin((100, 40), 64, 170, SCREEN), (100, 0));
+    }
+
+    fn liked(uris: &[&str]) -> Option<Likes> {
+        Some(Likes { uris: uris.iter().map(|u| u.to_string()).collect(), count: uris.len() as u32 })
+    }
+
+    #[test]
+    fn the_like_state_keeps_the_answer_to_the_newest_ask() {
+        let mut state = LikesState::default();
+        assert_eq!(state, LikesState { version: 0, likes: None }, "unknown until the bot first answers");
+        assert!(state.offer(2, liked(&["a"])), "the first list changes what shows");
+        assert!(!state.offer(1, liked(&[])), "an older ask answering late changes nothing");
+        assert_eq!(state, LikesState { version: 2, likes: liked(&["a"]) });
+        assert!(!state.offer(3, liked(&["a"])), "the same list again: nothing to show");
+        assert_eq!(state.version, 3, "but it is the newest answer now");
+        assert!(state.offer(4, liked(&["b", "a"])));
+        assert!(state.offer(5, None), "forgotten on signing out");
+        assert!(!state.offer(5, liked(&["a"])), "one ask, one answer");
+        assert_eq!(state, LikesState { version: 5, likes: None });
+    }
+
+    #[test]
+    fn the_like_state_reaches_the_ui_numbered() {
+        let state = LikesState { version: 7, likes: liked(&["u"]) };
+        assert_eq!(serde_json::to_value(&state).unwrap(), serde_json::json!({"version": 7, "likes": {"uris": ["u"], "count": 1}}));
+        assert_eq!(serde_json::to_value(LikesState::default()).unwrap(), serde_json::json!({"version": 0, "likes": null}));
+    }
+
+    #[test]
+    fn likes_are_asked_for_again_when_the_song_changes_or_you_sign_in_and_forgotten_when_you_sign_out() {
+        use crate::state::{Change, QueueHead, Track};
+        let song = || Change::TrackChanged { track: Track::default(), initial: false };
+        assert_eq!(likes_after(&[song()]), LikesAfter::Refresh);
+        assert_eq!(likes_after(&[Change::TrackChanged { track: Track::default(), initial: true }]), LikesAfter::Refresh);
+        assert_eq!(likes_after(&[Change::ConnectionChanged { connected: true, signed_in: true }]), LikesAfter::Refresh);
+        assert_eq!(likes_after(&[Change::ConnectionChanged { connected: true, signed_in: false }, Change::Cleared]), LikesAfter::Forget);
+        assert_eq!(likes_after(&[Change::ConnectionChanged { connected: false, signed_in: false }]), LikesAfter::Forget, "rejected by a restarted bot");
+        assert_eq!(likes_after(&[Change::ConnectionChanged { connected: false, signed_in: false }, song()]), LikesAfter::Forget);
+        assert_eq!(likes_after(&[Change::ConnectionChanged { connected: false, signed_in: true }]), LikesAfter::Keep, "a dropped connection: same person");
+        for quiet in [Change::PlaybackChanged { paused: true }, Change::Cleared, Change::QueueHeadChanged(Some(QueueHead::default()))] {
+            assert_eq!(likes_after(&[quiet.clone()]), LikesAfter::Keep, "{quiet:?}");
+        }
+        assert_eq!(likes_after(&[]), LikesAfter::Keep);
     }
 
     const SIZE: (u32, u32) = (360, 140);

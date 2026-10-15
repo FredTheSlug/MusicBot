@@ -8,10 +8,13 @@ function ui(state, stale) {
   return { state: Object.assign({ connected: true, signedIn: true, guild: { id: '9', name: 'CK' }, track: null, paused: false, volume: 100 }, state), stale: !!stale };
 }
 
+/** A name as the mini-player writes it next to other text: between FSI and PDI (built here, never typed literally). */
+function isolated(name) { return String.fromCharCode(0x2068) + name + String.fromCharCode(0x2069); }
+
 test('playing track shows title, artist and requester', () => {
   const v = view(ui({ track }));
   assert.equal(v.title, 'Small Worlds');
-  assert.equal(v.meta, 'Mac Miller · requested by fred');
+  assert.equal(v.meta, 'Mac Miller · requested by ' + isolated('fred'));
   assert.equal(v.track, track);
 });
 
@@ -715,4 +718,179 @@ test('the match switch and the theme menu each send their own kind of change', (
   assert.match(mini, /el\('matchPanel'\)\.addEventListener\('change', function \(\) \{ saveTheme\(false\); \}\)/);
   assert.match(mini, /el\('themeSelect'\)\.addEventListener\('change', function \(\) \{ saveTheme\(true\); \}\)/);
   assert.match(mini, /invoke\('mini_set_theme', MV\.themeSetArgs\(el\('matchPanel'\)\.checked, el\('themeSelect'\)\.value, menuPicked\)\)/);
+});
+
+// ---- Likes: "requested by", the ♥s and "My likes" ----
+
+const { requestedByText, likesState, isLiked, likeClicked, likeAnswered, heartView, myLikesRow } = require('./view.js');
+
+test('requestedByText names who asked for the song, isolated; nothing when unknown', () => {
+  const st = (requestedBy) => ({ track: Object.assign({}, track, { requestedBy }) });
+  assert.equal(requestedByText(st('fred')), 'requested by ' + isolated('fred'));
+  assert.equal(requestedByText(st('  fred ')), 'requested by ' + isolated('fred'));
+  // an autoplay pick comes with no requester (the bot sends none), so it says nothing
+  for (const unknown of [null, undefined, '', '   ', 5, {}]) assert.equal(requestedByText(st(unknown)), '', String(unknown));
+  assert.equal(requestedByText({ track: null }), '');
+  assert.equal(requestedByText(null), '');
+  // direction controls inside a name can't reorder the rest of the line; a name made only of them is no name
+  const RLO = String.fromCharCode(0x202E), PDF = String.fromCharCode(0x202C), PDI = String.fromCharCode(0x2069);
+  assert.equal(requestedByText(st(RLO + 'derf' + PDF)), 'requested by ' + isolated('derf'));
+  assert.equal(requestedByText(st(RLO + PDI + '  ')), '');
+  assert.equal(requestedByText(st('<b>x</b>')), 'requested by ' + isolated('<b>x</b>'), 'text: the page sets it with textContent');
+});
+
+test('the line under the song is the artist and who requested it, each only when known', () => {
+  assert.equal(view(ui({ track })).meta, 'Mac Miller · requested by ' + isolated('fred'));
+  assert.equal(view(ui({ track: Object.assign({}, track, { requestedBy: null }) })).meta, 'Mac Miller');
+  assert.equal(view(ui({ track: Object.assign({}, track, { author: '' }) })).meta, 'requested by ' + isolated('fred'));
+  assert.equal(view(ui({ track: Object.assign({}, track, { author: '', requestedBy: null }) })).meta, '');
+});
+
+test('the app\'s like state becomes a lookup; an older copy changes nothing', () => {
+  const s = likesState({ version: 3, likes: { uris: ['a', 'b', 5, '', null, 'a'], count: 2 } }, null);
+  assert.equal(s.version, 3);
+  assert.deepEqual([...s.uris].sort(), ['a', 'b']);
+  assert.equal(s.count, 2);
+  assert.equal(likesState({ version: 2, likes: { uris: [], count: 0 } }, s), s, 'an answer and an event can cross on the way');
+  assert.deepEqual([...likesState({ version: 3, likes: { uris: ['c'], count: 1 } }, s).uris], ['c'], 'the same version again is taken');
+  const forgotten = likesState({ version: 4, likes: null }, s);
+  assert.deepEqual([forgotten.version, forgotten.uris, forgotten.count], [4, null, 0], 'signed out: unknown again');
+  assert.equal(likesState({ version: 5, likes: { uris: ['a', 'b'] } }, null).count, 2, 'no count: as many as listed');
+  assert.equal(likesState({ version: 5, likes: { uris: ['a'], count: -1 } }, null).count, 1);
+  assert.equal(likesState({ version: 5, likes: { uris: ['a'], count: 2.7 } }, null).count, 2);
+  for (const junk of [null, undefined, {}, { version: 'x', likes: { uris: [] } }, 'x']) {
+    assert.equal(likesState(junk, s), s, 'junk never replaces what is known: ' + JSON.stringify(junk));
+  }
+  assert.equal(likesState(null, null).uris, null);
+  assert.equal(likesState({ version: 6, likes: { uris: 'a' } }, null).uris, null);
+});
+
+const KNOWN = likesState({ version: 1, likes: { uris: ['https://y/liked'], count: 1 } }, null);
+
+test('a ♥ shows the bot\'s list, or the click still on its way', () => {
+  assert.equal(isLiked(KNOWN, {}, 'https://y/liked'), true);
+  assert.equal(isLiked(KNOWN, {}, 'https://y/other'), false);
+  assert.equal(isLiked(null, {}, 'https://y/liked'), false);
+  assert.equal(isLiked(KNOWN, null, 'https://y/liked'), true);
+  assert.equal(isLiked(KNOWN, {}, ''), false);
+  assert.equal(isLiked(KNOWN, {}, null), false);
+  for (const name of ['constructor', '__proto__', 'toString']) assert.equal(isLiked(KNOWN, {}, name), false, name);
+});
+
+test('a ♥ click fills at once and its answer hands the ♥ back to the bot\'s fresh list', () => {
+  const click = likeClicked(KNOWN, {}, 'https://y/other', 1);
+  assert.equal(click.liked, true, 'not liked yet: this click likes it');
+  assert.equal(isLiked(KNOWN, click.clicks, 'https://y/other'), true, 'optimistic');
+  // the bot said yes; the app asked for the list again and sends it with the answer
+  const fresh = likesState({ version: 2, likes: { uris: ['https://y/other', 'https://y/liked'], count: 2 } }, KNOWN);
+  const settled = likeAnswered(click.clicks, 'https://y/other', 1);
+  assert.deepEqual(Object.keys(settled), [], 'nothing left on its way');
+  assert.equal(isLiked(fresh, settled, 'https://y/other'), true);
+});
+
+test('a refused ♥ click reverts', () => {
+  const click = likeClicked(KNOWN, {}, 'https://y/liked', 7);
+  assert.equal(click.liked, false, 'liked already: this click unlikes it');
+  assert.equal(isLiked(KNOWN, click.clicks, 'https://y/liked'), false, 'optimistic');
+  // the bot said no: its list is as it was, so the ♥ is too
+  assert.equal(isLiked(KNOWN, likeAnswered(click.clicks, 'https://y/liked', 7), 'https://y/liked'), true);
+});
+
+test('the latest click on a song shows until it is answered; clicks never change what they were given', () => {
+  const like = likeClicked(KNOWN, {}, 'u', 1);
+  const unlike = likeClicked(KNOWN, like.clicks, 'u', 2);
+  assert.equal(unlike.liked, false, 'the second click undoes the first');
+  assert.equal(like.clicks.u.liked, true);
+  const older = likeAnswered(unlike.clicks, 'u', 1);
+  assert.equal(older, unlike.clicks, 'the first answer leaves the newer click showing');
+  assert.equal(isLiked(KNOWN, older, 'u'), false);
+  assert.deepEqual(Object.keys(likeAnswered(older, 'u', 2)), []);
+  assert.equal(likeAnswered(older, 'u', 9), older, 'an answer to no click');
+  assert.equal(likeAnswered(older, 'nope', 2), older);
+  const other = likeClicked(KNOWN, unlike.clicks, 'https://y/liked', 3);
+  assert.equal(isLiked(KNOWN, other.clicks, 'u'), false, 'clicks on other songs are their own');
+  assert.equal(isLiked(KNOWN, other.clicks, 'https://y/liked'), false);
+  assert.deepEqual(Object.keys(unlike.clicks), ['u']);
+});
+
+test('heartView: hidden while the likes are unknown; off with no song or no signed-in bot; filled when liked', () => {
+  const song = { uri: 'https://y/liked', title: 'T' };
+  assert.deepEqual(heartView(KNOWN, {}, song, true), { hidden: false, disabled: false, liked: true, title: 'Unlike' });
+  assert.deepEqual(heartView(KNOWN, {}, { uri: 'https://y/x' }, true), { hidden: false, disabled: false, liked: false, title: 'Like' });
+  assert.equal(heartView(null, {}, song, true).hidden, true, 'a bot without likes, or no answer yet');
+  assert.equal(heartView(likesState({ version: 2, likes: null }, null), {}, song, true).hidden, true);
+  assert.deepEqual(heartView(KNOWN, {}, null, true), { hidden: false, disabled: true, liked: false, title: 'Like' }, 'nothing playing');
+  assert.equal(heartView(KNOWN, {}, song, false).disabled, true, 'signed out or unreachable');
+  const click = likeClicked(KNOWN, {}, 'https://y/x', 1);
+  assert.equal(heartView(KNOWN, click.clicks, { uri: 'https://y/x' }, true).title, 'Unlike', 'the click shows at once');
+});
+
+test('"♥ My likes (n)" is offered only to someone signed in, once the likes are known', () => {
+  const st = { connected: true, signedIn: true, me: { id: '1', name: 'fred', avatarUrl: null } };
+  const three = likesState({ version: 1, likes: { uris: ['a', 'b', 'c'], count: 3 } }, null);
+  assert.deepEqual(myLikesRow(three, st), { title: '♥ My likes (3)', count: 3 });
+  assert.deepEqual(myLikesRow(likesState({ version: 1, likes: { uris: [], count: 0 } }, null), st), { title: '♥ My likes (0)', count: 0 }, 'at 0 too');
+  assert.equal(myLikesRow(three, Object.assign({}, st, { signedIn: false })), null);
+  assert.equal(myLikesRow(three, Object.assign({}, st, { me: null })), null, 'a bot with the login off has no list of yours');
+  assert.equal(myLikesRow(three, Object.assign({}, st, { me: { id: '' } })), null);
+  assert.equal(myLikesRow(null, st), null);
+  assert.equal(myLikesRow(likesState({ version: 1, likes: null }, null), st), null);
+  assert.equal(myLikesRow(three, null), null);
+});
+
+// ---- where the ♥ sits ----
+
+test('the ♥ sits in the bottom row after the +, with the same look as its neighbours, and hides with them in the compact bar', () => {
+  const start = MINI_HTML.indexOf('<div class="bottom-row">');
+  const row = MINI_HTML.slice(start, MINI_HTML.indexOf('</div>', start));
+  const like = row.indexOf('id="likeBtn"');
+  assert.ok(like > row.indexOf('id="addBtn"') && like < row.indexOf('id="status"'), 'after the +, before the status line');
+  assert.equal(MINI_HTML.split('id="likeBtn"').length, 2, 'once');
+  const tag = row.slice(row.lastIndexOf('<button', like), row.indexOf('>', like) + 1);
+  assert.match(tag, /class="icon-btn like"/, 'the size, hover and focus of the other bottom-row buttons');
+  assert.match(tag, /aria-pressed="false"/);
+  assert.match(tag, /aria-label="Like"/);
+  assert.match(tag, /\bdisabled\b/);
+  assert.match(tag, /\bhidden\b/, 'shown once the likes are known');
+  assert.match(MINI_CSS, /\n\.like\[hidden\] \{ display: none; \}/, '.icon-btn sets a display, which would beat [hidden]');
+  const at = MINI_CSS.indexOf('\nhtml.compact #restart');
+  const compact = MINI_CSS.slice(at, MINI_CSS.indexOf('display: none; }', at));
+  assert.match(compact, /html\.compact #addBtn, html\.compact #likeBtn,/, 'the compact bar keeps only play/pause, skip and the menu');
+});
+
+test('every command the mini-player calls is granted to its window and registered with the app', () => {
+  const mini = fs.readFileSync(path.join(__dirname, 'mini.js'), 'utf8');
+  const called = [...new Set([...mini.matchAll(/(?:invoke|runAction)\('([a-z_]+)'/g)].map((m) => m[1]))];
+  for (const cmd of ['mini_likes', 'mini_like', 'mini_unlike', 'mini_play_likes']) assert.ok(called.includes(cmd), cmd + ' is called');
+  const tauri = path.join(__dirname, '..', '..', 'src-tauri');
+  const granted = JSON.parse(fs.readFileSync(path.join(tauri, 'capabilities', 'mini-player.json'), 'utf8')).permissions;
+  const build = fs.readFileSync(path.join(tauri, 'build.rs'), 'utf8');
+  const main = fs.readFileSync(path.join(tauri, 'src', 'main.rs'), 'utf8');
+  for (const cmd of called) {
+    assert.ok(granted.includes('allow-' + cmd.replace(/_/g, '-')), cmd + ' is granted to the mini-player window');
+    assert.ok(build.includes('"' + cmd + '",'), cmd + ' is listed in build.rs');
+    assert.match(main, new RegExp('mini_player::' + cmd + '\\b'), cmd + ' is in the invoke handler');
+  }
+  assert.match(mini, /listen\('likes-changed', /);
+});
+
+test('no literal direction controls in the desktop sources (they are written as escapes)', () => {
+  // The panel has its own guard (src/test/js); this one covers desktop/: U+061C, U+200E/F, U+202A-202E, U+2066-2069.
+  const isControl = (c) => c === 0x061C || c === 0x200E || c === 0x200F || (c >= 0x202A && c <= 0x202E) || (c >= 0x2066 && c <= 0x2069);
+  const desktop = path.join(__dirname, '..', '..');
+  const dirs = [['bridge', /\.js$/], [path.join('ui', 'mini-player'), /\.(js|html|css)$/], [path.join('src-tauri', 'src'), /\.rs$/],
+    [path.join('src-tauri', 'capabilities'), /\.json$/]];
+  let checked = 0;
+  for (const [dir, pattern] of dirs) {
+    for (const name of fs.readdirSync(path.join(desktop, dir)).filter((n) => pattern.test(n))) {
+      const text = fs.readFileSync(path.join(desktop, dir, name), 'utf8');
+      let line = 1;
+      for (const ch of text) {
+        if (ch === '\n') line++;
+        else if (isControl(ch.codePointAt(0))) assert.fail(dir + '/' + name + ':' + line + ' has U+' + ch.codePointAt(0).toString(16).toUpperCase());
+      }
+      checked++;
+    }
+  }
+  assert.ok(checked >= 20, 'the sources were found: ' + checked);
 });
