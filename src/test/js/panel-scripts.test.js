@@ -38,13 +38,16 @@ function panelSourceFiles() {
     .concat(pick(__dirname, (name) => name.endsWith('.js')));
 }
 
-/** [{line, codePoint}] for every literal mark, embedding, override or isolate that changes text direction. */
+/**
+ * [{line, codePoint}] for every literal mark, embedding, override or isolate that changes text direction: U+061C,
+ * U+200E/F, U+202A-202E, U+2066-2069 (as the desktop guard in desktop/ui/mini-player/view.test.js).
+ */
 function literalBidiControls(text) {
   const found = [];
   text.split(String.fromCharCode(10)).forEach((line, i) => {
     for (const ch of line) {
       const c = ch.codePointAt(0);
-      if (c === 0x200E || c === 0x200F || (c >= 0x202A && c <= 0x202E) || (c >= 0x2066 && c <= 0x2069)) {
+      if (c === 0x061C || c === 0x200E || c === 0x200F || (c >= 0x202A && c <= 0x202E) || (c >= 0x2066 && c <= 0x2069)) {
         found.push({ line: i + 1, codePoint: 'U+' + c.toString(16).toUpperCase().padStart(4, '0') });
       }
     }
@@ -70,4 +73,6 @@ test('theBidiCheckSeesACharacterItIsThereFor', () => {
   assert.deepEqual(literalBidiControls('fine' + String.fromCharCode(10) + 'a' + rlo + 'b' + isolate),
     [{ line: 2, codePoint: 'U+202E' }, { line: 2, codePoint: 'U+2068' }]);
   assert.deepEqual(literalBidiControls('plain text, and a middle dot: ' + String.fromCharCode(0xB7)), []);
+  // the Arabic letter mark changes direction too, as the desktop guard knows
+  assert.deepEqual(literalBidiControls('x' + String.fromCharCode(0x061C)), [{ line: 1, codePoint: 'U+061C' }]);
 });

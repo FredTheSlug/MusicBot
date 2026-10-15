@@ -6,7 +6,8 @@
  *
  * At most one like/unlike request per song is on its way at a time, so the server gets them in click order. A click
  * meanwhile only changes what is wanted (the ♥ flips at once); when the request is answered and the server differs
- * from the last click, exactly one more request goes for it. The last click wins, on the page and on the server.
+ * from a click made meanwhile, exactly one more request goes for it. The last click wins, on the page and on the server.
+ * An answer with no click since its request is final, even one that differs from what was asked.
  *
  * A state is never changed in place: every function that changes it returns a new one. It holds
  *   known    uri -> true for every song the server last said you liked (GET /api/likes/mine, and answers)
@@ -80,10 +81,12 @@
     /*
      * The answer to request `id`: ok, and the server's `liked` (a non-boolean counts as what was asked for).
      * Returns {state, request, reverted}:
-     *   request   exactly one more request when the server now differs from the last click, else null
+     *   request   exactly one more request when there were clicks after the request and the server now differs from
+     *             the last one, else null
      *   reverted  the request failed with no click after it, and the ♥ went back: the panel says why
-     * A failed request is followed up only when there were clicks after it that the server does not match yet.
-     * An answer to anything but the song's request on its way changes nothing.
+     * With no click after the request the answer is final: the ♥ shows what the server said, even when a 2xx says
+     * something else than was asked (so such a server never gets a loop of requests). An answer to anything but the
+     * song's request on its way changes nothing.
      */
     function settle(state, uri, ok, serverLiked, id) {
         var open = state.open[uri];
@@ -97,7 +100,7 @@
             else delete s.known[uri];
         }
         var clickedSince = open.lastClick > open.sent.id;
-        if (open.want === now || (!ok && !clickedSince)) {
+        if (open.want === now || !clickedSince) {
             delete s.open[uri];
             return { state: s, request: null, reverted: !ok && open.want !== now };
         }
@@ -165,6 +168,15 @@
         return (isolated(name) || 'Someone') + "'s likes";
     }
 
+    /*
+     * The toast once a list of likes starts playing: "Loading anna's likes…" (the name as likesLabel shows it,
+     * isolated), "Loading My likes…", or "Loading everyone's likes…" for everyone's. Plain text: the panel's own
+     * words, as the server's message carries the name without an isolate.
+     */
+    function playingText(name, isMe, everyone) {
+        return 'Loading ' + (everyone === true ? "everyone's likes" : likesLabel(name, isMe)) + '…';
+    }
+
     function wholeCount(n) {
         return typeof n === 'number' && isFinite(n) && n >= 0 && Math.floor(n) === n ? n : 0;
     }
@@ -214,6 +226,7 @@
         fromMine: fromMine,
         likedByText: likedByText,
         likesLabel: likesLabel,
+        playingText: playingText,
         peopleOrder: peopleOrder
     };
 }));

@@ -11760,7 +11760,7 @@
             name.title = label;
             text.appendChild(name);
             li.appendChild(text);
-            if (p.count > 0) li.appendChild(plIconBtn('▶', 'Play', function () { plPlayLikes(p.id, 'all'); }));
+            if (p.count > 0) li.appendChild(plIconBtn('▶', 'Play', function () { plPlayLikes({ userId: p.id, ownerName: p.name, mine: p.mine }, 'all'); }));
             li.addEventListener('click', function () { plOpenPage('', '', { userId: p.id, ownerName: p.name, mine: p.mine }); });
             return li;
         }
@@ -11776,7 +11776,7 @@
             name.title = "Play everyone's likes, shuffled";
             text.appendChild(name);
             li.appendChild(text);
-            li.addEventListener('click', function () { plPlayLikes('everyone', 'all'); });
+            li.addEventListener('click', function () { plPlayLikes({ userId: 'everyone' }, 'all'); });
             return li;
         }
 
@@ -12037,19 +12037,24 @@
             return plPlayAt('/playlists/play', body, 'Loading playlist…', "Couldn't play that playlist");
         }
 
-        // Someone's likes (userId), or "everyone": all likes merged, without repeats, shuffled by the server.
-        function plPlayLikes(userId, mode, songId) {
-            var body = { userId: userId, mode: mode };
+        // Someone's likes (who: {userId, ownerName, mine}, as page.likes), or userId "everyone": all likes merged,
+        // without repeats, shuffled by the server. The toast is the panel's own text (Likes.playingText, the name
+        // isolated), never the server's message, which has the name in it as it is.
+        function plPlayLikes(who, mode, songId) {
+            var body = { userId: who.userId, mode: mode };
             if (songId) body.songId = songId;
-            return plPlayAt('/likes/play', body, 'Loading liked songs…', "Couldn't play those likes");
+            var loading = Likes.playingText(who.ownerName, who.mine, who.userId === 'everyone');
+            return plPlayAt('/likes/play', body, loading, "Couldn't play those likes", true);
         }
 
         // Play, Shuffle and play from here of the open page, a playlist or someone's likes.
         function plPlayPage(page, mode, songId) {
-            return page.likes ? plPlayLikes(page.likes.userId, mode, songId) : plPlay(page.name, page.folder, mode, songId);
+            return page.likes ? plPlayLikes(page.likes, mode, songId) : plPlay(page.name, page.folder, mode, songId);
         }
 
-        async function plPlayAt(path, body, loading, failed) {
+        // loading: the toast once the bot took it. A playlist shows the bot's own message instead when it sends one;
+        // with ownText it is always `loading`.
+        async function plPlayAt(path, body, loading, failed, ownText) {
             if (!currentGuild) {
                 plToast('Pick a server first', { error: true });
                 return;
@@ -12057,7 +12062,7 @@
             try {
                 var res = await plApi('POST', '/api/guild/' + encodeURIComponent(currentGuild) + path, body);
                 if (res.ok) {
-                    plToast(typeof res.data.message === 'string' && res.data.message ? res.data.message : loading, {});
+                    plToast(!ownText && typeof res.data.message === 'string' && res.data.message ? res.data.message : loading, {});
                     refreshAll();
                 } else {
                     plToast(plErrorText(res, failed), { error: true });

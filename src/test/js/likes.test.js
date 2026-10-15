@@ -91,9 +91,10 @@ test('anUnlikeLastWins', () => {
 
 /*
  * One song through a list of steps: 'c' a click, 'a' the server answers the request on its way, 'f' that request
- * fails. The fake server applies a request when it answers it; afterwards every request left is answered.
+ * fails. The fake server applies a request when it answers it (a contrary one does the opposite, and says so);
+ * afterwards every request left is answered.
  */
-function drive(steps) {
+function drive(steps, contrary) {
   let s = Likes.createState();
   let server = false;
   let open = null;
@@ -103,7 +104,7 @@ function drive(steps) {
   const answer = (ok) => {
     const r = open;
     open = null;
-    if (ok) server = r.liked;
+    if (ok) server = contrary ? !r.liked : r.liked;
     const res = Likes.settle(s, 'u', ok, ok ? server : undefined, r.id);
     s = res.state;
     if (res.request) {
@@ -126,7 +127,10 @@ function drive(steps) {
       answer(step === 'a');
     }
   }
-  while (open) answer(true);
+  for (let answers = 0; open; answers++) {
+    assert.ok(answers < 20, steps + ': the follow-ups never end');
+    answer(true);
+  }
   return { shown: Likes.isLiked(s, 'u'), server, lastClick, sent, clicks };
 }
 
@@ -150,6 +154,35 @@ test('lastClickWinsOnTheServer', () => {
   });
   assert.equal(drive('ccc').sent, 1, 'like, unlike, like before any answer: one request');
   assert.equal(drive('cc').sent, 2, 'like, unlike before any answer: the like, then one unlike');
+});
+
+test('anAnswerThatContradictsTheRequestIsFinal', () => {
+  // a server that does the opposite of every request (and says so) gets at most one request per click, never a
+  // loop of follow-ups, and the ♥ ends on what it said
+  allSteps(['c', 'a'], 8).filter((st) => st.includes('c')).forEach((steps) => {
+    const r = drive(steps, true);
+    assert.ok(r.sent <= r.clicks, steps + ': never more requests than clicks');
+    assert.equal(r.shown, r.server, steps + ': the ♥ shows what the server said');
+  });
+
+  // one like, answered "not liked" with no click since: that is final
+  let s = Likes.createState();
+  const like = Likes.toggle(s, 'u', SONG);
+  const res = Likes.settle(like.state, 'u', true, false, like.request.id);
+  assert.equal(res.request, null, 'no follow-up');
+  assert.equal(res.reverted, false);
+  assert.equal(Likes.isLiked(res.state, 'u'), false, "the server's answer");
+
+  // a click after the request still gets its one follow-up
+  s = Likes.createState();
+  const a = Likes.toggle(s, 'v', SONG); s = a.state;
+  s = Likes.toggle(s, 'v', SONG).state;
+  s = Likes.toggle(s, 'v', SONG).state; // wants liked
+  const follow = Likes.settle(s, 'v', true, false, a.request.id);
+  assert.equal(follow.request.liked, true, 'the clicks after the request are sent for');
+  const done = Likes.settle(follow.state, 'v', true, false, follow.request.id);
+  assert.equal(done.request, null, 'and its contrary answer is final too');
+  assert.equal(Likes.isLiked(done.state, 'v'), false);
 });
 
 test('failuresNeverLeaveTheHeartWrong', () => {
@@ -339,6 +372,16 @@ test('likesLabel', () => {
   assert.equal(visible(Likes.likesLabel('  anna ', false)), "anna's likes");
   assert.equal(visible(Likes.likesLabel('anna')), "anna's likes", 'not yours unless isMe is true');
   assert.equal(visible(Likes.likesLabel('anna', 'yes')), "anna's likes");
+});
+
+test('playingText', () => {
+  // the toast once a list of likes plays: the panel's own words, the name isolated as in likesLabel
+  assert.equal(Likes.playingText('anna', false), 'Loading ' + FSI + 'anna' + PDI + "'s likes…");
+  assert.equal(Likes.playingText('fred', true), 'Loading My likes…');
+  assert.equal(Likes.playingText(undefined, undefined, true), "Loading everyone's likes…");
+  assert.equal(Likes.playingText('a' + RLO + 'b', false), 'Loading ' + FSI + 'ab' + PDI + "'s likes…", 'its own controls dropped');
+  assert.equal(Likes.playingText('', false), "Loading Someone's likes…");
+  assert.equal(Likes.playingText('<b>x</b>', false), 'Loading ' + FSI + '<b>x</b>' + PDI + "'s likes…", 'text, not markup');
 });
 
 test('likesLabelIsIsolatedText', () => {
