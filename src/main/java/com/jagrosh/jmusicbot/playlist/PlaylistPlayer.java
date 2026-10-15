@@ -98,6 +98,21 @@ public class PlaylistPlayer
             loadLegacy(name, folder, each, done);
             return;
         }
+        loadFile(file, "playlist:" + guild.getId() + ":" + (folder == null ? "" : folder) + "/" + name, mode, songId, each, done);
+    }
+
+    /**
+     * Loads the songs of a playlist already in hand (format 2: a stored playlist, someone's likes, or a list made
+     * for this one play), as {@link #load} does. The songs load one after the other, in order, under
+     * {@code orderKey}, while other loads in the guild (a play command, a search) don't have to wait for them: give
+     * each list in each guild a key of its own, such as {@code "likes:<guild id>:<user id>"}.
+     *
+     * @throws NoSuchElementException   {@code Song not found}, for {@link #FROM} and an id the list doesn't have
+     * @throws IllegalArgumentException for an unknown mode
+     */
+    public void loadFile(PlaylistFile file, String orderKey, String mode, String songId,
+            Consumer<AudioTrack> each, Consumer<Result> done)
+    {
         List<Song> songs = order(file, mode, songId, ThreadLocalRandom.current());
         if(songs.isEmpty())
         {
@@ -105,11 +120,8 @@ public class PlaylistPlayer
             return;
         }
         LoadRun run = new LoadRun(songs, config::isTooLong, each, done);
-        // One key for this playlist in this guild: its songs load one after the other, in order, while
-        // other loads in the guild (a play command, a search) don't have to wait for the whole playlist.
-        String key = "playlist:" + guild.getId() + ":" + (folder == null ? "" : folder) + "/" + name;
         for(int i = 0; i < songs.size(); i++)
-            manager.loadItemOrdered(key, songs.get(i).getUri(), run.handler(i));
+            manager.loadItemOrdered(orderKey, songs.get(i).getUri(), run.handler(i));
     }
 
     /** The old way: every raw line, through {@link PlaylistLoader}; a search gives its first track, a playlist link all of its tracks. */

@@ -23,6 +23,7 @@ import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.audio.SpotifyResolver;
 import com.jagrosh.jmusicbot.playlist.ImportJobs;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile;
+import com.jagrosh.jmusicbot.playlist.PlaylistPlayer;
 import com.jagrosh.jmusicbot.settings.RepeatMode;
 import com.jagrosh.jmusicbot.settings.PlayCountStore;
 import com.jagrosh.jmusicbot.settings.Settings;
@@ -77,6 +78,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import io.javalin.websocket.WsContext;
 import org.json.JSONObject;
@@ -258,7 +261,10 @@ public class WebServer
         }
     }
 
-    /** Builds the playlist routes over the bot's playlist store and registers them (the auth middleware is added after, and covers them). */
+    /**
+     * Builds the playlist routes over the bot's playlist store and the liked-songs routes over its likes, and registers
+     * them (the auth middleware is added after, and covers them).
+     */
     private void registerPlaylistRoutes()
     {
         // Imports load slowly, so they get their own threads: up to 3 run at once (ImportJobs enforces that).
@@ -270,9 +276,12 @@ public class WebServer
         });
         ImportJobs imports = new ImportJobs(bot.getPlaylistStore(), bot.getTrackResolver(), playlistImportPool,
                 progress -> broadcastAll("playlist-import", PlaylistRoutes.importProgress(progress)));
+        // a local file may go into a playlist or the likes when it is already in one or the other
+        Predicate<String> inLikes = SongInput.likedByAnyone(bot.getLikesStore());
         new PlaylistRoutes(bot.getPlaylistStore(), bot.getPlaylistConverter(), imports, bot.getTrackResolver(),
-                this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC(),
-                SongInput.likedByAnyone(bot.getLikesStore())).register(app);
+                this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC(), inLikes).register(app);
+        new LikeRoutes(bot.getLikesStore(), uri -> SongInput.storedIn(bot.getPlaylistStore(), inLikes).test(uri),
+                this::currentUser, this::broadcastAll, this::playLikes, Clock.systemUTC()).register(app);
     }
 
     /**
@@ -1560,11 +1569,44 @@ public class WebServer
             return;
         }
 
-        PlayerManager manager = bot.getPlayerManager();
+        Consumer<AudioTrack> queue = queueForWeb(ctx, guild);
+        if (queue == null) return;
+
+        log.info("Web playlist: loading '{}' from folder '{}' ({}) for guild {}", name, folder, mode, guildId);
+        // Not found / bad mode are thrown here, before anything is written to the response.
+        bot.getPlaylistPlayer().load(guild, name, folder, mode, songId, queue, finishedLoading(guildId, "'" + name + "'"));
+        ctx.json(Map.of("message", "Loading playlist " + name + "..."));
+    }
+
+    /**
+     * What LikeRoutes calls to play someone's likes, or everyone's mix: as {@link #playPlaylist}, with the list already
+     * read (and checked) by LikeRoutes.
+     */
+    private void playLikes(Context ctx, String guildId, PlaylistFile list, String mode, String songId)
+    {
+        Guild guild = resolveGuild(ctx);
+        if (guild == null) return;
+
+        Consumer<AudioTrack> queue = queueForWeb(ctx, guild);
+        if (queue == null) return;
+
+        log.info("Web likes: loading the likes of {} ({}) for guild {}", list.getName(), mode, guildId);
+        bot.getPlaylistPlayer().loadFile(list, "likes:" + guild.getId() + ":" + list.getName(), mode, songId, queue,
+                finishedLoading(guildId, "the likes of " + list.getName()));
+        ctx.json(Map.of("message", LikeRoutes.loadingMessage(list)));
+    }
+
+    /**
+     * Gets a server ready for songs from the panel: joins a voice channel if the bot is in none (the configured one,
+     * else the first). Returns what queues a track as requested by whoever is asking; null when the bot can't join,
+     * after answering the request itself.
+     */
+    private Consumer<AudioTrack> queueForWeb(Context ctx, Guild guild)
+    {
         AudioHandler handler;
         try
         {
-            handler = manager.setUpHandler(guild);
+            handler = bot.getPlayerManager().setUpHandler(guild);
 
             if (!guild.getSelfMember().getVoiceState().inAudioChannel())
             {
@@ -1574,31 +1616,31 @@ public class WebServer
                 if (connectTo == null)
                 {
                     ctx.json(Map.of("message", "No voice channel available"));
-                    return;
+                    return null;
                 }
                 guild.getAudioManager().openAudioConnection(connectTo);
             }
         }
         catch (Exception e)
         {
-            log.error("Web playlist: voice/setup failed for guild {}", guildId, e);
+            log.error("Web playlist: voice/setup failed for guild {}", guild.getId(), e);
             ctx.status(500).json(Map.of("error", "Could not join a voice channel. Check bot permissions and try again."));
-            return;
+            return null;
         }
 
-        log.info("Web playlist: loading '{}' from folder '{}' ({}) for guild {}", name, folder, mode, guildId);
-        final RequestMetadata playlistRequester = requestMetadataForWeb(ctx);
+        final RequestMetadata requester = requestMetadataForWeb(ctx);
+        return track -> handler.addTrack(new QueuedTrack(track, requester));
+    }
 
-        // Not found / bad mode are thrown here, before anything is written to the response.
-        bot.getPlaylistPlayer().load(guild, name, folder, mode, songId,
-                track -> handler.addTrack(new QueuedTrack(track, playlistRequester)),
-                result ->
-                {
-                    broadcastUpdate(guildId, "queue");
-                    broadcastUpdate(guildId, "player");
-                    log.info("Web playlist: finished loading '{}': {} queued, {} failed", name, result.getLoaded(), result.getErrors().size());
-                });
-        ctx.json(Map.of("message", "Loading playlist " + name + "..."));
+    /** What runs once a playlist (or a list of likes) has loaded: refreshes the panels' queue and player, and logs it. */
+    private Consumer<PlaylistPlayer.Result> finishedLoading(String guildId, String what)
+    {
+        return result ->
+        {
+            broadcastUpdate(guildId, "queue");
+            broadcastUpdate(guildId, "player");
+            log.info("Web playlist: finished loading {}: {} queued, {} failed", what, result.getLoaded(), result.getErrors().size());
+        };
     }
 
     private void handleResolvePlaylistUrl(Context ctx)
