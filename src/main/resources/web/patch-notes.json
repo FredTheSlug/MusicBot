@@ -1,6 +1,14 @@
 {
   "notes": [
     {
+      "id": "2026-10-14-3",
+      "date": "2026-10-14",
+      "title": "Clearer upload limits",
+      "items": [
+        { "area": "Panel", "text": "Uploading an audio file over 100 MB now tells you right away that it's too big, and a file the bot can't take tells you why instead of just \"Error uploading\"." }
+      ]
+    },
+    {
       "id": "2026-10-14-2",
       "date": "2026-10-14",
       "title": "Make your own themes",

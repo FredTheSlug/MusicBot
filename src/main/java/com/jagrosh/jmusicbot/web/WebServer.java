@@ -954,6 +954,8 @@ public class WebServer
 
     private static final int WEB_SEARCH_MAX_PER_SOURCE = 8;
     private static final int WEB_PLAYLIST_EXPAND_MAX = 150;
+    static final long MAX_AUDIO_UPLOAD_BYTES = 100L * 1024 * 1024;
+    static final String AUDIO_TOO_LARGE = "Audio files can be up to 100 MB";
 
     private static boolean isHttpUrl(String q)
     {
@@ -1384,13 +1386,29 @@ public class WebServer
             "mp4", "mkv", "webm", "avi", "mov", "aiff", "alac"
     );
 
-    private void handleUpload(Context ctx)
+    void handleUpload(Context ctx)
     {
+        // before anything else reads the request: an oversized upload is refused unread, and one that announces no
+        // length is cut off at the cap instead of being spooled to disk in full
+        if (UploadLimit.tooLarge(ctx, MAX_AUDIO_UPLOAD_BYTES))
+        {
+            ctx.status(413).result(AUDIO_TOO_LARGE);
+            return;
+        }
         Guild guild = resolveGuild(ctx);
         if (guild == null) return;
 
         String guildId = guild.getId();
-        UploadedFile upload = ctx.uploadedFile("file");
+        UploadedFile upload;
+        try
+        {
+            upload = ctx.uploadedFile("file");
+        }
+        catch (IllegalStateException overTheCap)
+        {
+            ctx.status(413).result(AUDIO_TOO_LARGE);
+            return;
+        }
         if (upload == null)
         {
             ctx.status(400).result("No file uploaded");

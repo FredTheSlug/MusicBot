@@ -56,8 +56,11 @@ test('noAutoShowWithoutStorage', () => {
   assert.equal(shouldAutoShow(true, [NOTES[0]]), true);
 });
 
-test('theNewestShippedEntryIsShownToSomeoneWhoSawThePlaylistsOne', () => {
+test('everythingShippedAfterThePlaylistsEntryIsShownToSomeoneWhoSawIt', () => {
+  // stays true as entries are added: whoever saw 2026-10-14 gets every newer shipped entry, newest first
   const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, '../../main/resources/web/patch-notes.json'), 'utf8')).notes;
-  assert.deepEqual(unseenNotes(shipped, '2026-10-14').map((n) => n.id), ['2026-10-14-2']);
-  assert.deepEqual(unseenNotes(shipped, '2026-10-14-2'), []);
+  const seen = shipped.findIndex((n) => n.id === '2026-10-14');
+  assert.ok(seen > 0, 'the playlists entry is shipped with newer entries above it');
+  assert.deepEqual(unseenNotes(shipped, '2026-10-14').map((n) => n.id), shipped.slice(0, seen).map((n) => n.id));
+  assert.deepEqual(unseenNotes(shipped, shipped[0].id), []);
 });

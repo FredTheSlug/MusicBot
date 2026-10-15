@@ -10829,7 +10829,16 @@
             }
         }
 
+        // The same cap as the server's MAX_AUDIO_UPLOAD_BYTES. The server refuses anything bigger unread, but a browser
+        // that is still sending often can't read that answer, so the panel says it first.
+        var AUDIO_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
+
         async function uploadSingleFile(file) {
+            if (file.size > AUDIO_UPLOAD_MAX_BYTES) {
+                searchResults.innerHTML = '<div class="status-message" style="color:var(--accent);">' + escHtml(file.name)
+                    + ' is too big. Audio files can be up to 100 MB</div>';
+                return;
+            }
             var formData = new FormData();
             formData.append('file', file);
             searchResults.innerHTML = '<div class="upload-progress"><span class="loading-spinner"></span> Uploading ' + escHtml(file.name) + '...</div>';
@@ -10838,6 +10847,13 @@
                     method: 'POST',
                     body: formData
                 });
+                if (!resp.ok) {
+                    // the server answers refusals as plain text (e.g. "Unsupported file type: txt")
+                    var reason = (await resp.text()).trim().slice(0, 200);
+                    searchResults.innerHTML = '<div class="status-message" style="color:var(--accent);">Could not upload '
+                        + escHtml(file.name) + (reason ? ': ' + escHtml(reason) : '') + '</div>';
+                    return;
+                }
                 var data = await resp.json();
                 searchResults.innerHTML = '<div class="status-message">' + escHtml(data.message || 'Loading...') + '</div>';
                 refreshAll();

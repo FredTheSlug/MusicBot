@@ -26,8 +26,6 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.Handler;
 import io.javalin.http.HttpResponseException;
-import io.javalin.http.util.MultipartUtil;
-import jakarta.servlet.MultipartConfigElement;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Part;
 import java.io.IOException;
@@ -83,8 +81,6 @@ public class ThemeRoutes
      * against the announced length before anything is read, and enforced while reading for uploads that announce none.
      */
     static final long MAX_UPLOAD_BYTES = ThemeStore.MAX_PICTURE_BYTES + 256 * 1024;
-    /** Parts up to this size are kept in memory while an upload is read; bigger ones go to a temp file. */
-    private static final int UPLOAD_IN_MEMORY_BYTES = 64 * 1024;
     /** The biggest {@code version} or {@code removeBackground} part taken, in bytes. */
     private static final int MAX_FIELD_BYTES = 64;
     private static final Pattern VERSION = Pattern.compile("[0-9]{1,18}");
@@ -250,10 +246,8 @@ public class ThemeRoutes
     {
         if(!ctx.isMultipartFormData())
             throw new IllegalArgumentException(NOT_A_FORM);
-        if(ctx.req().getContentLengthLong() > MAX_UPLOAD_BYTES)
+        if(UploadLimit.tooLarge(ctx, MAX_UPLOAD_BYTES))
             throw new PictureTooLargeException(TOO_LARGE);
-        ctx.req().setAttribute(MultipartUtil.MULTIPART_CONFIG_ATTRIBUTE,
-                new MultipartConfigElement(System.getProperty("java.io.tmpdir"), -1L, MAX_UPLOAD_BYTES, UPLOAD_IN_MEMORY_BYTES));
     }
 
     /**
