@@ -29,6 +29,7 @@ import com.jagrosh.jmusicbot.audio.PlayerManager;
 import com.jagrosh.jmusicbot.audio.SpotifyResolver;
 import com.jagrosh.jmusicbot.gui.GUI;
 import com.jagrosh.jmusicbot.playlist.LavaTrackResolver;
+import com.jagrosh.jmusicbot.playlist.LikesStore;
 import com.jagrosh.jmusicbot.playlist.PlaylistConverter;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
 import com.jagrosh.jmusicbot.playlist.PlaylistPlayer;
@@ -63,6 +64,7 @@ public class Bot
     private final PlaylistLoader playlists;
     private final SpotifyResolver spotifyResolver;
     private final PlaylistStore playlistStore;
+    private final LikesStore likesStore;
     private final TrackResolver trackResolver;
     private final PlaylistConverter playlistConverter;
     private final PlaylistPlayer playlistPlayer;
@@ -87,6 +89,8 @@ public class Bot
         this.players.init();
         this.spotifyResolver = SpotifyResolver.create(config);
         this.playlistStore = new PlaylistStore(OtherUtil.getPath(config.getPlaylistsFolder()), Clock.systemUTC());
+        // the one LikesStore: its locks are per instance
+        this.likesStore = new LikesStore(OtherUtil.getPath(config.getPlaylistsFolder()).resolve(".liked"), Clock.systemUTC());
         this.trackResolver = new LavaTrackResolver(players, spotifyResolver);
         this.playlistConverter = new PlaylistConverter(playlistStore, trackResolver);
         this.playlistPlayer = new PlaylistPlayer(players, playlistStore, playlists, config);
@@ -178,6 +182,12 @@ public class Bot
     public PlaylistStore getPlaylistStore()
     {
         return playlistStore;
+    }
+
+    /** Everyone's liked songs, in the hidden {@code .liked} folder of the playlists folder. */
+    public LikesStore getLikesStore()
+    {
+        return likesStore;
     }
 
     public TrackResolver getTrackResolver()

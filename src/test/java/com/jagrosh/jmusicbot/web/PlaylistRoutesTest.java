@@ -127,7 +127,7 @@ public class PlaylistRoutesTest
     private PlaylistRoutes routes()
     {
         return new PlaylistRoutes(store, converter, imports, resolver, ctx -> user.get(),
-                (type, data) -> broadcasts.add(new Broadcast(type, (JSONObject) data)), this::recordPlay, clock);
+                (type, data) -> broadcasts.add(new Broadcast(type, (JSONObject) data)), this::recordPlay, clock, uri -> false);
     }
 
     private void recordPlay(Context ctx, String guildId, String name, String folder, String mode, String songId)

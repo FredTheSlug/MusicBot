@@ -271,7 +271,8 @@ public class WebServer
         ImportJobs imports = new ImportJobs(bot.getPlaylistStore(), bot.getTrackResolver(), playlistImportPool,
                 progress -> broadcastAll("playlist-import", PlaylistRoutes.importProgress(progress)));
         new PlaylistRoutes(bot.getPlaylistStore(), bot.getPlaylistConverter(), imports, bot.getTrackResolver(),
-                this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC()).register(app);
+                this::currentUser, this::broadcastAll, this::playPlaylist, Clock.systemUTC(),
+                SongInput.likedByAnyone(bot.getLikesStore())).register(app);
     }
 
     /**

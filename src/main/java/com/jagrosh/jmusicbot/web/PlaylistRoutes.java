@@ -16,7 +16,6 @@
 package com.jagrosh.jmusicbot.web;
 
 import com.jagrosh.jmusicbot.playlist.ImportJobs;
-import com.jagrosh.jmusicbot.playlist.LavaTrackResolver;
 import com.jagrosh.jmusicbot.playlist.PlaylistConverter;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile.Person;
@@ -30,19 +29,15 @@ import io.javalin.http.Handler;
 import io.javalin.http.HttpResponseException;
 import java.io.UncheckedIOException;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
-import java.util.regex.Pattern;
+import java.util.function.Predicate;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -70,19 +65,12 @@ public class PlaylistRoutes
     private static final String SONG_NOT_FOUND = "Song not found";
     private static final String BAD_SONG = "That song can't be added to a playlist";
     private static final String BAD_SONG_LIST = "Songs must be a list of 1 to " + PlaylistFile.MAX_SONGS + " songs";
-    private static final String TOO_LATE = "Too late to undo";
     private static final String RELOAD = "Reload the page to edit playlists";
     private static final String STILL_BAD = "Still couldn't load this song";
     private static final String NOT_BROKEN = "This song doesn't need a retry";
     private static final String SAVE_FAILED = "Couldn't save — try again";
     private static final String UNEXPECTED = "Something went wrong";
     private static final String JSON = "application/json";
-    /** How long a removed song can be put back. */
-    private static final Duration UNDO_WINDOW = Duration.ofSeconds(60);
-    /** Removals remembered for Undo at once; the one that expires first makes room. */
-    private static final int MAX_UNDO = 1000;
-    private static final Pattern WEB_LINK = Pattern.compile("https?://[^\\s/?#]+\\S*", Pattern.CASE_INSENSITIVE);
-    private static final String[] SEARCH_PREFIXES = {"ytsearch:", "ytmsearch:", "scsearch:"};
 
     private final PlaylistStore store;
     private final PlaylistConverter converter;
@@ -91,18 +79,21 @@ public class PlaylistRoutes
     private final Function<Context, Person> currentUser;
     private final BiConsumer<String, Object> broadcastAll;
     private final PlayHook play;
-    private final Clock clock;
-    /** Removed songs that can still be put back, by token. Guarded by itself. */
-    private final Map<String, Undo> undos = new HashMap<>();
+    private final Predicate<String> storedInLikes;
+    /** Removed songs that can still be put back. */
+    private final UndoTokens<Removal> undos;
 
     /**
      * @param currentUser who is asking, or null when nobody is logged in (web login off); credited for what they add
      * @param broadcastAll sends a message of this type with this data (an {@link JSONObject}) to every connected panel
      * @param play queues a playlist on a server; it answers the request itself
      * @param clock times the Undo window
+     * @param storedInLikes whether someone has liked a song with this uri: a local file in someone's likes may be
+     *        added to a playlist, as one in another playlist may
      */
     public PlaylistRoutes(PlaylistStore store, PlaylistConverter converter, ImportJobs imports, TrackResolver resolver,
-            Function<Context, Person> currentUser, BiConsumer<String, Object> broadcastAll, PlayHook play, Clock clock)
+            Function<Context, Person> currentUser, BiConsumer<String, Object> broadcastAll, PlayHook play, Clock clock,
+            Predicate<String> storedInLikes)
     {
         this.store = store;
         this.converter = converter;
@@ -111,7 +102,8 @@ public class PlaylistRoutes
         this.currentUser = currentUser;
         this.broadcastAll = broadcastAll;
         this.play = play;
-        this.clock = clock;
+        this.storedInLikes = storedInLikes;
+        this.undos = new UndoTokens<>(clock);
     }
 
     /** Joins a voice channel if need be and starts loading a playlist into a server's queue. */
@@ -127,8 +119,8 @@ public class PlaylistRoutes
         void play(Context ctx, String guildId, String name, String folder, String mode, String songId);
     }
 
-    /** One request handler; may throw the exceptions {@link #guarded} turns into answers. */
-    private interface Route
+    /** One request handler; may throw the exceptions {@link #guarded(Logger, Route)} turns into answers. */
+    interface Route
     {
         void handle(Context ctx);
     }
@@ -186,8 +178,16 @@ public class PlaylistRoutes
 
     // ---- errors ------------------------------------------------------------------------------------------------
 
-    /** Runs the route and turns what it throws into the JSON answers described on the class. */
     private Handler guarded(Route route)
+    {
+        return guarded(LOG, route);
+    }
+
+    /**
+     * Runs the route and turns what it throws into the JSON answers described on the class; a 500 is logged to
+     * {@code log}. Shared with {@link LikeRoutes}.
+     */
+    static Handler guarded(Logger log, Route route)
     {
         return ctx ->
         {
@@ -209,7 +209,7 @@ public class PlaylistRoutes
             }
             catch(UncheckedIOException e)
             {
-                LOG.error("Playlist request {} {} failed", ctx.method(), ctx.path(), e);
+                log.error("Request {} {} failed", ctx.method(), ctx.path(), e);
                 fail(ctx, 500, SAVE_FAILED, SAVE_FAILED);
             }
             catch(HttpResponseException e)
@@ -218,13 +218,14 @@ public class PlaylistRoutes
             }
             catch(RuntimeException e)
             {
-                LOG.error("Playlist request {} {} failed", ctx.method(), ctx.path(), e);
+                log.error("Request {} {} failed", ctx.method(), ctx.path(), e);
                 fail(ctx, 500, UNEXPECTED, UNEXPECTED);
             }
         };
     }
 
-    private static void fail(Context ctx, int status, String message, String fallback)
+    /** Answers {@code {"error": message}} with this status; {@code fallback} when there is no message. */
+    static void fail(Context ctx, int status, String message, String fallback)
     {
         String text = message == null || message.trim().isEmpty() ? fallback : message;
         ctx.status(status).contentType(JSON).result(new JSONObject().put("error", text).toString());
@@ -232,7 +233,7 @@ public class PlaylistRoutes
 
     // ---- reading requests --------------------------------------------------------------------------------------
 
-    private static JSONObject body(Context ctx)
+    static JSONObject body(Context ctx)
     {
         try
         {
@@ -245,14 +246,14 @@ public class PlaylistRoutes
     }
 
     /** A text field; null when it is missing or not text. */
-    private static String text(JSONObject json, String key)
+    static String text(JSONObject json, String key)
     {
         Object value = json.opt(key);
         return value instanceof String ? (String) value : null;
     }
 
     /** A text field that may be left out (null); anything else than text is refused. */
-    private static String optionalText(JSONObject json, String key)
+    static String optionalText(JSONObject json, String key)
     {
         if(json.isNull(key))
             return null;
@@ -262,7 +263,7 @@ public class PlaylistRoutes
         return value;
     }
 
-    private static String required(JSONObject json, String key, String what)
+    static String required(JSONObject json, String key, String what)
     {
         String value = text(json, key);
         if(value == null || value.trim().isEmpty())
@@ -288,7 +289,7 @@ public class PlaylistRoutes
         return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, number));
     }
 
-    private static int requiredInt(JSONObject json, String key)
+    static int requiredInt(JSONObject json, String key)
     {
         Integer value = optionalInt(json, key);
         if(value == null)
@@ -309,12 +310,12 @@ public class PlaylistRoutes
 
     // ---- writing answers ---------------------------------------------------------------------------------------
 
-    private static void send(Context ctx, JSONObject json)
+    static void send(Context ctx, JSONObject json)
     {
         ctx.contentType(JSON).result(json.toString());
     }
 
-    private static void send(Context ctx, JSONArray json)
+    static void send(Context ctx, JSONArray json)
     {
         ctx.contentType(JSON).result(json.toString());
     }
@@ -357,7 +358,7 @@ public class PlaylistRoutes
         return person == null ? JSONObject.NULL : new JSONObject().put("id", orNull(person.getId())).put("name", orNull(person.getName()));
     }
 
-    private static Object instantJson(Instant instant)
+    static Object instantJson(Instant instant)
     {
         return instant == null ? JSONObject.NULL : instant.toString();
     }
@@ -394,8 +395,16 @@ public class PlaylistRoutes
         if(name == null || name.trim().isEmpty())
             throw new IllegalArgumentException("Playlist name is required");
         String folder = folderParam(ctx);
-        PlaylistFile file = playlist(name, folder);
-        send(ctx, new JSONObject(file.toJson()).put("folder", folder).put("legacy", file.isLegacy()));
+        send(ctx, page(playlist(name, folder), folder));
+    }
+
+    /**
+     * A whole playlist as its page shows it: the file's fields ({@code name, version, createdBy, createdAt, updatedAt,
+     * shuffle, songs}) plus {@code folder} and {@code legacy}. Shared with {@link LikeRoutes}.
+     */
+    static JSONObject page(PlaylistFile file, String folder)
+    {
+        return new JSONObject(file.toJson()).put("folder", folder).put("legacy", file.isLegacy());
     }
 
     private PlaylistFile playlist(String name, String folder)
@@ -507,7 +516,7 @@ public class PlaylistRoutes
         String folder = folder(body, "folder");
         String songId = required(body, "songId", "Song id");
         PlaylistStore.Removed removed = store.removeSong(name, folder, songId);
-        String token = rememberRemoval(name, folder, removed.getSong(), removed.getIndex());
+        String token = undos.remember(new Removal(name, folder, removed.getSong(), removed.getIndex()));
         send(ctx, describe(removed.getPlaylist(), folder).put("undo", token));
         announceContent(removed.getPlaylist(), folder);
     }
@@ -516,21 +525,10 @@ public class PlaylistRoutes
     {
         // Only the token is read from the request: the song, its place and who added it were remembered when it went.
         String token = required(body(ctx), "token", "Undo token");
-        Undo undo = takeRemoval(token);
-        if(undo == null)
-            throw new NoSuchElementException(TOO_LATE);
-        PlaylistFile file;
-        try
-        {
-            file = store.reinsertSong(undo.name, undo.folder, undo.song, undo.index);
-        }
-        catch(RuntimeException e)
-        {
-            returnRemoval(token, undo); // the playlist may come back, or have room again, before the minute is up
-            throw e;
-        }
-        send(ctx, describe(file, undo.folder));
-        announceContent(file, undo.folder);
+        JSONObject undone = undos.redeem(token, anyone -> true,
+                removal -> describe(store.reinsertSong(removal.name, removal.folder, removal.song, removal.index), removal.folder));
+        send(ctx, undone);
+        announce(undone);
     }
 
     private void moveSong(Context ctx)
@@ -610,104 +608,58 @@ public class PlaylistRoutes
         JSONObject body = body(ctx);
         String name = required(body, "name", "Playlist name");
         String folder = folder(body, "folder");
+        String mode = playMode(body);
+        play.play(ctx, ctx.pathParam("guildId"), name, folder, mode, startSong(body, mode));
+    }
+
+    /** The {@code mode} of a play request: {@code all}, {@code shuffle} or {@code from}; anything else is refused. Shared with {@link LikeRoutes}. */
+    static String playMode(JSONObject body)
+    {
         String mode = required(body, "mode", "Play mode");
         if(!PlaylistPlayer.ALL.equals(mode) && !PlaylistPlayer.SHUFFLE.equals(mode) && !PlaylistPlayer.FROM.equals(mode))
             throw new IllegalArgumentException("Play mode must be all, shuffle or from");
+        return mode;
+    }
+
+    /** For {@code from}: the {@code songId} to start with, which is then required; null for the other modes. Shared with {@link LikeRoutes}. */
+    static String startSong(JSONObject body, String mode)
+    {
         String songId = optionalText(body, "songId");
-        if(PlaylistPlayer.FROM.equals(mode) && (songId == null || songId.trim().isEmpty()))
+        if(!PlaylistPlayer.FROM.equals(mode))
+            return null;
+        if(songId == null || songId.trim().isEmpty())
             throw new IllegalArgumentException("songId is required to play from a song");
-        play.play(ctx, ctx.pathParam("guildId"), name, folder, mode, PlaylistPlayer.FROM.equals(mode) ? songId : null);
+        return songId;
     }
 
     // ---- what a client may put in a playlist (spec section 9, R16) ---------------------------------------------
 
-    /** The songs of a {@code songs} array, cleaned; the whole request is refused when any song can't be taken. */
+    /** The songs of a {@code songs} array, cleaned by {@link SongInput}; the whole request is refused when any song can't be taken. */
     private List<Song> songsFrom(Object value)
     {
         if(!(value instanceof JSONArray) || ((JSONArray) value).length() == 0 || ((JSONArray) value).length() > PlaylistFile.MAX_SONGS)
             throw new IllegalArgumentException(BAD_SONG_LIST);
         JSONArray array = (JSONArray) value;
-        StoredUris stored = new StoredUris();
+        Predicate<String> stored = storedUris();
         List<Song> songs = new ArrayList<>(array.length());
         for(int i = 0; i < array.length(); i++)
         {
             JSONObject entry = array.optJSONObject(i);
             if(entry == null)
                 throw new IllegalArgumentException(BAD_SONG_LIST);
-            String uri = text(entry, "uri");
-            uri = uri == null ? "" : uri.trim();
-            if(!allowed(uri, stored))
-                throw new IllegalArgumentException(BAD_SONG);
-            Song song = new Song();
-            song.setUri(uri);
-            String title = text(entry, "title");
-            song.setTitle(title == null || title.trim().isEmpty() ? uri : title);
-            song.setAuthor(text(entry, "author"));
-            Object duration = entry.opt("durationMs");
-            song.setDurationMs(duration instanceof Number ? Math.max(0L, ((Number) duration).longValue()) : 0L);
-            String artwork = text(entry, "artworkUrl");
-            // the queue, search and history rows carry no artwork: a YouTube video gets its standard thumbnail
-            song.setArtworkUrl(artwork != null && isWebLink(artwork.trim()) ? artwork.trim()
-                    : LavaTrackResolver.youtubeThumbnail(LavaTrackResolver.youtubeIdOf(uri), uri));
-            songs.add(song);
+            songs.add(SongInput.song(entry, stored, BAD_SONG));
         }
         return songs;
     }
 
-    /**
-     * True when a web client may put this uri in a playlist: an http(s) link, a {@code ytsearch:} /
-     * {@code ytmsearch:} / {@code scsearch:} search, or a local file that some playlist already holds (those come
-     * from the old playlists; a client can't make the bot read a file of its choosing).
-     */
-    private static boolean allowed(String uri, StoredUris stored)
+    /** For one request: whether a uri is stored in some playlist or someone's likes (a local file may then be added). */
+    private Predicate<String> storedUris()
     {
-        if(uri.isEmpty() || hasControlCharacters(uri))
-            return false;
-        return isWebLink(uri) || isSearch(uri) || stored.contains(uri);
-    }
-
-    private static boolean isWebLink(String uri)
-    {
-        return !hasControlCharacters(uri) && WEB_LINK.matcher(uri).matches();
-    }
-
-    private static boolean isSearch(String uri)
-    {
-        for(String prefix : SEARCH_PREFIXES)
-            if(uri.startsWith(prefix))
-                return !uri.substring(prefix.length()).trim().isEmpty();
-        return false;
-    }
-
-    private static boolean hasControlCharacters(String text)
-    {
-        for(int i = 0; i < text.length(); i++)
-            if(Character.isISOControl(text.charAt(i)))
-                return true;
-        return false;
-    }
-
-    /** The uris stored in any playlist, read when first asked: most requests have no local file in them. */
-    private final class StoredUris
-    {
-        private Set<String> uris;
-
-        boolean contains(String uri)
-        {
-            if(uris == null)
-            {
-                uris = new HashSet<>();
-                for(PlaylistStore.Entry entry : store.tree())
-                    for(Song song : songsOf(entry))
-                        if(song.getUri() != null)
-                            uris.add(song.getUri());
-            }
-            return uris.contains(PlaylistFile.cut(uri));
-        }
+        return SongInput.storedIn(store, storedInLikes);
     }
 
     /** The songs of a listed playlist; none for one that has gone since, or whose name the store would not open. */
-    private List<Song> songsOf(PlaylistStore.Entry entry)
+    static List<Song> songsOf(PlaylistStore store, PlaylistStore.Entry entry)
     {
         try
         {
@@ -721,62 +673,20 @@ public class PlaylistRoutes
 
     // ---- Undo of a removed song --------------------------------------------------------------------------------
 
-    /** A removed song, where it was, and until when it can come back. */
-    private static final class Undo
+    /** A removed song and where it was. */
+    private static final class Removal
     {
         final String name;
         final String folder;
         final Song song;
         final int index;
-        final Instant expires;
 
-        Undo(String name, String folder, Song song, int index, Instant expires)
+        Removal(String name, String folder, Song song, int index)
         {
             this.name = name;
             this.folder = folder;
             this.song = song;
             this.index = index;
-            this.expires = expires;
-        }
-    }
-
-    /** Remembers the song for a minute; the token that comes back is the only way to ask for it. */
-    private String rememberRemoval(String name, String folder, Song song, int index)
-    {
-        Instant now = clock.instant();
-        String token = UUID.randomUUID().toString(); // from a SecureRandom
-        synchronized(undos)
-        {
-            undos.values().removeIf(undo -> !now.isBefore(undo.expires));
-            while(undos.size() >= MAX_UNDO)
-            {
-                String first = null;
-                for(Map.Entry<String, Undo> each : undos.entrySet())
-                    if(first == null || each.getValue().expires.isBefore(undos.get(first).expires))
-                        first = each.getKey();
-                undos.remove(first);
-            }
-            undos.put(token, new Undo(name, folder, song, index, now.plus(UNDO_WINDOW)));
-        }
-        return token;
-    }
-
-    /** The removal for this token, once: null when there is none, or its minute is over. */
-    private Undo takeRemoval(String token)
-    {
-        Undo undo;
-        synchronized(undos)
-        {
-            undo = undos.remove(token);
-        }
-        return undo != null && clock.instant().isBefore(undo.expires) ? undo : null;
-    }
-
-    private void returnRemoval(String token, Undo undo)
-    {
-        synchronized(undos)
-        {
-            undos.put(token, undo);
         }
     }
 
@@ -786,7 +696,7 @@ public class PlaylistRoutes
     private JSONObject oldPlaylist(PlaylistStore.Entry entry)
     {
         JSONArray items = new JSONArray();
-        for(Song song : songsOf(entry))
+        for(Song song : songsOf(store, entry))
             items.put(song.getUri() == null ? "" : song.getUri());
         return new JSONObject().put("name", entry.getName()).put("folder", entry.getFolder())
                 .put("trackCount", items.length()).put("items", items);
@@ -838,7 +748,7 @@ public class PlaylistRoutes
         if(store.get(name, folder).isPresent())
             throw new IllegalStateException(RELOAD);
 
-        StoredUris stored = new StoredUris();
+        Predicate<String> stored = storedUris();
         List<Song> songs = new ArrayList<>();
         int skipped = 0;
         JSONArray array = (JSONArray) items;
@@ -848,7 +758,7 @@ public class PlaylistRoutes
             String line = item instanceof String ? ((String) item).trim() : null;
             if(JSONObject.NULL.equals(item) || "".equals(line))
                 continue; // a blank line was never a song
-            if(line == null || !allowed(line, stored))
+            if(line == null || !SongInput.allowed(line, stored))
             {
                 skipped++;
                 continue;
