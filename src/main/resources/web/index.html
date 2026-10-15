@@ -13,6 +13,8 @@
                 var k = 'jmusicbot_theme_v1';
                 var t = localStorage.getItem(k);
                 if (t === 'nihon') { try { localStorage.setItem(k, 'sumi'); } catch (e2) {} t = 'sumi'; }
+                // A custom theme starts on its base theme until its colors arrive (jmusicbot_theme_base_v1 remembers the base).
+                if (t && t.indexOf('custom:') === 0) t = localStorage.getItem('jmusicbot_theme_base_v1');
                 if (t && t !== 'nebula' && ['aurora', 'ember', 'crimson', 'dawn', 'dawn-dark', 'steel', 'verdant', 'grove', 'grapevine', 'sumi', 'rasta', 'cipher', 'signal', 'victory', 'neon', 'revival'].indexOf(t) >= 0) {
                     document.documentElement.setAttribute('data-theme', t);
                 }
@@ -2702,7 +2704,113 @@
 
         #themeSelect {
             min-width: 118px;
+            /* Community names add "by creator": keep the closed picker from growing past the header. */
+            max-width: min(280px, 60vw);
+            text-overflow: ellipsis;
         }
+
+        /* Custom themes: the buttons beside the picker, the bot owner's list of hidden themes, the confirm bar. */
+        .theme-tools {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+        .theme-tools[hidden],
+        .theme-tools [hidden] { display: none !important; }
+        .theme-confirm-slot {
+            flex: 1 1 100%;
+            min-width: 0;
+        }
+        .theme-confirm-slot:empty,
+        .theme-hidden-panel[hidden] { display: none; }
+        .theme-confirm-slot .pl-confirm { margin: 0; }
+        .theme-hidden-panel {
+            position: relative;
+            z-index: 2;
+            max-width: 560px;
+            margin: 12px max(var(--header-padding-x), env(safe-area-inset-left)) 0;
+            padding: 10px 12px;
+            border-radius: var(--radius-select);
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            font-size: 0.84rem;
+        }
+        .theme-hidden-title {
+            margin-bottom: 4px;
+            color: var(--text-tertiary);
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .theme-hidden-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px 8px;
+            padding: 6px 0;
+            border-top: 1px solid var(--border);
+        }
+        .theme-hidden-title + .theme-hidden-row { border-top: none; }
+        .theme-hidden-name { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+        .theme-hidden-by { color: var(--text-secondary); }
+
+        /* Reduce motion: the switch row at the foot of the Panels menu. */
+        .panels-menu-sep { height: 1px; margin: 6px 4px; background: var(--border); }
+        .panels-menu-hint {
+            padding: 0 10px 4px;
+            color: var(--text-tertiary);
+            font-size: 0.72rem;
+            line-height: 1.35;
+        }
+        .rm-switch {
+            position: relative;
+            flex-shrink: 0;
+            width: 30px;
+            height: 17px;
+            border-radius: 9px;
+            background: var(--bg-hover);
+            border: 1px solid var(--border-light);
+            transition: background 0.15s;
+        }
+        .rm-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            transition: transform 0.15s, background 0.15s;
+        }
+        .panels-menu-item[aria-checked="true"] .rm-switch { background: var(--accent); border-color: var(--accent); }
+        .panels-menu-item[aria-checked="true"] .rm-switch::after { background: #fff; transform: translateX(13px); }
+
+        /* Custom themes: the background picture is its own fixed layer. z-index -1 puts it above the page color
+           and below everything else. #themeBackdropPic runs past the screen by twice the blur so a blur's soft
+           edge never shows (set from script); #themeBackdropDim is the dark veil over the picture. */
+        #themeBackdrop {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            z-index: -1;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        #themeBackdrop[hidden] { display: none; }
+        #themeBackdropPic,
+        #themeBackdropDim {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+        #themeBackdropPic { background-repeat: no-repeat; background-position: center; }
 
         html[data-theme="aurora"] {
             --bg-primary: #0a1114;
@@ -5205,9 +5313,35 @@
                 animation: none;
             }
         }
+
+        /*
+         * Custom themes (script sets html[data-custom-theme] while one is on, and also data-custom-plain when its
+         * "special effects" are off or it has a background picture). Keep this block after every built-in theme:
+         * where specificity ties, the later rule wins.
+         * The page color follows the theme's own (Grove sets a fixed one on body).
+         */
+        html[data-custom-theme] body {
+            background-color: var(--bg-primary);
+        }
+
+        /* Plain: none of the base theme's decorative layers (page layers, header strips, Grove's card picture). */
+        html[data-custom-theme][data-custom-plain] body::before,
+        html[data-custom-theme][data-custom-plain] body::after,
+        html[data-custom-theme][data-custom-plain] .header::before,
+        html[data-custom-theme][data-custom-plain] .header::after,
+        html[data-custom-theme][data-custom-plain] .layout-pane.card::before {
+            display: none;
+        }
+
+        /* Grove makes its cards see-through to show that picture; without it they get the theme's card color. */
+        html[data-custom-theme][data-custom-plain][data-theme="grove"] .layout-pane.card {
+            background: var(--bg-card);
+        }
     </style>
 </head>
 <body>
+    <!-- A custom theme's background picture (see the theme code in the script). Filled with style.setProperty only. -->
+    <div id="themeBackdrop" aria-hidden="true" hidden><div id="themeBackdropPic"></div><div id="themeBackdropDim"></div></div>
     <div id="loginOverlay" class="login-overlay" style="display:none">
         <div class="login-box">
             <h2>Clout Kings Music Bot</h2>
@@ -5230,24 +5364,34 @@
             <div class="guild-selector">
                 <label for="themeSelect">Theme</label>
                 <select id="themeSelect" title="Interface theme" aria-label="Interface theme">
-                    <option value="nebula">Nebula</option>
-                    <option value="aurora">Aurora</option>
-                    <option value="ember">Ember</option>
-                    <option value="crimson">Crimson</option>
-                    <option value="dawn">Dawn</option>
-                    <option value="dawn-dark">Dawn Dark</option>
-                    <option value="steel">Steel</option>
-                    <option value="verdant">Verdant</option>
-                    <option value="grove">Grove</option>
-                    <option value="grapevine">Grapevine</option>
-                    <option value="sumi">Sumi</option>
-                    <option value="rasta">Rasta</option>
-                    <option value="cipher">Cipher</option>
-                    <option value="signal">Signal</option>
-                    <option value="victory">Victory</option>
-                    <option value="neon">Neon</option>
-                    <option value="revival">Revival ✦</option>
+                    <optgroup label="Built-in">
+                        <option value="nebula">Nebula</option>
+                        <option value="aurora">Aurora</option>
+                        <option value="ember">Ember</option>
+                        <option value="crimson">Crimson</option>
+                        <option value="dawn">Dawn</option>
+                        <option value="dawn-dark">Dawn Dark</option>
+                        <option value="steel">Steel</option>
+                        <option value="verdant">Verdant</option>
+                        <option value="grove">Grove</option>
+                        <option value="grapevine">Grapevine</option>
+                        <option value="sumi">Sumi</option>
+                        <option value="rasta">Rasta</option>
+                        <option value="cipher">Cipher</option>
+                        <option value="signal">Signal</option>
+                        <option value="victory">Victory</option>
+                        <option value="neon">Neon</option>
+                        <option value="revival">Revival ✦</option>
+                    </optgroup>
+                    <!-- Community and My themes are added here by the script once the list has loaded. -->
                 </select>
+            </div>
+            <div class="theme-tools" id="themeTools" hidden>
+                <button type="button" class="logout-btn" id="themeCreateBtn" title="Make your own theme">＋ Create a theme</button>
+                <button type="button" class="logout-btn" id="themeEditBtn" title="Change this theme" hidden>Edit</button>
+                <button type="button" class="logout-btn" id="themeHideBtn" title="Make this theme private to its creator" hidden>Hide</button>
+                <button type="button" class="logout-btn" id="themeDeleteBtn" title="Delete this theme" hidden>Delete</button>
+                <button type="button" class="logout-btn" id="themeHiddenBtn" aria-expanded="false" aria-controls="themeHiddenPanel" title="Themes you hid" hidden>Hidden themes (0)</button>
             </div>
             <button type="button" class="logout-btn wn-btn" id="whatsNewBtn" title="See what's new">What's new<span class="wn-dot" id="whatsNewDot" hidden aria-hidden="true"></span></button>
             <a class="logout-btn get-app-btn" id="getAppBtn" hidden
@@ -5269,8 +5413,12 @@
             </div>
             <button type="button" class="logout-btn" id="resetLayoutBtn" onclick="resetPaneLayout()" title="Reset panel layout">Reset layout</button>
             <button class="logout-btn" id="logoutBtn" onclick="doLogout()" style="display:none">Logout</button>
+            <div class="theme-confirm-slot" id="themeConfirmSlot"></div>
         </div>
     </div>
+
+    <!-- The bot owner's list of themes he hid; opened from "Hidden themes (n)" in the header. Not inside the sticky header. -->
+    <div class="theme-hidden-panel" id="themeHiddenPanel" hidden></div>
 
     <div class="main-layout" id="mainLayout">
         <div class="layout-col" data-col-index="0">
@@ -5436,6 +5584,8 @@
         </div>
     </div>
 
+    <script src="/web/theme-palette.js"></script>
+    <script src="/web/theme-apply.js"></script>
     <script src="/web/whats-new.js"></script>
 
     <script>
@@ -5507,21 +5657,271 @@
         const PANE_RESIZE_MIN = 160;
         const PANE_RESIZE_MIN_W = 200;
         const THEME_STORAGE_KEY = 'jmusicbot_theme_v1';
+        const THEME_BASE_STORAGE_KEY = 'jmusicbot_theme_base_v1';
+        const REDUCE_MOTION_STORAGE_KEY = 'jmusicbot_reduce_motion_v1';
 
+        // ---- Themes: the built-in ones, and the custom ones from /api/themes --------------------------------------
+        // A custom theme is its base theme plus values given one CSS variable at a time to style.setProperty (never
+        // CSS text, never innerHTML), a fixed #themeBackdrop layer for its picture, and two attributes on <html>:
+        // data-custom-theme="<id>" while one is on, and data-custom-plain when it has no decorative layers. Names
+        // only ever go in with textContent, isolated so they can't reorder the text around them. The checks live in
+        // theme-apply.js and theme-palette.js (tested in Node); without them the panel offers the built-in themes only.
+        var themeKit = window.ThemeApply && window.ThemePalette ? window.ThemeApply : null;
+        var themeChoice = 'nebula';   // what the person picked: a built-in id or custom:<id>
+        var themeShown = 'nebula';    // what is applied now (a custom choice shows its base until the list arrives)
+        var themeBase = '';           // the base of the custom theme applied now
+        var customThemes = {
+            list: null,               // the usable themes from /api/themes; null until the first answer
+            me: null,                 // {id, isOwner}
+            limit: null,              // {max, used}
+            hidden: [],               // themes the bot owner hid: {id, name, creator}
+            activeId: '',             // the custom theme applied now ('' for a built-in)
+            activeName: '',
+            activeJson: ''            // that theme as the server sent it, to see whether a refresh changed it
+        };
+        var customApplied = [];       // the custom properties set on <html> for the active custom theme
+        var themeBackdropData = null; // ThemeApply.backdrop() of the active theme, or null
+        var themeBackdropKey = '';
+        var themeBackdropSeq = 0;
+        var themeLoadSeq = 0;
+        var themesReloadTimer = null;
+        var themeActedOn = '';        // the theme this panel just deleted or hid
+        var reduceMotion = null;
+        var THEME_FRAME_MAX_SIDE = 4096;
+
+        function readStoredThemeChoice() {
+            try { return localStorage.getItem(THEME_STORAGE_KEY) || 'nebula'; } catch (e) { return 'nebula'; }
+        }
+
+        function readStoredThemeBase() {
+            try { return localStorage.getItem(THEME_BASE_STORAGE_KEY) || ''; } catch (e) { return ''; }
+        }
+
+        function storeThemeChoice(choice, base) {
+            try {
+                localStorage.setItem(THEME_STORAGE_KEY, choice);
+                if (base) localStorage.setItem(THEME_BASE_STORAGE_KEY, base);
+                else localStorage.removeItem(THEME_BASE_STORAGE_KEY);
+            } catch (e) {}
+        }
+
+        function setBaseThemeAttribute(id) {
+            if (id === 'nebula') document.documentElement.removeAttribute('data-theme');
+            else document.documentElement.setAttribute('data-theme', id);
+        }
+
+        // A built-in theme; anything unknown is Nebula. No trace of a custom theme stays.
         function applyTheme(themeId) {
             var ok = { nebula: 1, aurora: 1, ember: 1, crimson: 1, dawn: 1, 'dawn-dark': 1, steel: 1, verdant: 1, grove: 1, grapevine: 1, sumi: 1, rasta: 1, cipher: 1, signal: 1, victory: 1, neon: 1, revival: 1 };
             if (themeId === 'nihon') themeId = 'sumi';
             if (!ok[themeId]) themeId = 'nebula';
-            if (themeId === 'nebula') {
-                document.documentElement.removeAttribute('data-theme');
+            clearCustomTheme();
+            setBaseThemeAttribute(themeId);
+            setThemeBackdrop(null);
+            themeChoice = themeShown = themeId;
+            storeThemeChoice(themeId, '');
+            syncThemePicker();
+        }
+
+        function setCustomProperty(name, value) {
+            document.documentElement.style.setProperty(name, value);
+            customApplied.push(name);
+        }
+
+        // Takes back everything applyCustomTheme set on <html> (not the picture: setThemeBackdrop does that).
+        function clearCustomTheme() {
+            var root = document.documentElement;
+            customApplied.forEach(function (name) { root.style.removeProperty(name); });
+            customApplied = [];
+            root.removeAttribute('data-custom-theme');
+            root.removeAttribute('data-custom-plain');
+            customThemes.activeId = '';
+            customThemes.activeName = '';
+            customThemes.activeJson = '';
+            themeBase = '';
+        }
+
+        // The base theme first, then the theme's own values over it. `theme` has passed ThemeApply.usable.
+        function applyCustomTheme(theme) {
+            var root = document.documentElement;
+            clearCustomTheme(); // first: the radius values read below must be the base theme's own
+            setBaseThemeAttribute(theme.base);
+            root.setAttribute('data-custom-theme', theme.id);
+            var back = themeKit.backdrop(theme.background);
+            if (!theme.effects || back) root.setAttribute('data-custom-plain', '');
+            var vars = window.ThemePalette.cssVars(theme.colors);
+            Object.keys(vars).forEach(function (name) { setCustomProperty(name, vars[name]); });
+            if (typeof theme.radiusScale === 'number' && theme.radiusScale !== 100) {
+                var computed = getComputedStyle(root);
+                themeKit.RADIUS_VARS.forEach(function (name) {
+                    var scaled = themeKit.scaleRadius(computed.getPropertyValue(name), theme.radiusScale);
+                    if (scaled) setCustomProperty(name, scaled);
+                });
+            }
+            var stack = themeKit.fontStack(theme.font);
+            if (stack) setCustomProperty('--font-family', stack);
+            setThemeBackdrop(back);
+            themeShown = 'custom:' + theme.id;
+            themeBase = theme.base;
+            customThemes.activeId = theme.id;
+            customThemes.activeName = themeKit.displayName(theme.name);
+            customThemes.activeJson = JSON.stringify(theme);
+        }
+
+        // `choice` is a built-in id or custom:<id>. A custom theme that is gone (or isn't known yet) shows its base.
+        function applyThemeChoice(choice) {
+            if (!themeKit) {
+                applyTheme(typeof choice === 'string' && choice.indexOf('custom:') === 0 ? readStoredThemeBase() : choice);
+                return;
+            }
+            var res = themeKit.resolveChoice(choice, customThemes.list, themeBase || readStoredThemeBase());
+            if (res.kind === 'custom') {
+                applyCustomTheme(res.theme);
+                themeChoice = 'custom:' + res.theme.id;
+                storeThemeChoice(themeChoice, res.theme.base);
+                syncThemePicker();
+            } else if (res.pending) {
+                // The list hasn't arrived: wear the base theme and keep the choice for when it does.
+                clearCustomTheme();
+                setBaseThemeAttribute(res.id);
+                setThemeBackdrop(null);
+                themeChoice = choice;
+                themeShown = res.id;
+                themeBase = res.id;
+                syncThemePicker();
             } else {
-                document.documentElement.setAttribute('data-theme', themeId);
+                applyTheme(res.id);
+            }
+        }
+
+        // ---- the background picture ----
+
+        function hideThemeBackdrop() {
+            var box = document.getElementById('themeBackdrop');
+            if (!box) return;
+            box.hidden = true;
+            document.getElementById('themeBackdropPic').style.removeProperty('background-image');
+        }
+
+        function showThemeBackdrop(back, src) {
+            var box = document.getElementById('themeBackdrop');
+            var pic = document.getElementById('themeBackdropPic');
+            var dim = document.getElementById('themeBackdropDim');
+            if (!box || !pic || !dim) return;
+            // src is a picture link ThemeApply accepted, or a data URL this page drew itself: no quote can be in it.
+            pic.style.setProperty('background-image', 'url("' + src + '")');
+            pic.style.setProperty('background-size', back.size);
+            pic.style.setProperty('background-position', back.position);
+            pic.style.setProperty('background-repeat', back.repeat);
+            pic.style.setProperty('filter', back.filter);
+            ['top', 'right', 'bottom', 'left'].forEach(function (side) { pic.style.setProperty(side, back.inset); });
+            dim.style.setProperty('background-color', back.overlay);
+            box.hidden = false;
+        }
+
+        // The first frame of an animated picture as a JPEG data URL ('' when it can't be drawn). The picture is
+        // decoded afresh (createImageBitmap, from the browser's cached copy) so that it is the first frame even
+        // while a copy of the picture is playing on screen; `img`, already loaded, is the fallback. Parts of the
+        // picture that are see-through show the page color, as they would in motion.
+        async function firstFrameOf(url, img) {
+            var bitmap = null;
+            try {
+                if (window.createImageBitmap) {
+                    var resp = await fetch(url);
+                    if (resp.ok) bitmap = await createImageBitmap(await resp.blob());
+                }
+            } catch (e) {
+                bitmap = null;
             }
             try {
-                localStorage.setItem(THEME_STORAGE_KEY, themeId);
-            } catch (e) {}
-            var sel = document.getElementById('themeSelect');
-            if (sel && sel.value !== themeId) sel.value = themeId;
+                var w = bitmap ? bitmap.width : img.naturalWidth;
+                var h = bitmap ? bitmap.height : img.naturalHeight;
+                if (!w || !h) return '';
+                var shrink = Math.min(1, THEME_FRAME_MAX_SIDE / Math.max(w, h));
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(w * shrink));
+                canvas.height = Math.max(1, Math.round(h * shrink));
+                var g = canvas.getContext('2d');
+                g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#000';
+                g.fillRect(0, 0, canvas.width, canvas.height);
+                g.drawImage(bitmap || img, 0, 0, canvas.width, canvas.height);
+                var data = canvas.toDataURL('image/jpeg', 0.92);
+                return /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(data) ? data : '';
+            } catch (e) {
+                return '';
+            } finally {
+                if (bitmap && bitmap.close) bitmap.close();
+            }
+        }
+
+        // Loads the picture first: one that fails to load shows nothing at all (no dark veil over an empty page), and
+        // with Reduce motion a GIF or WebP is drawn to a canvas so that only its first frame is ever shown.
+        function renderThemeBackdrop() {
+            var seq = ++themeBackdropSeq;
+            var back = themeBackdropData;
+            if (!back) {
+                hideThemeBackdrop();
+                return;
+            }
+            var freeze = readReduceMotion() && themeKit.canAnimate(back.url);
+            var img = new Image();
+            img.onload = async function () {
+                var src = freeze ? await firstFrameOf(back.url, img) : back.url;
+                if (seq !== themeBackdropSeq) return;
+                if (src) showThemeBackdrop(back, src);
+                else hideThemeBackdrop();
+            };
+            img.onerror = function () {
+                if (seq === themeBackdropSeq) hideThemeBackdrop();
+            };
+            img.src = back.url;
+        }
+
+        // Does nothing when the picture and its settings are the ones already on show.
+        function setThemeBackdrop(back) {
+            var key = back ? JSON.stringify(back) : '';
+            if (key === themeBackdropKey) return;
+            themeBackdropKey = key;
+            themeBackdropData = back;
+            renderThemeBackdrop();
+        }
+
+        // ---- Reduce motion (per browser; starts from the system setting) ----
+
+        function readReduceMotion() {
+            if (reduceMotion === null) {
+                var saved = null;
+                try { saved = localStorage.getItem(REDUCE_MOTION_STORAGE_KEY); } catch (e) {}
+                if (saved === '1' || saved === '0') {
+                    reduceMotion = saved === '1';
+                } else {
+                    try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { reduceMotion = false; }
+                }
+            }
+            return reduceMotion;
+        }
+
+        function setReduceMotion(on) {
+            reduceMotion = !!on;
+            try { localStorage.setItem(REDUCE_MOTION_STORAGE_KEY, reduceMotion ? '1' : '0'); } catch (e) {}
+            if (themeBackdropData && themeKit.canAnimate(themeBackdropData.url)) renderThemeBackdrop();
+        }
+
+        // The switch row at the foot of the Panels menu (the menu is rebuilt each time it opens).
+        function appendReduceMotionRow(menu) {
+            menu.appendChild(plEl('div', 'panels-menu-sep'));
+            var row = plEl('button', 'panels-menu-item');
+            row.type = 'button';
+            row.setAttribute('role', 'switch');
+            row.setAttribute('aria-checked', readReduceMotion() ? 'true' : 'false');
+            row.appendChild(plEl('span', '', 'Reduce motion'));
+            row.appendChild(plEl('span', 'rm-switch'));
+            row.addEventListener('click', function () {
+                setReduceMotion(!readReduceMotion());
+                row.setAttribute('aria-checked', readReduceMotion() ? 'true' : 'false');
+            });
+            menu.appendChild(row);
+            menu.appendChild(plEl('div', 'panels-menu-hint', 'Animated theme pictures stay on their first frame.'));
         }
 
         /** Offers the Windows desktop app; hidden on other systems and inside the app itself. */
@@ -5533,19 +5933,244 @@
             btn.hidden = insideApp || !windowsDesktop;
         }
 
-        function initTheme() {
-            var t = 'nebula';
+        // ---- the picker, and the buttons beside it ----
+
+        function findCustomTheme(id) {
+            var list = customThemes.list || [];
+            for (var i = 0; i < list.length; i++) {
+                if (list[i].id === id) return list[i];
+            }
+            return null;
+        }
+
+        function addThemeGroup(sel, label, themes, labelOf) {
+            if (!themes.length) return;
+            var group = document.createElement('optgroup');
+            group.label = label;
+            group.setAttribute('data-custom-group', '1');
+            themes.forEach(function (theme) {
+                var option = document.createElement('option');
+                option.value = 'custom:' + theme.id;
+                option.textContent = labelOf(theme);
+                group.appendChild(option);
+            });
+            sel.appendChild(group);
+        }
+
+        // Built-in stays as written in the page; Community and My themes are rebuilt from the list each time.
+        function rebuildThemePicker() {
+            var sel = document.getElementById('themeSelect');
+            if (!sel || !themeKit) return;
+            Array.prototype.slice.call(sel.querySelectorAll('optgroup[data-custom-group]')).forEach(function (group) {
+                group.parentNode.removeChild(group);
+            });
+            var groups = themeKit.groupThemes(customThemes.list);
+            addThemeGroup(sel, 'Community', groups.community, themeKit.communityLabel);
+            addThemeGroup(sel, 'My themes', groups.mine, themeKit.mineLabel);
+            syncThemePicker();
+        }
+
+        function syncThemePicker() {
+            var sel = document.getElementById('themeSelect');
+            if (sel && sel.value !== themeShown) sel.value = themeShown;
+            renderThemeTools();
+        }
+
+        // Create is always there once the list has loaded; Edit/Delete for your own theme, Hide/Delete for the bot
+        // owner on somebody else's; "Hidden themes" for the bot owner when he has hidden some.
+        function renderThemeTools() {
+            var tools = document.getElementById('themeTools');
+            if (!tools) return;
+            var loaded = !!themeKit && customThemes.list !== null;
+            tools.hidden = !loaded;
+            if (!loaded) return;
+            var active = customThemes.activeId ? findCustomTheme(customThemes.activeId) : null;
+            var isOwner = !!(customThemes.me && customThemes.me.isOwner);
+            var mine = !!(active && active.mine);
+            document.getElementById('themeEditBtn').hidden = !mine;
+            document.getElementById('themeDeleteBtn').hidden = !(mine || (active && isOwner));
+            document.getElementById('themeHideBtn').hidden = !(active && !mine && isOwner);
+            var count = customThemes.hidden.length;
+            var hiddenBtn = document.getElementById('themeHiddenBtn');
+            var showHidden = isOwner && count > 0;
+            hiddenBtn.hidden = !showHidden;
+            hiddenBtn.textContent = 'Hidden themes (' + count + ')';
+            var panel = document.getElementById('themeHiddenPanel');
+            if (!showHidden) {
+                panel.hidden = true;
+                hiddenBtn.setAttribute('aria-expanded', 'false');
+            } else if (!panel.hidden) {
+                renderHiddenThemes();
+            }
+        }
+
+        function renderHiddenThemes() {
+            var panel = document.getElementById('themeHiddenPanel');
+            panel.textContent = '';
+            panel.appendChild(plEl('div', 'theme-hidden-title', 'Themes you hid'));
+            customThemes.hidden.forEach(function (entry) {
+                var row = plEl('div', 'theme-hidden-row');
+                var label = plEl('span', 'theme-hidden-name');
+                label.appendChild(plEl('bdi', '', themeKit.displayName(entry.name)));
+                label.appendChild(document.createTextNode(' by '));
+                label.appendChild(plEl('bdi', 'theme-hidden-by', entry.creator));
+                row.appendChild(label);
+                row.appendChild(plBtn('Un-hide', '', function () { setThemeHidden(entry, false); }));
+                var del = plBtn('Delete', '', function () { askDeleteTheme(entry, del); });
+                row.appendChild(del);
+                panel.appendChild(row);
+            });
+        }
+
+        // What the confirm and the toasts need to name a theme: {id, name, creator, mine}.
+        function themeEntry(theme) {
+            return { id: theme.id, name: theme.name, creator: themeKit.personName(theme.owner ? theme.owner.name : null), mine: theme.mine === true };
+        }
+
+        function themeQuoted(name) {
+            return '"' + themeKit.isolate(themeKit.displayName(name)) + '"';
+        }
+
+        function placeThemeConfirm(bar) {
+            var slot = document.getElementById('themeConfirmSlot');
+            slot.textContent = '';
+            slot.appendChild(bar);
+            return bar;
+        }
+
+        function askDeleteTheme(entry, returnTo) {
+            var text = 'Delete ' + themeQuoted(entry.name) + (entry.mine ? '' : ' by ' + themeKit.isolate(entry.creator) + ' for everyone') +
+                '? This can\'t be undone.';
+            plShowConfirm(placeThemeConfirm, text, 'Delete', function () {
+                runThemeAction(entry.id, '/api/themes/' + encodeURIComponent(entry.id) + '/delete', null,
+                    'Deleted ' + themeQuoted(entry.name), "Couldn't delete the theme");
+            }, returnTo);
+        }
+
+        function askHideTheme(entry, returnTo) {
+            var text = 'Hide ' + themeQuoted(entry.name) + ' by ' + themeKit.isolate(entry.creator) + '? Only its creator will see it until you un-hide it.';
+            plShowConfirm(placeThemeConfirm, text, 'Hide', function () { setThemeHidden(entry, true); }, returnTo);
+        }
+
+        function setThemeHidden(entry, hidden) {
+            runThemeAction(entry.id, '/api/themes/' + encodeURIComponent(entry.id) + '/hide', { hidden: hidden },
+                (hidden ? 'Hid ' : 'Un-hid ') + themeQuoted(entry.name), "Couldn't change the theme");
+        }
+
+        // Asks the server, says what came of it, then refreshes the list (the server also tells every open panel).
+        async function runThemeAction(id, path, body, doneText, failText) {
             try {
-                t = localStorage.getItem(THEME_STORAGE_KEY) || 'nebula';
-            } catch (e) {}
-            applyTheme(t);
+                var opts = { method: 'POST' };
+                if (body) opts.body = JSON.stringify(body);
+                var resp = await authFetch(path, opts);
+                var data = await readApiJson(resp);
+                if (resp.ok) {
+                    themeActedOn = id;
+                    plToast(doneText);
+                }
+                else plToast(data && typeof data.error === 'string' && data.error ? data.error : failText, { error: true });
+            } catch (e) {
+                plCatch(e);
+                return;
+            }
+            loadCustomThemes();
+        }
+
+        // The guided creator takes this over: null = a new theme, a theme from the list = edit it.
+        function openThemeCreator(themeOrNull) {
+            plToast("The theme creator isn't ready yet.");
+        }
+
+        function initThemeTools() {
+            var tools = document.getElementById('themeTools');
+            if (!themeKit || !tools || tools.getAttribute('data-bound') === '1') return;
+            tools.setAttribute('data-bound', '1');
+            function active() {
+                return customThemes.activeId ? findCustomTheme(customThemes.activeId) : null;
+            }
+            document.getElementById('themeCreateBtn').addEventListener('click', function () { openThemeCreator(null); });
+            document.getElementById('themeEditBtn').addEventListener('click', function () {
+                var theme = active();
+                if (theme && theme.mine) openThemeCreator(theme);
+            });
+            document.getElementById('themeDeleteBtn').addEventListener('click', function (e) {
+                var theme = active();
+                if (theme) askDeleteTheme(themeEntry(theme), e.currentTarget);
+            });
+            document.getElementById('themeHideBtn').addEventListener('click', function (e) {
+                var theme = active();
+                if (theme && !theme.mine) askHideTheme(themeEntry(theme), e.currentTarget);
+            });
+            var hiddenBtn = document.getElementById('themeHiddenBtn');
+            var panel = document.getElementById('themeHiddenPanel');
+            hiddenBtn.addEventListener('click', function () {
+                panel.hidden = !panel.hidden;
+                hiddenBtn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+                if (!panel.hidden) renderHiddenThemes();
+            });
+        }
+
+        // ---- the list of custom themes ----
+
+        // Fetches /api/themes. A failed or unauthorized answer changes nothing; the newest request wins.
+        async function loadCustomThemes() {
+            if (!themeKit) return;
+            var seq = ++themeLoadSeq;
+            var data = null;
+            try {
+                var resp = await authFetch('/api/themes');
+                if (!resp.ok) return;
+                data = await readApiJson(resp);
+            } catch (e) {
+                return;
+            }
+            if (seq !== themeLoadSeq || !data || !Array.isArray(data.themes)) return;
+            customThemes.list = data.themes.filter(themeKit.usable);
+            customThemes.me = data.me && typeof data.me === 'object' ? { id: data.me.id, isOwner: data.me.isOwner === true } : null;
+            customThemes.limit = data.limit && typeof data.limit === 'object' ? { max: data.limit.max, used: data.limit.used } : null;
+            customThemes.hidden = (Array.isArray(data.hidden) ? data.hidden : []).filter(function (h) {
+                return h && typeof h.id === 'string' && themeKit.customId('custom:' + h.id) === h.id && typeof h.name === 'string';
+            }).map(function (h) {
+                return { id: h.id, name: h.name, creator: themeKit.personName(h.creator), mine: false };
+            });
+            rebuildThemePicker();
+            reconcileThemeChoice();
+        }
+
+        // After a refresh: apply a custom choice that was waiting for the list, or one that changed meanwhile; fall
+        // back to the base theme when the one in use was deleted, hidden or made private.
+        function reconcileThemeChoice() {
+            var res = themeKit.resolveChoice(themeChoice, customThemes.list, themeBase || readStoredThemeBase());
+            var hadId = customThemes.activeId, hadName = customThemes.activeName;
+            var acted = themeActedOn; // a theme this person just deleted or hid needs no second message
+            themeActedOn = '';
+            if (res.kind === 'custom') {
+                if (hadId !== res.theme.id || customThemes.activeJson !== JSON.stringify(res.theme)) applyThemeChoice(themeChoice);
+            } else if (res.fellBack) {
+                applyThemeChoice(themeChoice);
+                if (hadId && hadId !== acted) plToast(themeQuoted(hadName) + " isn't available any more. Its base theme is on instead.");
+            }
+        }
+
+        function scheduleThemesReload() {
+            if (themesReloadTimer) clearTimeout(themesReloadTimer);
+            themesReloadTimer = setTimeout(function () {
+                themesReloadTimer = null;
+                loadCustomThemes();
+            }, 300);
+        }
+
+        function initTheme() {
+            themeChoice = readStoredThemeChoice();
+            applyThemeChoice(themeChoice);
             var sel = document.getElementById('themeSelect');
             if (sel && !sel.getAttribute('data-theme-bound')) {
                 sel.setAttribute('data-theme-bound', '1');
                 sel.addEventListener('change', function () {
-                    applyTheme(sel.value);
+                    applyThemeChoice(sel.value);
                 });
             }
+            initThemeTools();
         }
 
         function dndTypesHas(dt, mime) {
@@ -6247,6 +6872,7 @@
                     '<span class="panels-menu-state">' + (row.hidden ? 'Show' : 'Visible') + '</span></button>';
             });
             menu.innerHTML = html || '<div class="panels-menu-empty">No panels</div>';
+            appendReduceMotionRow(menu);
             if (btn) {
                 btn.textContent = hiddenCount > 0 ? ('Panels (' + hiddenCount + ' hidden)') : 'Panels';
             }
@@ -6737,6 +7363,7 @@
                 }
                 ensureWebSocket();
                 wnStart();
+                if (customThemes.list === null) loadCustomThemes(); // the first load failed: try again with the next poll
             } catch(e) {
                 if (e.message === 'unauthorized') {
                     authRequired = true;
@@ -6784,10 +7411,16 @@
             ws.onopen = function() {
                 refreshAll();
                 plRefreshAfterReconnect();
+                scheduleThemesReload();
             };
             ws.onmessage = function(e) {
                 try {
                     const data = JSON.parse(e.data);
+                    // Themes belong to the whole server, not to one guild: re-fetch the list (a burst of changes is one fetch).
+                    if (data.type === 'themes') {
+                        scheduleThemesReload();
+                        return;
+                    }
                     if (data.guildId !== currentGuild) return;
                     if (data.type === 'player' && data.data) {
                         renderNowPlaying(data.data);
@@ -10882,6 +11515,7 @@
                 }
             } catch (e) {}
         })();
+        loadCustomThemes();
         loadGuilds();
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') loadGuilds();
