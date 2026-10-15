@@ -10532,17 +10532,22 @@
             if (likesState && song) likeToggle(song);
         }
 
-        async function likeToggle(song) {
-            var uri = song.uri;
-            var click = Likes.toggle(likesState, uri, song);
-            var want = Likes.isLiked(click.state, uri);
+        // The ♥ flips at once. A request goes out only when none for this song is on its way (likes.js decides), so
+        // the server gets a fast like, unlike, like in click order and ends on the last click.
+        function likeToggle(song) {
+            var click = Likes.toggle(likesState, song.uri, song);
             likesState = click.state;
             likesPaint();
+            if (click.request) likeSend(song.uri, click.request);
+        }
+
+        // One like/unlike request; its answer may ask for exactly one more (the clicks made meanwhile).
+        async function likeSend(uri, request) {
             var ok = false;
             var liked = null;
             var message = '';
             try {
-                var resp = await authFetch(click.request.path, { method: 'POST', body: JSON.stringify(click.request.body), keep401: true });
+                var resp = await authFetch(request.path, { method: 'POST', body: JSON.stringify(request.body), keep401: true });
                 var data = await readApiJson(resp);
                 if (!data || typeof data !== 'object') data = {};
                 ok = resp.ok;
@@ -10551,14 +10556,16 @@
                 // With login on, a 401 means the session ended: reading the likes again brings up the login screen.
                 if (resp.status === 401) likesRefreshSoon();
             } catch (e) {}
-            likesState = Likes.settle(likesState, uri, ok, liked, click.id);
+            var answer = Likes.settle(likesState, uri, ok, liked, request.id);
+            likesState = answer.state;
             likesPaint();
-            if (!ok) {
+            if (answer.reverted) {
                 plToast(message || 'Could not update your likes', { error: true });
-            } else if (want && !likesToasted && Likes.isLiked(likesState, uri)) {
+            } else if (ok && request.liked && !likesToasted && Likes.isLiked(likesState, uri)) {
                 likesToasted = true;
                 plToast('Added to Liked songs', {});
             }
+            if (answer.request) likeSend(uri, answer.request);
         }
 
         // A WebSocket "likes" message, a reconnect, the page opening: read your likes and the "liked by" line again.
