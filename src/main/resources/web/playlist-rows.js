@@ -11,11 +11,11 @@
 }(typeof window !== 'undefined' ? window : this, function () {
     'use strict';
 
-    var FSI = '⁨'; // first strong isolate ...
-    var PDI = '⁩'; // ... pop directional isolate
+    var FSI = '\u2068'; // first strong isolate ...
+    var PDI = '\u2069'; // ... pop directional isolate
     // Embeddings, overrides and isolates inside a name could leak out of its isolate; they are dropped.
     // (Same rule as Likes.likedByText; likes.js does not export its helper, so this stays a local copy.)
-    var BIDI_CONTROLS = /[‪-‮⁦-⁩]/g;
+    var BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/g;
     // Fixed English names: the rest of the panel is English, and the line must read the same on every browser.
     var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

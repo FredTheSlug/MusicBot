@@ -3,9 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const PlaylistRows = require('../../main/resources/web/playlist-rows.js');
 
-const FSI = '⁨';
-const PDI = '⁩';
-const RLO = '‮';
+const FSI = '\u2068';
+const PDI = '\u2069';
+const RLO = '\u202E';
 
 /** What a person sees: the line without its invisible bidi isolates. */
 function visible(text) {
