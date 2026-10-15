@@ -342,6 +342,43 @@ public class PlaylistStoreTest
     }
 
     @Test
+    public void likedFolderIsHiddenAndReserved() throws Exception
+    {
+        store.create("Visible", "", FRED);
+        store.create("Nested", "Rock", FRED);
+        String json = store.get("Visible", "").get().toJson();
+        write(root.resolve(".liked").resolve("233362518045753345.json"), json);
+        write(root.resolve(".liked").resolve("sub").resolve("Deeper.json"), json);
+        write(root.resolve(".liked").resolve("Old.txt"), "https://example.com/a\n");
+        write(root.resolve(".liked").resolve("1-Ancient.json"), json); // named like a trash file from long ago
+        write(root.resolve("Rock").resolve(".liked").resolve("Odd.json"), json);
+
+        assertEquals(Arrays.asList("|Visible", "Rock|Nested"), names(store.tree()));
+        assertEquals(Arrays.asList("Rock"), store.folders());
+        assertFalse(store.find(".liked/233362518045753345").isPresent());
+        assertTrue("never offered to the converter", store.legacyEntries().isEmpty());
+        assertEquals(0, store.moveLeftoverTxts());
+        assertEquals("nor purged", 0, store.purgeExpired());
+        assertTrue(Files.isRegularFile(root.resolve(".liked").resolve("1-Ancient.json")));
+
+        for(String reserved : new String[]{".liked", ".LIKED", ".Liked"})
+        {
+            assertThrows("pathFor " + reserved, IllegalArgumentException.class, () -> store.pathFor(reserved, ""));
+            assertThrows("create " + reserved, IllegalArgumentException.class, () -> store.create(reserved, "", FRED));
+            assertThrows("get " + reserved, IllegalArgumentException.class, () -> store.get(reserved, ""));
+            assertThrows("folder " + reserved, IllegalArgumentException.class, () -> store.pathFor("ok", reserved));
+            assertThrows("create in " + reserved, IllegalArgumentException.class, () -> store.create("ok", reserved, FRED));
+            assertThrows("createFolder " + reserved, IllegalArgumentException.class, () -> store.createFolder(reserved));
+            assertThrows("deleteFolder " + reserved, IllegalArgumentException.class, () -> store.deleteFolder(reserved, FRED));
+            assertThrows("rename to " + reserved, IllegalArgumentException.class, () -> store.rename("Visible", "", reserved));
+            assertThrows("move to " + reserved, IllegalArgumentException.class, () -> store.move("Visible", "", reserved));
+        }
+        assertThrows(IllegalArgumentException.class, () -> store.pathFor("ok", ".liked/x"));
+        assertThrows(IllegalArgumentException.class, () -> store.pathFor("ok", "x/.liked"));
+        assertEquals("nothing moved", Arrays.asList("|Visible", "Rock|Nested"), names(store.tree()));
+    }
+
+    @Test
     public void writesAreAtomic() throws Exception
     {
         store.create("A", "F", FRED);

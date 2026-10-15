@@ -68,7 +68,9 @@ public class PlaylistStore
     private static final String TXT = ".txt";
     private static final String DELETED_DIR = ".deleted";
     private static final String LEGACY_DIR = ".legacy-txt";
-    private static final String[] RESERVED = {DELETED_DIR, LEGACY_DIR};
+    /** Where {@link LikesStore} keeps everyone's liked songs; never part of the playlists a person sees. */
+    private static final String LIKED_DIR = ".liked";
+    private static final String[] RESERVED = {DELETED_DIR, LEGACY_DIR, LIKED_DIR};
     private static final char BYTE_ORDER_MARK = 0xFEFF;
     private static final int MAX_NAME_BYTES = 200;
     /** How long a deleted playlist can be restored. */
@@ -548,18 +550,27 @@ public class PlaylistStore
             throw new IllegalArgumentException("No song to put back");
         return update(name, folder, file ->
         {
-            List<Song> list = file.getSongs();
-            if(list.size() >= PlaylistFile.MAX_SONGS)
+            if(file.getSongs().size() >= PlaylistFile.MAX_SONGS)
                 throw new IllegalStateException(FULL);
-            Set<String> ids = new HashSet<>();
-            for(Song existing : list)
-                ids.add(existing.getId());
-            boolean idFree = song.getId() != null && !ids.contains(song.getId());
-            Song copy = PlaylistFile.copyForPlaylist(song, ids, song.getAddedBy(), song.getAddedAt());
-            if(idFree)
-                copy.setId(song.getId());
-            list.add(Math.max(0, Math.min(index, list.size())), copy);
+            putBack(file, song, index);
         });
+    }
+
+    /**
+     * Adds a copy of {@code song} to the list at {@code index} (clamped), as {@link #reinsertSong} does: same
+     * {@code addedBy} and {@code addedAt}, the same id unless a song has taken it. The caller has made sure there is room.
+     */
+    static void putBack(PlaylistFile file, Song song, int index)
+    {
+        List<Song> list = file.getSongs();
+        Set<String> ids = new HashSet<>();
+        for(Song existing : list)
+            ids.add(existing.getId());
+        boolean idFree = song.getId() != null && !ids.contains(song.getId());
+        Song copy = PlaylistFile.copyForPlaylist(song, ids, song.getAddedBy(), song.getAddedAt());
+        if(idFree)
+            copy.setId(song.getId());
+        list.add(Math.max(0, Math.min(index, list.size())), copy);
     }
 
     /** Moves the song so that it ends up at {@code toIndex} (clamped to the list). */
@@ -654,7 +665,7 @@ public class PlaylistStore
     }
 
     /** Where the song with this id is in the list; {@link NoSuchElementException} when there is none. */
-    private static int indexOfSong(PlaylistFile file, String songId)
+    static int indexOfSong(PlaylistFile file, String songId)
     {
         List<Song> songs = file.getSongs();
         for(int i = 0; i < songs.size(); i++)

@@ -225,6 +225,28 @@ public class PlaylistConverterTest
     }
 
     @Test
+    public void converterSkipsTheLikedFolder() throws Exception
+    {
+        txt("Rock", "Real", "Dr Dre - Still");
+        resolver.answerOne("Dr Dre - Still", "Still");
+        Path liked = txt(".liked", "Hidden", "Snoop - Gin and Juice");
+        Path deeper = txt(".liked/sub", "Deeper", "Eminem - Stan");
+        Path leftover = txt(".liked", "Both", "Kanye - Stronger");
+        Files.write(root.resolve(".liked").resolve("Both.json"), new PlaylistFile().toJson().getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(1, converter.convertPending());
+
+        assertEquals("only the real playlist was looked at", Collections.singletonList("Dr Dre - Still"), resolver.seen);
+        assertProgress(converter.progress(), 1, 1, 0);
+        for(Path untouched : new Path[]{liked, deeper, leftover})
+            assertTrue(untouched + " stays where it is", Files.isRegularFile(untouched));
+        assertFalse("nothing was moved aside for it", Files.exists(root.resolve(".legacy-txt").resolve(".liked")));
+        assertEquals(Collections.singletonList("Rock|Real|false"),
+                store.tree().stream().map(e -> e.getFolder() + "|" + e.getName() + "|" + e.isLegacy())
+                        .collect(Collectors.toList()));
+    }
+
+    @Test
     public void failedLineBecomesUnresolved() throws Exception
     {
         String video = "https://www.youtube.com/watch?v=dead";
