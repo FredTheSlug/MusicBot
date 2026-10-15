@@ -49,6 +49,9 @@
   var COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
   var THEME_ID = /^[a-z0-9]{12}$/;
 
+  /** The glow behind text when the background is see-through, for dark text: the one Dawn's skin sets in themes.css. */
+  var LIGHT_LEGIBILITY_SHADOW = '0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.7)';
+
   /** The font-family value for a theme's font; anything unknown is Inter. */
   function fontStack(font) {
     return typeof font === 'string' && Object.prototype.hasOwnProperty.call(FONT_STACKS, font) ? FONT_STACKS[font] : FONT_STACKS.Inter;
@@ -82,7 +85,8 @@
 
   /**
    * The inline variables for a custom mini-player version: the 16 the panel's themes set (glow and gradient derived from
-   * the accent as the panel derives them, the font from the theme's font) and --on-accent. null when any of the 14
+   * the accent as the panel derives them, the font from the theme's font), --on-accent, and for dark text the light
+   * --legibility-shadow. null when any of the 14
    * colors is not a plain #rrggbb / #rrggbbaa, so nothing from the page's data ever becomes more than a color.
    * custom = {colors, font, ...} as the app sends it.
    */
@@ -93,7 +97,7 @@
       var color = colors[CUSTOM_SLOTS[i]];
       if (typeof color !== 'string' || !COLOR.test(color)) return null;
     }
-    return {
+    var vars = {
       '--bg-primary': colors.bgPrimary,
       '--bg-secondary': colors.bgSecondary,
       '--bg-card': colors.bgCard,
@@ -113,6 +117,10 @@
       '--font-family': fontStack(custom.font),
       '--on-accent': onAccent(colors.accent)
     };
+    // Dark text (a light version) must not get the default black halo below 60% Background: nearly unreadable over a
+    // dark wallpaper. It gets Dawn's light glow instead; light text keeps mini.css's dark default.
+    if (onAccent(colors.textPrimary) === '#ffffff') vars['--legibility-shadow'] = LIGHT_LEGIBILITY_SHADOW;
+    return vars;
   }
 
   /**
@@ -192,6 +200,16 @@
     var dim = Number(custom.dim);
     dim = isFinite(dim) ? Math.max(0, Math.min(90, dim)) : 0;
     return { url: url, overlay: 'rgba(0, 0, 0, ' + dim / 100 + ')', freeze: !!reduceMotion && ANIMATED_PICTURE.test(url) };
+  }
+
+  /**
+   * The arguments for mini_set_theme. The theme is sent only when the person picked one in the theme menu; flipping
+   * "Match the panel" sends none (null), so the app keeps the stored pick: the menu may be showing a stand-in for a
+   * custom theme that isn't in the list right now, and that must never become the pick.
+   */
+  function themeSetArgs(matchPanel, menuValue, menuPicked) {
+    var picked = menuPicked === true && typeof menuValue === 'string' && menuValue !== '';
+    return { matchPanel: !!matchPanel, theme: picked ? menuValue : null };
   }
 
   /** The picture for theme {id, vars, custom?}: only a custom version whose colors are in use brings one (else its base skin shows). */
@@ -417,6 +435,7 @@
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
     customVars: customVars, onAccent: onAccent, fontStack: fontStack, themeMenu: themeMenu, themeLabel: themeLabel,
     pictureLayer: pictureLayer, themePicture: themePicture, CUSTOM_SLOTS: CUSTOM_SLOTS, FONT_STACKS: FONT_STACKS,
+    LIGHT_LEGIBILITY_SHADOW: LIGHT_LEGIBILITY_SHADOW, themeSetArgs: themeSetArgs,
     spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly,
     currentLyricIndex: currentLyricIndex, trackKey: trackKey
   };

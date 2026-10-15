@@ -265,12 +265,16 @@ fn emit_theme_menu(app: &AppHandle) {
 
 static THEMES_ASKED: AtomicU64 = AtomicU64::new(0);
 static THEMES_SHOWN: AtomicU64 = AtomicU64::new(0);
+/// Set once the bot has answered for the first time this session (an empty list counts): until then the list is
+/// asked for again whenever the panel reports its theme (see `theme::needs_refresh`).
+static THEMES_LOADED: AtomicBool = AtomicBool::new(false);
 
 /// Asks the bot for its custom themes and, if the list changed, restyles the mini-player and its theme menu.
 /// Blocks while it waits for the panel's answer: call it from a worker thread or an async command, never the main thread.
 pub fn refresh_themes(app: &AppHandle) -> Result<ThemeMenu, String> {
     let ticket = THEMES_ASKED.fetch_add(1, Ordering::SeqCst) + 1;
     let data = bridge::send_command_fetch(app, BotCommand::Themes, THEMES_TIMEOUT)?;
+    THEMES_LOADED.store(true, Ordering::SeqCst);
     let fresh = theme::custom_minis(&data);
     // Two asks can be out at once; an older answer arriving late must not undo a newer one.
     if THEMES_SHOWN.fetch_max(ticket, Ordering::SeqCst) < ticket {
@@ -311,13 +315,16 @@ fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
 /// The panel switched themes (or loaded): remember it and restyle the mini-player if it follows.
 pub fn on_panel_theme(app: &AppHandle, raw: PanelTheme) {
     let Some(clean) = theme::sanitize(raw) else { return };
-    if app.state::<AppState>().settings.lock().unwrap().panel_theme.as_ref() == Some(&clean) {
-        return;
+    let changed = app.state::<AppState>().settings.lock().unwrap().panel_theme.as_ref() != Some(&clean);
+    if changed {
+        update_settings(app, |s| s.panel_theme = Some(clean));
+        emit_theme(app);
     }
-    update_settings(app, |s| s.panel_theme = Some(clean));
-    emit_theme(app);
-    // The panel just changed what it shows: a theme may have been edited, or made, or taken away.
-    refresh_themes_in_background(app);
+    // A changed theme may have been edited, or made, or taken away. And the report of an unchanged one still means the
+    // panel is up now: a first ask that came before it (the mini-player shown at startup) got no answer.
+    if theme::needs_refresh(changed, THEMES_LOADED.load(Ordering::SeqCst)) {
+        refresh_themes_in_background(app);
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -584,11 +591,12 @@ pub fn mini_set_opacity(app: AppHandle, value: f64) {
     update_settings(&app, |s| s.mini_player_opacity = settings::clamp_opacity(value));
 }
 
-/// A built-in id or `custom:<id>`; anything else keeps the current pick.
+/// `theme` is what the person picked in the menu: a built-in id or `custom:<id>` (anything else keeps the current
+/// pick), or None when only the match switch was flipped (the stored pick is left exactly as it is).
 #[tauri::command]
-pub fn mini_set_theme(app: AppHandle, match_panel: bool, theme: String) {
+pub fn mini_set_theme(app: AppHandle, match_panel: bool, theme: Option<String>) {
     let customs = custom_themes(&app);
-    update_settings(&app, |s| theme::choose(s, match_panel, &theme, &customs));
+    update_settings(&app, |s| theme::choose(s, match_panel, theme.as_deref(), &customs));
     emit_theme(&app);
 }
 

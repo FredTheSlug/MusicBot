@@ -256,18 +256,33 @@ pub fn menu_selection(theme: &str, base: &str, customs: &[CustomMini]) -> String
     }
 }
 
-/// Takes the person's pick from the theme menu. A custom theme is remembered with its base theme, for when it
-/// is gone; something that is not a theme keeps the current pick.
-pub fn choose(settings: &mut Settings, match_panel: bool, theme: &str, customs: &[CustomMini]) {
+/// Takes what the person did in the theme settings: the match switch, and `theme` when they picked one in the menu
+/// (None when only the switch was flipped: the stored pick stays exactly as it is, since the menu may be showing a
+/// stand-in for a custom theme that isn't in the list right now). A custom theme is remembered with its base theme,
+/// for when it is gone; something that is not a theme keeps the current pick.
+pub fn choose(settings: &mut Settings, match_panel: bool, theme: Option<&str>, customs: &[CustomMini]) {
     settings.mini_player_match_panel = match_panel;
+    let Some(theme) = theme else { return };
     if THEME_IDS.contains(&theme) {
         settings.mini_player_theme = theme.to_string();
         settings.mini_player_theme_base = theme.to_string();
     } else if let Some(id) = custom_id(theme) {
-        let base = customs.iter().find(|c| c.id == id).map_or(THEME_IDS[0], |c| c.base.as_str());
+        let base = match customs.iter().find(|c| c.id == id) {
+            Some(found) => found.base.clone(),
+            // Not on offer right now (not loaded yet, the bot is away): the pick that is already stored keeps its base.
+            None if settings.mini_player_theme == theme => known_or_nebula(&settings.mini_player_theme_base),
+            None => THEME_IDS[0].to_string(),
+        };
         settings.mini_player_theme = theme.to_string();
-        settings.mini_player_theme_base = base.to_string();
+        settings.mini_player_theme_base = base;
     }
+}
+
+/// Should the list of custom themes be asked for again after the panel reported its theme? Yes when the theme
+/// changed, and also while the list has never loaded: the first ask can come before the panel's bridge exists (the
+/// mini-player shown at startup), and a panel that then reports the very theme it had last session changes nothing.
+pub fn needs_refresh(report_changed: bool, list_loaded: bool) -> bool {
+    report_changed || !list_loaded
 }
 
 /// What the mini-player's UI is told to wear: the skin, the panel's live values for it, and a custom version.
@@ -799,25 +814,79 @@ mod tests {
     fn choosing_a_theme_remembers_a_custom_ones_base_beside_it() {
         let customs = [mini("k3j9x0q2m7ab", "grove")];
         let mut s = Settings::default();
-        choose(&mut s, false, "custom:k3j9x0q2m7ab", &customs);
+        choose(&mut s, false, Some("custom:k3j9x0q2m7ab"), &customs);
         assert!(!s.mini_player_match_panel);
         assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("custom:k3j9x0q2m7ab", "grove"));
-        choose(&mut s, false, "aurora", &customs);
+        choose(&mut s, false, Some("aurora"), &customs);
         assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("aurora", "aurora"));
         // a custom theme the list doesn't have (yet) is still taken, on Nebula
-        choose(&mut s, true, "custom:zzzzzzzzzzzz", &customs);
+        choose(&mut s, true, Some("custom:zzzzzzzzzzzz"), &customs);
         assert!(s.mini_player_match_panel);
         assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("custom:zzzzzzzzzzzz", "nebula"));
+    }
+
+    #[test]
+    fn flipping_match_the_panel_alone_leaves_a_stored_custom_pick_and_its_base_as_they_were() {
+        // The custom theme isn't in the list (not loaded yet, the bot is offline, the panel is signed out): the menu
+        // shows its base skin in its place, and the toggle must not turn that stand-in into the pick.
+        let mut s = Settings {
+            mini_player_match_panel: false,
+            mini_player_theme: "custom:k3j9x0q2m7ab".into(),
+            mini_player_theme_base: "grove".into(),
+            ..Settings::default()
+        };
+        assert_eq!(menu_selection(&s.mini_player_theme, &s.mini_player_theme_base, &[]), "grove", "what the select shows meanwhile");
+        choose(&mut s, true, None, &[]);
+        assert!(s.mini_player_match_panel);
+        assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("custom:k3j9x0q2m7ab", "grove"));
+        choose(&mut s, false, None, &[]);
+        assert!(!s.mini_player_match_panel);
+        assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("custom:k3j9x0q2m7ab", "grove"));
+        // and with the list loaded and the theme in it, the same
+        let customs = [mini("k3j9x0q2m7ab", "ember")];
+        choose(&mut s, true, None, &customs);
+        assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("custom:k3j9x0q2m7ab", "grove"));
+        // a built-in pick is left alone too
+        let mut own = Settings { mini_player_theme: "ember".into(), mini_player_theme_base: "ember".into(), ..Settings::default() };
+        choose(&mut own, false, None, &[]);
+        assert_eq!((own.mini_player_theme.as_str(), own.mini_player_theme_base.as_str()), ("ember", "ember"));
+    }
+
+    #[test]
+    fn picking_the_stored_custom_theme_again_while_it_is_missing_keeps_its_base() {
+        let mut s = Settings {
+            mini_player_theme: "custom:k3j9x0q2m7ab".into(),
+            mini_player_theme_base: "grove".into(),
+            ..Settings::default()
+        };
+        choose(&mut s, false, Some("custom:k3j9x0q2m7ab"), &[]);
+        assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("custom:k3j9x0q2m7ab", "grove"));
+        // a different custom theme that isn't in the list has no base to remember
+        choose(&mut s, false, Some("custom:zzzzzzzzzzzz"), &[]);
+        assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("custom:zzzzzzzzzzzz", "nebula"));
+        // a base that isn't a built-in theme is not kept
+        let mut junk = Settings { mini_player_theme: "custom:k3j9x0q2m7ab".into(), mini_player_theme_base: "../x".into(), ..Settings::default() };
+        choose(&mut junk, false, Some("custom:k3j9x0q2m7ab"), &[]);
+        assert_eq!(junk.mini_player_theme_base, "nebula");
     }
 
     #[test]
     fn choosing_something_that_is_not_a_theme_keeps_the_current_pick() {
         let mut s = Settings { mini_player_theme: "ember".into(), mini_player_theme_base: "ember".into(), ..Settings::default() };
         for bad in ["", "hologram", "custom:", "custom:../x", "custom:K3J9X0Q2M7AB", "<script>"] {
-            choose(&mut s, false, bad, &[]);
+            choose(&mut s, false, Some(bad), &[]);
             assert_eq!((s.mini_player_theme.as_str(), s.mini_player_theme_base.as_str()), ("ember", "ember"), "{bad:?}");
             assert!(!s.mini_player_match_panel, "the match switch still follows the person");
         }
+    }
+
+    #[test]
+    fn the_theme_list_is_asked_for_again_after_a_report_while_it_has_never_loaded() {
+        // the usual reasons: the panel's theme changed, or the list is not here yet
+        assert!(needs_refresh(true, true), "the panel switched themes");
+        assert!(needs_refresh(true, false));
+        assert!(needs_refresh(false, false), "same theme as last session, but the first ask came before the panel did");
+        assert!(!needs_refresh(false, true), "nothing new: a report of the same theme with the list in hand");
     }
 
     #[test]

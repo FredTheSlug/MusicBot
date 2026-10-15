@@ -313,7 +313,8 @@ test('pickerError shows the bot\'s words, short and on one line', () => {
 // ---- Custom themes: the mini-player versions people made in the panel ----
 
 const {
-  customVars, onAccent, fontStack, themeMenu, themeLabel, pictureLayer, themePicture, CUSTOM_SLOTS, FONT_STACKS
+  customVars, onAccent, fontStack, themeMenu, themeLabel, pictureLayer, themePicture, CUSTOM_SLOTS, FONT_STACKS,
+  LIGHT_LEGIBILITY_SHADOW, themeSetArgs
 } = require('./view.js');
 const ThemePalette = require('../../../src/main/resources/web/theme-palette.js');
 const ThemeApply = require('../../../src/main/resources/web/theme-apply.js');
@@ -624,4 +625,94 @@ test('a custom skin has no rule of its own in themes.css, so it gets mini.css\'s
   const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8');
   assert.doesNotMatch(themes, /data-theme="custom"/);
   assert.doesNotMatch(themes, /data-theme\^=|data-theme\*=|:not\(\[data-theme/);
+});
+
+// ---- Light custom versions: readable text below 60% Background ----
+
+const LIGHT_COLORS = Object.assign({}, MINI_COLORS, {
+  bgPrimary: '#f4f2ef', bgSecondary: '#eae6e0', bgCard: '#ffffff', bgElevated: '#f0ece6', bgHover: '#e2dcd4',
+  textPrimary: '#1c1917', textSecondary: '#57534e', textTertiary: '#78716c', border: '#00000014', borderLight: '#0000001f'
+});
+
+/** The value of --legibility-shadow in the rule whose selector is exactly this one. */
+function shadowOf(css, selector) {
+  const at = css.indexOf(selector + ' {');
+  assert.ok(at >= 0, selector + ' not found');
+  const m = /--legibility-shadow:\s*([^;]+);/.exec(css.slice(at, css.indexOf('}', at)));
+  assert.ok(m, selector + ' has no --legibility-shadow');
+  return m[1].trim();
+}
+
+test('a light custom version (dark text) gets the light glow below 60% Background, a dark one keeps the default dark glow', () => {
+  const light = customVars(custom({ colors: LIGHT_COLORS }));
+  assert.equal(light['--legibility-shadow'], LIGHT_LEGIBILITY_SHADOW);
+  assert.match(LIGHT_LEGIBILITY_SHADOW, /rgba\(255, 255, 255/, 'a light glow, not a black halo');
+  assert.doesNotMatch(LIGHT_LEGIBILITY_SHADOW, /rgba\(0, 0, 0/);
+  // light text: nothing is set, so mini.css's dark default (below) applies
+  assert.equal('--legibility-shadow' in customVars(custom()), false);
+  assert.match(shadowOf(MINI_CSS, ':root'), /^0 1px 3px rgba\(0, 0, 0, 0\.9\), 0 0 8px rgba\(0, 0, 0, 0\.6\)$/, 'the default is the dark glow');
+});
+
+test('the light glow is the one Dawn, the hand-made light skin, uses', () => {
+  const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8').replace(/\r/g, '');
+  assert.equal(LIGHT_LEGIBILITY_SHADOW, shadowOf(themes, 'html[data-theme="dawn"]'));
+});
+
+test('the glow follows the main text by the same black-or-white rule as the color on the accent', () => {
+  let seed = 4242;
+  const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  let lights = 0;
+  for (let i = 0; i < 400; i++) {
+    const textPrimary = '#' + Math.floor(rnd() * 0x1000000).toString(16).padStart(6, '0');
+    const vars = customVars(custom({ colors: Object.assign({}, MINI_COLORS, { textPrimary }) }));
+    const darkText = onAccent(textPrimary) === '#ffffff';
+    assert.equal(vars['--legibility-shadow'], darkText ? LIGHT_LEGIBILITY_SHADOW : undefined, textPrimary);
+    if (darkText) lights++;
+  }
+  assert.ok(lights > 50 && lights < 350, 'both kinds were tried: ' + lights);
+  // the edges
+  const text = (textPrimary) => customVars(custom({ colors: Object.assign({}, MINI_COLORS, { textPrimary }) }))['--legibility-shadow'];
+  assert.equal(text('#000000'), LIGHT_LEGIBILITY_SHADOW);
+  assert.equal(text('#ffffff'), undefined);
+  assert.equal(text('#1c1917ff'), LIGHT_LEGIBILITY_SHADOW, 'alpha written out is the same color');
+});
+
+test('the light glow goes with a light version and comes off with it', () => {
+  const root = fakeRoot();
+  let applied = applyTheme(root, { id: 'dawn', vars: {}, custom: custom({ colors: LIGHT_COLORS }) }, []);
+  assert.equal(root.props['--legibility-shadow'], LIGHT_LEGIBILITY_SHADOW);
+  assert.equal(root.props['--on-accent'], onAccent(LIGHT_COLORS.accent), 'the color on the accent follows the accent, not the text');
+  // a dark version after it: the glow is gone, so mini.css's dark default is back
+  applied = applyTheme(root, { id: 'ember', vars: {}, custom: custom() }, applied);
+  assert.equal('--legibility-shadow' in root.props, false);
+  // and to a built-in skin: Dawn sets its own in themes.css; nothing is left inline
+  applied = applyTheme(root, { id: 'dawn', vars: {}, custom: custom({ colors: LIGHT_COLORS }) }, applied);
+  applyTheme(root, { id: 'dawn', vars: {} }, applied);
+  assert.deepEqual(root.props, {});
+});
+
+test('the glow reaches the text through the low-alpha rules, and the value is set with setProperty only', () => {
+  assert.match(cssRule(MINI_CSS, '.low-alpha .title,\n.low-alpha .meta,\n.low-alpha .status'), /text-shadow:\s*var\(--legibility-shadow\)/);
+  const view = fs.readFileSync(path.join(__dirname, 'view.js'), 'utf8');
+  assert.doesNotMatch(view, /cssText|innerHTML/);
+});
+
+// ---- "Match the panel" must not rewrite the person's pick ----
+
+test('flipping Match the panel sends no theme; picking one in the menu sends it', () => {
+  assert.deepEqual(themeSetArgs(true, 'aurora', false), { matchPanel: true, theme: null });
+  assert.deepEqual(themeSetArgs(false, 'aurora', false), { matchPanel: false, theme: null });
+  assert.deepEqual(themeSetArgs(false, 'custom:k3j9x0q2m7ab', true), { matchPanel: false, theme: 'custom:k3j9x0q2m7ab' });
+  assert.deepEqual(themeSetArgs(true, 'ember', true), { matchPanel: true, theme: 'ember' });
+  // a pick is a string, or nothing at all
+  assert.deepEqual(themeSetArgs(true, undefined, true), { matchPanel: true, theme: null });
+  assert.deepEqual(themeSetArgs(true, '', true), { matchPanel: true, theme: null });
+  assert.deepEqual(themeSetArgs(1, 'ember', false), { matchPanel: true, theme: null }, 'the switch is a boolean');
+});
+
+test('the match switch and the theme menu each send their own kind of change', () => {
+  const mini = fs.readFileSync(path.join(__dirname, 'mini.js'), 'utf8').replace(/\r/g, '');
+  assert.match(mini, /el\('matchPanel'\)\.addEventListener\('change', function \(\) \{ saveTheme\(false\); \}\)/);
+  assert.match(mini, /el\('themeSelect'\)\.addEventListener\('change', function \(\) \{ saveTheme\(true\); \}\)/);
+  assert.match(mini, /invoke\('mini_set_theme', MV\.themeSetArgs\(el\('matchPanel'\)\.checked, el\('themeSelect'\)\.value, menuPicked\)\)/);
 });

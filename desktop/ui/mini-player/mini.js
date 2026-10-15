@@ -978,12 +978,13 @@
     invoke('mini_set_opacity', { value: Number(el('opacity').value) / 100 });
   });
 
-  function saveTheme() {
+  // menuPicked: the person chose in the theme menu. Flipping the switch alone sends no theme (see MV.themeSetArgs).
+  function saveTheme(menuPicked) {
     el('themeRow').hidden = el('matchPanel').checked;
-    invoke('mini_set_theme', { matchPanel: el('matchPanel').checked, theme: el('themeSelect').value });
+    invoke('mini_set_theme', MV.themeSetArgs(el('matchPanel').checked, el('themeSelect').value, menuPicked));
   }
-  el('matchPanel').addEventListener('change', saveTheme);
-  el('themeSelect').addEventListener('change', saveTheme);
+  el('matchPanel').addEventListener('change', function () { saveTheme(false); });
+  el('themeSelect').addEventListener('change', function () { saveTheme(true); });
 
   invoke('mini_get_prefs').then(function (prefs) {
     showCompact(prefs.compact);
