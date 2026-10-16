@@ -46,6 +46,11 @@ import java.util.function.Supplier;
  * {@code aac_96k}), so among several plain AAC streams the first in SoundCloud's own order is taken. Identifiers
  * with any other prefix are built and routed by the default handler, exactly as before.
  * <p>
+ * The bot never plays an {@code A:} identifier through lavaplayer's SoundCloud track either: {@link SoundCloudSource}
+ * swaps it for a {@link SoundCloudAacTrack}, because lavaplayer's SoundCloud HTTP interface adds a client id to
+ * SoundCloud's signed AAC links and those then answer 403. {@link #getM3uInfo} still routes it to the AAC decoder, as
+ * a fallback for a track that was not swapped.
+ * <p>
  * An {@code X:} identifier never plays through lavaplayer: both lookups refuse it with {@value #PROTECTED_MESSAGE}.
  * The source that loads the track is expected to have swapped it for another one by then.
  */
@@ -61,8 +66,9 @@ public class CksSoundCloudFormatHandler implements SoundCloudFormatHandler
     private final Supplier<HttpInterface> http;
 
     /**
-     * @param http where the AAC decoder gets the HTTP interface to download a stream's init file with, when it
-     *             starts (each call gets one the decoder closes): the SoundCloud source's own, which adds the client id
+     * @param http where the AAC decoder of the fallback route ({@link #getM3uInfo}) gets the HTTP interface to
+     *             download a stream's init file with, when it starts (each call gets one the decoder closes): the
+     *             SoundCloud source's own, which adds the client id
      */
     public CksSoundCloudFormatHandler(Supplier<HttpInterface> http)
     {

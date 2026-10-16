@@ -18,6 +18,9 @@ package com.jagrosh.jmusicbot.audio.soundcloud;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.tools.ExceptionTools;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterfaceManager;
 import com.sedmelluq.discord.lavaplayer.track.AudioItem;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioReference;
@@ -31,27 +34,33 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * The SoundCloud source the bot registers. Behind it is lavaplayer's own SoundCloud source with
  * {@link CksSoundCloudFormatHandler} plugged in and every other setting as {@code createDefault()} gives them
  * (search allowed, preview tracks kept); every call goes to that source.
  * <p>
- * What it loads is handed out unchanged, except tracks SoundCloud only offers encrypted
- * ({@link CksSoundCloudFormatHandler#isProtected}): each becomes a {@link YouTubeFallbackTrack} with the same info,
- * whether it was loaded on its own, inside a set or liked tracks, on a search result page (in its place, the other
- * results untouched, so one protected result no longer breaks a whole {@code scsearch}), or restored from storage.
- * Loading never searches YouTube: a fallback track searches ({@code ytsearch:} + author + " " + title, through the
- * bot's YouTube source) only when it starts playing.
- * <p>
- * A fallback track is stored like any SoundCloud track (its info, the {@code X:} identifier, under this source's
- * name; lavaplayer's SoundCloud source writes nothing more), so it is restored as a protected SoundCloud track and
- * from there as a fallback track again.
+ * What it loads is handed out unchanged (MP3 and Opus tracks are lavaplayer's own, the same instances), except two
+ * kinds of track, each swapped for one of the bot's with the same info, whether it was loaded on its own, inside a
+ * set or liked tracks, on a search result page (in its place, the other results untouched), or restored from storage:
+ * <ul>
+ *   <li>a plain AAC track ({@code A:}) becomes a {@link SoundCloudAacTrack}, which plays the stream with this source's
+ *       own plain HTTP client, because lavaplayer's adds a client id to SoundCloud's signed AAC links and those then
+ *       answer 403;</li>
+ *   <li>a track SoundCloud only offers encrypted ({@link CksSoundCloudFormatHandler#isProtected}) becomes a
+ *       {@link YouTubeFallbackTrack}, so one protected result no longer breaks a whole {@code scsearch}. Loading never
+ *       searches YouTube: a fallback track searches ({@code ytsearch:} + author + " " + title, through the bot's
+ *       YouTube source) only when it starts playing.</li>
+ * </ul>
+ * A swapped track is stored like any SoundCloud track (its info, with the {@code A:} or {@code X:} identifier, under
+ * this source's name; lavaplayer's SoundCloud source writes nothing more), so it is restored as that SoundCloud track
+ * and from there swapped again.
  * <p>
  * It does not implement lavaplayer's {@code HttpConfigurable}, which lavaplayer's own sources do: the bot configures
  * no HTTP settings on its player manager today, but if it ever calls {@code setHttpRequestConfigurator} or
- * {@code setHttpBuilderConfigurator} on the manager, that would not reach SoundCloud (the wrapped source keeps its
- * defaults) until this class passes it on.
+ * {@code setHttpBuilderConfigurator} on the manager, that would not reach SoundCloud (the wrapped source and the AAC
+ * streams' HTTP client keep their defaults) until this class passes it on.
  */
 public class SoundCloudSource implements AudioSourceManager
 {
@@ -59,8 +68,11 @@ public class SoundCloudSource implements AudioSourceManager
     private static final String YOUTUBE_SEARCH = "ytsearch:";
 
     private final AudioSourceManager soundCloud;
+    private final Supplier<String> clientId;
     private final AudioSourceManager youtube;
     private final AudioPlayerManager manager;
+    /** The AAC streams' HTTP client: lavaplayer's defaults, no SoundCloud filter, so it adds nothing to a link. */
+    private final HttpInterfaceManager streamHttp = HttpClientTools.createDefaultThreadLocalManager();
 
     /**
      * @param youtube the bot's YouTube source, which protected tracks are searched on
@@ -71,17 +83,26 @@ public class SoundCloudSource implements AudioSourceManager
         this(lavaplayerSource(), youtube, manager);
     }
 
-    /** With {@code soundCloud} in place of lavaplayer's source, for tests. */
-    SoundCloudSource(AudioSourceManager soundCloud, AudioSourceManager youtube, AudioPlayerManager manager)
+    private SoundCloudSource(SoundCloudAudioSourceManager soundCloud, AudioSourceManager youtube,
+            AudioPlayerManager manager)
+    {
+        this(soundCloud, soundCloud::getClientId, youtube, manager);
+    }
+
+    /** With {@code soundCloud} and its {@code clientId} in place of lavaplayer's source and client id, for tests. */
+    SoundCloudSource(AudioSourceManager soundCloud, Supplier<String> clientId, AudioSourceManager youtube,
+            AudioPlayerManager manager)
     {
         this.soundCloud = soundCloud;
+        this.clientId = clientId;
         this.youtube = youtube;
         this.manager = manager;
     }
 
     /**
-     * lavaplayer's SoundCloud source with the bot's format handler. The AAC decoder downloads with the source's own
-     * HTTP interface (it adds the client id); the handler is made before the source, so it reads it from a holder.
+     * lavaplayer's SoundCloud source with the bot's format handler. The handler's AAC route (only taken by an
+     * {@code A:} track this class has not swapped) downloads with the source's own HTTP interface; the handler is
+     * made before the source, so it reads it from a holder.
      */
     private static SoundCloudAudioSourceManager lavaplayerSource()
     {
@@ -132,25 +153,40 @@ public class SoundCloudSource implements AudioSourceManager
     public void shutdown()
     {
         soundCloud.shutdown();
+        ExceptionTools.closeWithWarnings(streamHttp);
     }
 
-    /** A protected track as a fallback track; any other track (or null) as it is. */
+    /** A plain AAC track as an AAC track, a protected one as a fallback track; any other track (or null) as it is. */
     private AudioTrack swap(AudioTrack track)
     {
-        if(track == null || !CksSoundCloudFormatHandler.isProtected(track))
-            return track;
-        return new YouTubeFallbackTrack(track.getInfo(), this::searchYouTube, this);
+        if(isAac(track))
+            return new SoundCloudAacTrack(track.getInfo(), clientId, streamHttp::getInterface, this);
+        if(track != null && CksSoundCloudFormatHandler.isProtected(track))
+            return new YouTubeFallbackTrack(track.getInfo(), this::searchYouTube, this);
+        return track;
     }
 
-    /** The same playlist when nothing in it is protected, else a copy with the protected tracks swapped in place. */
+    /** Whether {@link #swap} replaces the track. */
+    private static boolean isSwapped(AudioTrack track)
+    {
+        return isAac(track) || track != null && CksSoundCloudFormatHandler.isProtected(track);
+    }
+
+    private static boolean isAac(AudioTrack track)
+    {
+        return track != null && track.getIdentifier() != null
+                && track.getIdentifier().startsWith(CksSoundCloudFormatHandler.AAC_PREFIX);
+    }
+
+    /** The same playlist when nothing in it is swapped, else a copy with those tracks swapped in place. */
     private AudioPlaylist swapAll(AudioPlaylist playlist)
     {
         List<AudioTrack> tracks = playlist.getTracks();
         AudioTrack selected = playlist.getSelectedTrack();
-        boolean anyProtected = selected != null && CksSoundCloudFormatHandler.isProtected(selected);
+        boolean anySwapped = isSwapped(selected);
         for(AudioTrack track : tracks)
-            anyProtected |= track != null && CksSoundCloudFormatHandler.isProtected(track);
-        if(!anyProtected)
+            anySwapped |= isSwapped(track);
+        if(!anySwapped)
             return playlist;
 
         List<AudioTrack> swapped = new ArrayList<>(tracks.size());
