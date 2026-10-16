@@ -20,6 +20,7 @@ import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.ExceptionTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterfaceManager;
 import com.sedmelluq.discord.lavaplayer.track.AudioItem;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
@@ -33,8 +34,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.util.EntityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The SoundCloud source the bot registers. Behind it is lavaplayer's own SoundCloud source with
@@ -43,19 +49,20 @@ import java.util.function.Supplier;
  * <p>
  * What it loads is handed out unchanged (MP3 and Opus tracks are lavaplayer's own, the same instances), except two
  * kinds of track, each swapped for one of the bot's with the same info, whether it was loaded on its own, inside a
- * set or liked tracks, on a search result page (in its place, the other results untouched), or restored from storage:
+ * set or liked tracks, on a search result page (in its place, the other results untouched), or decoded:
  * <ul>
  *   <li>a plain AAC track ({@code A:}) becomes a {@link SoundCloudAacTrack}, which plays the stream with this source's
- *       own plain HTTP client, because lavaplayer's adds a client id to SoundCloud's signed AAC links and those then
- *       answer 403;</li>
+ *       own HTTP client ({@link SoundCloudStreamFilter}), because lavaplayer's adds a client id to SoundCloud's signed
+ *       AAC links and those then answer 403;</li>
  *   <li>a track SoundCloud only offers encrypted ({@link CksSoundCloudFormatHandler#isProtected}) becomes a
  *       {@link YouTubeFallbackTrack}, so one protected result no longer breaks a whole {@code scsearch}. Loading never
  *       searches YouTube: a fallback track searches ({@code ytsearch:} + author + " " + title, through the bot's
  *       YouTube source) only when it starts playing.</li>
  * </ul>
- * A swapped track is stored like any SoundCloud track (its info, with the {@code A:} or {@code X:} identifier, under
- * this source's name; lavaplayer's SoundCloud source writes nothing more), so it is restored as that SoundCloud track
- * and from there swapped again.
+ * The bot itself never encodes tracks (History and repeat play in-memory clones; likes, playlists and play counts load
+ * again by link), but a swapped track would encode like any SoundCloud track (its info, with the {@code A:} or
+ * {@code X:} identifier, under this source's name; lavaplayer's SoundCloud source writes nothing more), and
+ * {@link #decodeTrack} swaps it again.
  * <p>
  * It does not implement lavaplayer's {@code HttpConfigurable}, which lavaplayer's own sources do: the bot configures
  * no HTTP settings on its player manager today, but if it ever calls {@code setHttpRequestConfigurator} or
@@ -67,11 +74,16 @@ public class SoundCloudSource implements AudioSourceManager
     static final String NAME = "soundcloud";
     private static final String YOUTUBE_SEARCH = "ytsearch:";
 
+    private static final Logger log = LoggerFactory.getLogger(SoundCloudSource.class);
+
     private final AudioSourceManager soundCloud;
     private final Supplier<String> clientId;
     private final AudioSourceManager youtube;
     private final AudioPlayerManager manager;
-    /** The AAC streams' HTTP client: lavaplayer's defaults, no SoundCloud filter, so it adds nothing to a link. */
+    /**
+     * The AAC streams' HTTP client: lavaplayer's defaults with {@link SoundCloudStreamFilter} instead of lavaplayer's
+     * SoundCloud filter, so it adds nothing to a signed link.
+     */
     private final HttpInterfaceManager streamHttp = HttpClientTools.createDefaultThreadLocalManager();
 
     /**
@@ -83,35 +95,48 @@ public class SoundCloudSource implements AudioSourceManager
         this(lavaplayerSource(), youtube, manager);
     }
 
-    private SoundCloudSource(SoundCloudAudioSourceManager soundCloud, AudioSourceManager youtube,
-            AudioPlayerManager manager)
+    /** Around {@code soundCloud}, with its client id, refreshed through its HTTP interface (tests give their own). */
+    SoundCloudSource(SoundCloudAudioSourceManager soundCloud, AudioSourceManager youtube, AudioPlayerManager manager)
     {
-        this(soundCloud, soundCloud::getClientId, youtube, manager);
+        this(soundCloud, soundCloud::getClientId, lookupUrl -> refreshClientId(soundCloud, lookupUrl), youtube,
+                manager);
     }
 
-    /** With {@code soundCloud} and its {@code clientId} in place of lavaplayer's source and client id, for tests. */
-    SoundCloudSource(AudioSourceManager soundCloud, Supplier<String> clientId, AudioSourceManager youtube,
-            AudioPlayerManager manager)
+    /**
+     * With {@code soundCloud}, its {@code clientId} and {@code refreshClientId} in place of lavaplayer's source, its
+     * client id and its refresh, for tests.
+     */
+    SoundCloudSource(AudioSourceManager soundCloud, Supplier<String> clientId, Consumer<String> refreshClientId,
+            AudioSourceManager youtube, AudioPlayerManager manager)
     {
         this.soundCloud = soundCloud;
         this.clientId = clientId;
         this.youtube = youtube;
         this.manager = manager;
+        streamHttp.setHttpContextFilter(new SoundCloudStreamFilter(clientId, refreshClientId));
+    }
+
+    /** lavaplayer's SoundCloud source with the bot's format handler. */
+    private static SoundCloudAudioSourceManager lavaplayerSource()
+    {
+        return SoundCloudAudioSourceManager.builder().withFormatHandler(new CksSoundCloudFormatHandler()).build();
     }
 
     /**
-     * lavaplayer's SoundCloud source with the bot's format handler. The handler's AAC route (only taken by an
-     * {@code A:} track this class has not swapped) downloads with the source's own HTTP interface; the handler is
-     * made before the source, so it reads it from a holder.
+     * Has lavaplayer's SoundCloud source fetch a new client id: its HTTP interface sends the lookup with the id it
+     * has, gets SoundCloud's 401, fetches a new id and sends the lookup again. The answer itself is not needed.
      */
-    private static SoundCloudAudioSourceManager lavaplayerSource()
+    private static void refreshClientId(SoundCloudAudioSourceManager soundCloud, String lookupUrl)
     {
-        AtomicReference<SoundCloudAudioSourceManager> built = new AtomicReference<>();
-        SoundCloudAudioSourceManager source = SoundCloudAudioSourceManager.builder()
-                .withFormatHandler(new CksSoundCloudFormatHandler(() -> built.get().getHttpInterface()))
-                .build();
-        built.set(source);
-        return source;
+        try(HttpInterface http = soundCloud.getHttpInterface();
+                CloseableHttpResponse response = http.execute(new HttpGet(lookupUrl)))
+        {
+            EntityUtils.consumeQuietly(response.getEntity());
+        }
+        catch(IOException | RuntimeException e)
+        {
+            log.warn("Could not refresh SoundCloud's client id", e);
+        }
     }
 
     @Override

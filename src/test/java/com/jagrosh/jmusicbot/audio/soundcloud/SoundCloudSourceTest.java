@@ -44,7 +44,7 @@ import static org.junit.Assert.*;
  * and a fake YouTube source that counts its searches. Tracks carry the identifiers the format handler gives them:
  * {@code M:} / {@code O:} (MP3, Opus: lavaplayer's own), {@code A:} (plain AAC) or {@code X:} (protected), each
  * followed by a lookup URL. The decode tests use lavaplayer's real SoundCloud source and player manager, so the
- * stored form is the one the bot really writes.
+ * encoded form is lavaplayer's own (the bot itself never encodes tracks; the swap on decode is kept all the same).
  */
 public class SoundCloudSourceTest
 {
@@ -55,7 +55,10 @@ public class SoundCloudSourceTest
 
     private final FakeSoundCloud soundCloud = new FakeSoundCloud();
     private final FakeYouTube youtube = new FakeYouTube();
-    private final SoundCloudSource source = new SoundCloudSource(soundCloud, () -> "test-client-id", youtube, null);
+    private final SoundCloudSource source = new SoundCloudSource(soundCloud, () -> "test-client-id", lookupUrl ->
+    {
+        throw new AssertionError("no client id refresh in this test");
+    }, youtube, null);
 
     // ---- loading
 
@@ -202,7 +205,7 @@ public class SoundCloudSourceTest
         assertEquals(0, youtube.searches.size());
     }
 
-    // ---- name, storage, shutdown
+    // ---- name, encode and decode, shutdown
 
     @Test
     public void sourceNameIsSoundcloud() throws Exception

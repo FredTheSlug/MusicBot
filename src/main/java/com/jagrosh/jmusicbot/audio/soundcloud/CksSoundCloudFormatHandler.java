@@ -20,11 +20,8 @@ import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudFormatHandle
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudM3uInfo;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudTrackFormat;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
-import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
-import java.io.IOException;
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * Teaches lavaplayer's SoundCloud source the streams SoundCloud's api-v2 offers now. lavaplayer's default handler
@@ -35,7 +32,7 @@ import java.util.function.Supplier;
  *       plays as before;</li>
  *   <li>plain AAC: protocol {@code hls}, mime type {@code audio/mp4} (SoundCloud sends
  *       {@code audio/mp4; codecs="mp4a.40.2"}), identifier {@value #AAC_PREFIX} + lookup URL, played by
- *       {@link SoundCloudAacSegmentDecoder};</li>
+ *       {@link SoundCloudAacTrack};</li>
  *   <li>an encrypted stream ({@code cbc-encrypted-hls}, {@code ctr-encrypted-hls}) when that is all there is: it is
  *       chosen only to mark the track as protected, identifier {@value #PROTECTED_PREFIX} + lookup URL, so the track
  *       still loads with its SoundCloud details; nothing here can play it;</li>
@@ -46,10 +43,11 @@ import java.util.function.Supplier;
  * {@code aac_96k}), so among several plain AAC streams the first in SoundCloud's own order is taken. Identifiers
  * with any other prefix are built and routed by the default handler, exactly as before.
  * <p>
- * The bot never plays an {@code A:} identifier through lavaplayer's SoundCloud track either: {@link SoundCloudSource}
- * swaps it for a {@link SoundCloudAacTrack}, because lavaplayer's SoundCloud HTTP interface adds a client id to
- * SoundCloud's signed AAC links and those then answer 403. {@link #getM3uInfo} still routes it to the AAC decoder, as
- * a fallback for a track that was not swapped.
+ * An {@code A:} identifier never plays through lavaplayer's SoundCloud track either: its HTTP interface adds a client
+ * id to SoundCloud's signed AAC links and those then answer 403. AAC playback goes through
+ * {@link SoundCloudAacTrack}, which {@link SoundCloudSource} swaps in; {@link #getM3uInfo} refuses an {@code A:}
+ * identifier at once with "SoundCloud sent a stream the bot can't read yet", so a track that somehow was not swapped
+ * fails clearly instead of with a 403.
  * <p>
  * An {@code X:} identifier never plays through lavaplayer: both lookups refuse it with {@value #PROTECTED_MESSAGE}.
  * The source that loads the track is expected to have swapped it for another one by then.
@@ -63,17 +61,6 @@ public class CksSoundCloudFormatHandler implements SoundCloudFormatHandler
     static final String PROTECTED_MESSAGE = "SoundCloud protects this track and YouTube had no match";
 
     private final SoundCloudFormatHandler lavaplayer = new DefaultSoundCloudFormatHandler();
-    private final Supplier<HttpInterface> http;
-
-    /**
-     * @param http where the AAC decoder of the fallback route ({@link #getM3uInfo}) gets the HTTP interface to
-     *             download a stream's init file with, when it starts (each call gets one the decoder closes): the
-     *             SoundCloud source's own, which adds the client id
-     */
-    public CksSoundCloudFormatHandler(Supplier<HttpInterface> http)
-    {
-        this.http = http;
-    }
 
     /** Whether the track was loaded from a stream SoundCloud only offers encrypted. */
     public static boolean isProtected(AudioTrack track)
@@ -119,11 +106,8 @@ public class CksSoundCloudFormatHandler implements SoundCloudFormatHandler
         if(identifier.startsWith(PROTECTED_PREFIX))
             throw protectedTrack();
         if(identifier.startsWith(AAC_PREFIX))
-        {
-            String lookupUrl = identifier.substring(AAC_PREFIX.length());
-            return new SoundCloudM3uInfo(lookupUrl,
-                    stream -> new SoundCloudAacSegmentDecoder(stream, () -> loadInit(lookupUrl)));
-        }
+            throw new FriendlyException(SoundCloudAacSegmentDecoder.CANT_READ, FriendlyException.Severity.SUSPICIOUS,
+                    null);
         return lavaplayer.getM3uInfo(identifier);
     }
 
@@ -133,23 +117,6 @@ public class CksSoundCloudFormatHandler implements SoundCloudFormatHandler
         if(identifier.startsWith(PROTECTED_PREFIX))
             throw protectedTrack();
         return lavaplayer.getMp3LookupUrl(identifier);
-    }
-
-    private byte[] loadInit(String lookupUrl) throws IOException
-    {
-        HttpInterface httpInterface;
-        try
-        {
-            httpInterface = http.get();
-        }
-        catch(RuntimeException e)
-        {
-            throw HlsInitLookup.cantRead(e);
-        }
-        try(HttpInterface owned = httpInterface)
-        {
-            return HlsInitLookup.loadInit(owned, lookupUrl);
-        }
     }
 
     /**

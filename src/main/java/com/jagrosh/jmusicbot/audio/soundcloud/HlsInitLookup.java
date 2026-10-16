@@ -94,8 +94,9 @@ public final class HlsInitLookup
      * map names. A playlist with no usable map is logged ({@link #redact redacted}, at WARN) and fails the track.
      *
      * @param http what to download with; the caller closes it. SoundCloud answers 403 when anything is added to the
-     *             signed playlist and init links, so {@link SoundCloudAacTrack} passes a plain interface and puts the
-     *             client id the lookup needs into {@code lookupUrl} itself
+     *             signed playlist and init links, so {@link SoundCloudAacTrack} passes an interface that adds nothing
+     *             to them ({@link SoundCloudStreamFilter}) and puts the client id the lookup needs into
+     *             {@code lookupUrl} itself
      * @throws IOException when SoundCloud can't be reached or answers with an error
      * @throws FriendlyException "SoundCloud sent a stream the bot can't read yet" for everything else
      */

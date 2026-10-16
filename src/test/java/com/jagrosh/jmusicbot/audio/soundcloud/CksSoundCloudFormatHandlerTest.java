@@ -18,7 +18,6 @@ package com.jagrosh.jmusicbot.audio.soundcloud;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.DefaultSoundCloudFormatHandler;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.DefaultSoundCloudTrackFormat;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudM3uInfo;
-import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudSegmentDecoder;
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudTrackFormat;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
@@ -42,11 +41,7 @@ public class CksSoundCloudFormatHandlerTest
     private static final String AAC = "audio/mp4; codecs=\"mp4a.40.2\"";
     private static final String PROTECTED = "SoundCloud protects this track and YouTube had no match";
 
-    /** A handler whose HTTP is off limits: choosing and routing must never touch the network. */
-    private final CksSoundCloudFormatHandler handler = new CksSoundCloudFormatHandler(() ->
-    {
-        throw new AssertionError("no network in this test");
-    });
+    private final CksSoundCloudFormatHandler handler = new CksSoundCloudFormatHandler();
 
     private static SoundCloudTrackFormat format(String protocol, String mimeType, String lookupUrl)
     {
@@ -187,32 +182,14 @@ public class CksSoundCloudFormatHandlerTest
     // ---- where identifiers go
 
     @Test
-    public void aacIdentifierRoutesToTheAacDecoder()
+    public void aacIdentifierFailsFast()
     {
-        SoundCloudM3uInfo info = handler.getM3uInfo("A:u");
-
-        assertNotNull(info);
-        assertEquals("u", info.lookupUrl);
-        assertNotNull(info.decoderFactory);
-        SoundCloudSegmentDecoder decoder = info.decoderFactory.create(() -> null);
-        assertTrue(decoder instanceof SoundCloudAacSegmentDecoder);
-    }
-
-    @Test
-    public void aacDecoderLoadsItsInitThroughTheHandlersHttp()
-    {
-        RuntimeException broken = new IllegalStateException("http is not ready");
-        CksSoundCloudFormatHandler failing = new CksSoundCloudFormatHandler(() ->
-        {
-            throw broken;
-        });
-        SoundCloudSegmentDecoder decoder = failing.getM3uInfo("A:u").decoderFactory.create(() -> null);
-
-        // a raw RuntimeException would escape the decoder unwrapped and reach the user as lavaplayer's generic error
-        FriendlyException e = assertThrows(FriendlyException.class, () -> decoder.prepareStream(true));
+        // lavaplayer's SoundCloud track would play it with an HTTP interface that breaks SoundCloud's signed links
+        FriendlyException e = assertThrows(FriendlyException.class, () -> handler.getM3uInfo("A:u"));
 
         assertEquals("SoundCloud sent a stream the bot can't read yet", e.getMessage());
         assertEquals(FriendlyException.Severity.SUSPICIOUS, e.severity);
+        assertNull(e.getCause());
     }
 
     @Test

@@ -64,7 +64,7 @@ public class YouTubeFallbackTrack extends DelegatedAudioTrack
     /**
      * @param soundCloudInfo the protected SoundCloud track's info, kept as this track's own
      * @param search         searches YouTube when the track starts playing
-     * @param source         the source this track belongs to: the bot's SoundCloud source, which stores and restores it
+     * @param source         the source this track belongs to: the bot's SoundCloud source
      */
     public YouTubeFallbackTrack(AudioTrackInfo soundCloudInfo, YouTubeSearch search, AudioSourceManager source)
     {
