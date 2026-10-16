@@ -17,6 +17,7 @@
  */
 package com.jagrosh.jmusicbot.audio;
 
+import com.jagrosh.jmusicbot.audio.soundcloud.YouTubeFallbackTrack;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile;
 import com.jagrosh.jmusicbot.playlist.PlaylistPlayer;
 import com.jagrosh.jmusicbot.playlist.PlaylistStore;
@@ -59,6 +60,8 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     public final static String PLAY_EMOJI  = "\u25B6"; // ▶
     public final static String PAUSE_EMOJI = "\u23F8"; // ⏸
     public final static String STOP_EMOJI  = "\u23F9"; // ⏹
+    /** Added to the footer for a SoundCloud track played from YouTube (U+00B7 is the middle dot). */
+    static final String YOUTUBE_FOOTER_NOTE = " \u00B7 playing from YouTube (SoundCloud protects the original)";
 
 
     private final List<AudioTrack> defaultQueue = new LinkedList<>();
@@ -437,8 +440,9 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
                 eb.setThumbnail("https://img.youtube.com/vi/"+track.getIdentifier()+"/mqdefault.jpg");
             }
             
-            if(track.getInfo().author != null && !track.getInfo().author.isEmpty())
-                eb.setFooter("Source: " + track.getInfo().author, null);
+            String footer = footerFor(track);
+            if(footer != null)
+                eb.setFooter(footer, null);
 
             double progress = (double)audioPlayer.getPlayingTrack().getPosition()/track.getDuration();
             eb.setDescription(getStatusEmoji()
@@ -451,6 +455,21 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
         else return null;
     }
     
+    /**
+     * The footer of the now-playing embed: "Source: " + the track's author, with {@value #YOUTUBE_FOOTER_NOTE} added for
+     * a SoundCloud track the bot plays from YouTube. It keys on the track type, not on whether the YouTube match has
+     * started: the embed is built before the track runs its YouTube search (see {@code WebServer.viaOf}).
+     *
+     * @return null when the track has no author (no footer)
+     */
+    static String footerFor(AudioTrack track)
+    {
+        String author = track.getInfo().author;
+        if(author == null || author.isEmpty())
+            return null;
+        return "Source: " + author + (track instanceof YouTubeFallbackTrack ? YOUTUBE_FOOTER_NOTE : "");
+    }
+
     public MessageCreateData getNoMusicPlaying(JDA jda)
     {
         Guild guild = guild(jda);

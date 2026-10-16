@@ -9395,7 +9395,7 @@
 
         function nowPlayingStableKey(data) {
             if (!data.playing) return '';
-            return (data.identifier || data.uri || '') + '|' + (data.artworkUrl || '') + '|' + (data.repeatMode || 'OFF') + '|' + (data.shuffleMode ? '1' : '0') + '|' + (data.paused ? '1' : '0') + '|' + (data.autoplay ? '1' : '0') + (data.sponsorBlock === false ? '0' : '1');
+            return (data.identifier || data.uri || '') + '|' + (data.artworkUrl || '') + '|' + (data.repeatMode || 'OFF') + '|' + (data.shuffleMode ? '1' : '0') + '|' + (data.paused ? '1' : '0') + '|' + (data.autoplay ? '1' : '0') + (data.sponsorBlock === false ? '0' : '1') + '|' + (data.via || '');
         }
 
         function updateNowPlayingPartial(data) {
@@ -9481,10 +9481,13 @@
                 artHtml = '<img class="np-artwork" src="' + escHtmlAttr(data.artworkUrl) + '" alt="" decoding="async" onerror="this.remove()">';
             }
 
+            // a protected SoundCloud song the bot plays from YouTube says so (text only)
+            var viaNote = data.via === 'youtube' ? ' &middot; via YouTube' : '';
+
             nowPlayingContent.innerHTML =
                 artHtml +
                 '<div class="track-title">' + escHtml(data.title || 'Unknown') + repeatBadge + '</div>' +
-                '<div class="track-author">' + escHtml(data.author || '') + (data.requestedBy ? ' &middot; ' + escHtml(data.requestedBy) : '') + '</div>' +
+                '<div class="track-author">' + escHtml(data.author || '') + (data.requestedBy ? ' &middot; ' + escHtml(data.requestedBy) : '') + viaNote + '</div>' +
                 '<div class="np-liked-by" id="npLikedBy" hidden></div>' +
                 '<div class="progress-container">' +
                 '<div class="progress-bar-bg" onclick="seekTo(event)"><div class="progress-bar-fill" id="progressFill" style="width:' + progressPct + '%"></div></div>' +

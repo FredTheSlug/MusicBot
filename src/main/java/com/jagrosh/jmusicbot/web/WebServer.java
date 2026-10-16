@@ -21,6 +21,7 @@ import com.jagrosh.jmusicbot.audio.PlayerManager;
 import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.audio.SpotifyResolver;
+import com.jagrosh.jmusicbot.audio.soundcloud.YouTubeFallbackTrack;
 import com.jagrosh.jmusicbot.playlist.ImportJobs;
 import com.jagrosh.jmusicbot.playlist.PlaylistFile;
 import com.jagrosh.jmusicbot.playlist.PlaylistPlayer;
@@ -467,6 +468,20 @@ public class WebServer
         target.put("requestedById", known && rm.user.id != 0L ? Long.toUnsignedString(rm.user.id) : null);
     }
 
+    /**
+     * Where the song really plays from, when that is not the source it is listed under: {@code "youtube"} for a
+     * SoundCloud track the bot plays from YouTube ({@link YouTubeFallbackTrack}), else null. The now-playing payload
+     * leaves {@code via} out when this is null.
+     * <p>
+     * It keys on the track type, not on {@link YouTubeFallbackTrack#isPlayingFromYouTube()}: the now-playing message is
+     * built before the track's {@code process()} runs the YouTube search, and nothing signals when it flips. A fallback
+     * track either plays from YouTube or fails and is skipped, so the note is right from the start.
+     */
+    static String viaOf(AudioTrack track)
+    {
+        return track instanceof YouTubeFallbackTrack ? "youtube" : null;
+    }
+
     static Map<String, Object> mePayload(long discordUserId, String name, String avatarUrl)
     {
         Map<String, Object> me = new HashMap<>();
@@ -527,6 +542,9 @@ public class WebServer
                 result.put("positionFormatted", TimeUtil.formatTime(track.getPosition()));
                 result.put("durationFormatted", track.getInfo().isStream ? "LIVE" : TimeUtil.formatTime(track.getDuration()));
                 result.put("isStream", track.getInfo().isStream);
+                String via = viaOf(track);
+                if (via != null)
+                    result.put("via", via);
 
                 putRequester(result, handler.getRequestMetadata(), "");
             }

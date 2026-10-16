@@ -16,6 +16,11 @@
 package com.jagrosh.jmusicbot.web;
 
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
+import com.jagrosh.jmusicbot.audio.soundcloud.YouTubeFallbackTrack;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
+import com.sedmelluq.discord.lavaplayer.track.BaseAudioTrack;
+import com.sedmelluq.discord.lavaplayer.track.playback.LocalAudioTrackExecutor;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.json.JSONObject;
@@ -80,5 +85,41 @@ public class WebPayloadsTest
         assertFalse(WebServer.isDefaultGuild("123", ""));
         assertFalse(WebServer.isDefaultGuild("123", null));
         assertTrue(WebServer.isDefaultGuild("123", " 123 "));
+    }
+
+    @Test
+    public void viaIsYoutubeForAFallbackTrack() throws Exception
+    {
+        AudioTrackInfo info = new AudioTrackInfo("444222a", "Lil Uzi Vert", 180_000, "X:soundcloud", false,
+                "https://soundcloud.com/liluzivert/444222a");
+        assertNull("a normal track plays as itself", WebServer.viaOf(new Song(info)));
+        assertNull("nothing playing", WebServer.viaOf(null));
+
+        // the now-playing message is built before the track's process() runs the YouTube search, so the note
+        // cannot wait for the swap: a fallback track plays from YouTube or fails and is skipped
+        YouTubeFallbackTrack fallback = new YouTubeFallbackTrack(info,
+                query -> Collections.<com.sedmelluq.discord.lavaplayer.track.AudioTrack>singletonList(
+                        new Song(new AudioTrackInfo("Song", "Channel", 181_000, "abcdefghijk", false,
+                                "https://youtu.be/abcdefghijk"))), null);
+        assertFalse(fallback.isPlayingFromYouTube());
+        assertEquals("youtube", WebServer.viaOf(fallback));
+
+        fallback.process(null);
+        assertTrue(fallback.isPlayingFromYouTube());
+        assertEquals("youtube", WebServer.viaOf(fallback));
+    }
+
+    /** A track that is not a fallback: it only has an info. */
+    private static class Song extends BaseAudioTrack
+    {
+        Song(AudioTrackInfo info)
+        {
+            super(info);
+        }
+
+        @Override
+        public void process(LocalAudioTrackExecutor executor)
+        {
+        }
     }
 }
