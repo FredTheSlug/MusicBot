@@ -5,9 +5,9 @@
       "date": "2026-10-15",
       "title": "SoundCloud plays again",
       "items": [
-        { "area": "Panel", "text": "SoundCloud songs play again. SoundCloud changed how it sends audio about a week ago, and the bot couldn't play most SoundCloud links or SoundCloud searches. It can now." },
-        { "area": "Panel", "text": "SoundCloud locks some songs so that no bot can play them, mostly label and official uploads. The bot now plays the same song from YouTube instead, and the now-playing line in the panel says \"via YouTube\"." },
-        { "area": "Discord", "text": "When a SoundCloud song plays from YouTube, the now-playing message in Discord says \"via YouTube\" too." },
+        { "area": "Panel", "text": "SoundCloud songs play again. SoundCloud changed how it sends audio a few days ago, and the bot couldn't play most SoundCloud links or SoundCloud searches. It can now." },
+        { "area": "Panel", "text": "SoundCloud locks some songs so that no bot can play them, mostly label uploads. The bot now plays the same song from YouTube instead, and the now-playing line in the panel says \"via YouTube\"." },
+        { "area": "Discord", "text": "When a SoundCloud song plays from YouTube, the now-playing message in Discord says so: \"playing from YouTube\"." },
         { "area": "Panel", "text": "Songs in your playlists that were marked \"couldn't load\" because of this can be fixed with Retry." }
       ]
     },
