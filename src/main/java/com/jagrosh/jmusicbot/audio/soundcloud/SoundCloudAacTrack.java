@@ -53,7 +53,7 @@ public class SoundCloudAacTrack extends DelegatedAudioTrack
     static final String NO_CLIENT_ID = "SoundCloud can't be reached right now";
     /** A query string inside a message: from the {@code ?} up to the next blank or quote. */
     private static final Pattern QUERY_STRING = Pattern.compile("\\?[^\\s\"]*");
-    /** How many causes deep a failure is looked at; a cause chain is never longer in practice. */
+    /** How deep (causes and suppressed errors) a failure is looked at; a real one is never that deep. */
     private static final int MAX_CAUSES = 32;
 
     private final Supplier<String> clientId;
@@ -122,32 +122,60 @@ public class SoundCloudAacTrack extends DelegatedAudioTrack
     }
 
     /**
-     * {@code failure} itself when no message along its causes holds a query string, or when an interrupt is among them
-     * (lavaplayer looks for one there to tell a stop or a seek from a failure); else a copy of the chain with the query
-     * strings cut: a {@link FriendlyException} keeps its class and severity, any other cause becomes a
-     * {@link RedactedException} that names its class in the message, and every copy keeps the original stack trace.
+     * {@code failure} itself when it is an interrupt (lavaplayer looks for one along the causes to tell a stop or a
+     * seek from a failure, see {@link #isInterrupt}) or when no message in it, its causes or their suppressed errors
+     * holds a query string; else a copy with the query strings cut: a {@link FriendlyException} keeps its class and
+     * severity, any other error becomes a {@link RedactedException} that names its class in the message, and every
+     * copy keeps the original stack trace and its suppressed errors (copied the same way).
      */
     static Exception withoutQueryStrings(Exception failure)
     {
-        boolean anyQuery = false;
+        return isInterrupt(failure) || !hasQueryString(failure, 0) ? failure : (Exception) redacted(failure, 0);
+    }
+
+    /**
+     * What lavaplayer's track executor takes for a stop or a seek rather than a failure: an
+     * {@link InterruptedException} among the causes, or else the first {@link InterruptedIOException} among them unless
+     * it timed out (a {@code SocketTimeoutException("Read timed out")} is a failure, and lavaplayer logs it as one).
+     */
+    private static boolean isInterrupt(Throwable failure)
+    {
+        InterruptedIOException interruptedIo = null;
         int depth = 0;
         for(Throwable cause = failure; cause != null && depth < MAX_CAUSES; cause = cause.getCause(), depth++)
         {
-            if(cause instanceof InterruptedException || cause instanceof InterruptedIOException)
-                return failure;
-            anyQuery |= cause.getMessage() != null && QUERY_STRING.matcher(cause.getMessage()).find();
+            if(cause instanceof InterruptedException)
+                return true;
+            if(interruptedIo == null && cause instanceof InterruptedIOException)
+                interruptedIo = (InterruptedIOException) cause;
         }
-        return anyQuery ? (Exception) redacted(failure, 0) : failure;
+        return interruptedIo != null
+                && (interruptedIo.getMessage() == null || !interruptedIo.getMessage().contains("timed out"));
+    }
+
+    private static boolean hasQueryString(Throwable error, int depth)
+    {
+        if(error == null || depth >= MAX_CAUSES)
+            return false;
+        if(error.getMessage() != null && QUERY_STRING.matcher(error.getMessage()).find())
+            return true;
+        for(Throwable suppressed : error.getSuppressed())
+            if(hasQueryString(suppressed, depth + 1))
+                return true;
+        return hasQueryString(error.getCause(), depth + 1);
     }
 
     private static Throwable redacted(Throwable original, int depth)
     {
-        Throwable cause = original.getCause() == null || depth + 1 >= MAX_CAUSES ? null
-                : redacted(original.getCause(), depth + 1);
+        boolean deeper = depth + 1 < MAX_CAUSES;
+        Throwable cause = original.getCause() == null || !deeper ? null : redacted(original.getCause(), depth + 1);
         Throwable copy = original instanceof FriendlyException
                 ? new FriendlyException(cut(original.getMessage()), ((FriendlyException) original).severity, cause)
                 : new RedactedException(original, cause);
         copy.setStackTrace(original.getStackTrace());
+        if(deeper)
+            for(Throwable suppressed : original.getSuppressed())
+                copy.addSuppressed(redacted(suppressed, depth + 1));
         return copy;
     }
 

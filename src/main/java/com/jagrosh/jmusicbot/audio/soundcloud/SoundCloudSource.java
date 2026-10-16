@@ -123,8 +123,11 @@ public class SoundCloudSource implements AudioSourceManager
     }
 
     /**
-     * Has lavaplayer's SoundCloud source fetch a new client id: its HTTP interface sends the lookup with the id it
-     * has, gets SoundCloud's 401, fetches a new id and sends the lookup again. The answer itself is not needed.
+     * Asks lavaplayer's SoundCloud source for a new client id: its HTTP interface sends the lookup with the id it has,
+     * gets SoundCloud's 401 and fetches a new id, then sends the lookup again; the answer itself is not needed.
+     * lavaplayer fetches an id at most once an hour (counted from the start of its last fetch), so when SoundCloud
+     * rotated its id within the hour, this changes nothing and the AAC lookups keep failing with 401 until the hour is
+     * up.
      */
     private static void refreshClientId(SoundCloudAudioSourceManager soundCloud, String lookupUrl)
     {

@@ -35,18 +35,25 @@ import org.apache.http.util.EntityUtils;
  * request off {@code sndcdn.com}):
  * <ul>
  *   <li>every request gets lavaplayer's SoundCloud user agent;</li>
- *   <li>a request whose query already carries {@code client_id} (only ever the api-v2 lookup: signed links never do)
- *       gets the current client id in its place. When SoundCloud answers it with 401 (it rotated its web client id),
- *       the filter has the id refreshed and sends the request once more with the new one; a second 401 is the
- *       answer.</li>
+ *   <li>a request whose query already carries {@code client_id} (only ever the api-v2 lookup) gets the current
+ *       client id in its place. When SoundCloud answers it with 401 (it rotated its web client id), the filter asks
+ *       for a refresh and sends the request once more with the id it has then; a second 401 is the answer.</li>
  * </ul>
- * Nothing else in a link is touched.
+ * A signed link (a query with {@code Signature=}, {@code Policy=} or {@code Key-Pair-Id=}) is never changed, even if
+ * it carries a {@code client_id}, and nothing else in any link is touched.
+ * <p>
+ * The refresh can only help when lavaplayer is willing to fetch a new id: its SoundCloud source fetches one at most
+ * once an hour, counted from the start of its last fetch. When SoundCloud rotates its id within an hour of that, the
+ * refresh changes nothing and the lookup keeps failing with 401 until the hour is up (or the bot restarts); the bot
+ * can't do better without its own way of finding the id.
  */
 final class SoundCloudStreamFilter implements HttpContextFilter
 {
     static final String USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
             + "Chrome/76.0.3809.100 Safari/537.36";
     private static final String CLIENT_ID = "client_id=";
+    /** Query parameters only a signed link has. */
+    private static final String[] SIGNED = {"Signature=", "Policy=", "Key-Pair-Id="};
     private static final HttpContextRetryCounter retryCounter = new HttpContextRetryCounter("sc-aac-id-retry");
 
     private final Supplier<String> clientId;
@@ -76,7 +83,7 @@ final class SoundCloudStreamFilter implements HttpContextFilter
     public void onRequest(HttpClientContext context, HttpUriRequest request, boolean isRepetition)
     {
         request.setHeader("User-Agent", USER_AGENT);
-        if(!hasClientId(request.getURI()))
+        if(!isLookup(request.getURI()))
             return;
         retryCounter.handleUpdate(context, isRepetition);
         String current = clientId.get();
@@ -88,7 +95,7 @@ final class SoundCloudStreamFilter implements HttpContextFilter
     @Override
     public boolean onRequestResponse(HttpClientContext context, HttpUriRequest request, HttpResponse response)
     {
-        if(response.getStatusLine().getStatusCode() != HttpStatus.SC_UNAUTHORIZED || !hasClientId(request.getURI())
+        if(response.getStatusLine().getStatusCode() != HttpStatus.SC_UNAUTHORIZED || !isLookup(request.getURI())
                 || retryCounter.getRetryCount(context) >= 1)
             return false;
         // lavaplayer sends the request again without closing this answer: free its connection
@@ -103,10 +110,21 @@ final class SoundCloudStreamFilter implements HttpContextFilter
         return false;
     }
 
-    private static boolean hasClientId(URI link)
+    /** Whether the filter looks after the link's client id: its query carries one and nothing of a signed link. */
+    private static boolean isLookup(URI link)
     {
         String query = link.getRawQuery();
-        return query != null && Arrays.stream(query.split("&")).anyMatch(parameter -> parameter.startsWith(CLIENT_ID));
+        if(query == null)
+            return false;
+        boolean clientId = false;
+        for(String parameter : query.split("&"))
+        {
+            for(String signed : SIGNED)
+                if(parameter.startsWith(signed))
+                    return false;
+            clientId |= parameter.startsWith(CLIENT_ID);
+        }
+        return clientId;
     }
 
     /** {@code link} without its {@code client_id} parameters (and without the {@code ?} when nothing is left). */

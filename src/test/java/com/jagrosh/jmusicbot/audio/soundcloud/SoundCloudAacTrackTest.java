@@ -45,9 +45,11 @@ import com.sedmelluq.discord.lavaplayer.track.playback.AudioTrackExecutor;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -87,7 +89,7 @@ import static org.junit.Assert.*;
 public class SoundCloudAacTrackTest
 {
     private static final String CLIENT_ID = "test-client-id";
-    private static final String SIGNED = "?Policy=p&Signature=s";
+    private static final String SIGNED = "?Policy=p&Signature=s&Key-Pair-Id=k";
     private static final String LOOKUP = "/lookup";
     private static final String PLAYLIST = "/media/playlist.m3u8";
     private static final String INIT = "/media/init.mp4";
@@ -462,7 +464,8 @@ public class SoundCloudAacTrackTest
         http.setHttpContextFilter(counting);
         try
         {
-            Played played = play(new SoundCloudAacTrack(aacInfo(), () -> CLIENT_ID, http::getInterface, null), 200);
+            Played played = play(new SoundCloudAacTrack(aacInfo(), () -> CLIENT_ID, http::getInterface, null), 200,
+                    AudioPlayer::stopTrack);
 
             assertNull(chain(played.failure), played.failure);
             assertEquals(AudioTrackEndReason.STOPPED, played.endReason);
@@ -473,6 +476,35 @@ public class SoundCloudAacTrackTest
         finally
         {
             http.close();
+        }
+    }
+
+    @Test
+    public void aSeekMidPlayContinuesFromThereWithoutTheEarlierChunk() throws Exception
+    {
+        SoundCloudSource source = source(() -> CLIENT_ID);
+        try
+        {
+            AudioTrack track = source.decodeTrack(aacInfo(), null);
+
+            Played played = play(track, 500, player -> track.setPosition(2500));
+
+            assertNull(chain(played.failure), played.failure);
+            assertEquals(AudioTrackEndReason.FINISHED, played.endReason);
+            // before the seek the track is well inside the first chunk, so a later frame comes from the seek
+            List<Long> afterSeek = new ArrayList<>();
+            for(long timecode : played.timecodes)
+                if(timecode >= CHUNK0_MS)
+                    afterSeek.add(timecode);
+            assertFalse(played.timecodes.toString(), afterSeek.isEmpty());
+            assertEquals(2500, afterSeek.get(0), TOLERANCE_MS);
+            assertEquals(FIXTURE_MS - 2500, afterSeek.size() * 20.0, TOLERANCE_MS);
+            assertEquals(requests.toString(), 1, Collections.frequency(requests, CHUNK0 + SIGNED));
+            assertEquals(requests.toString(), 1, Collections.frequency(requests, CHUNK1 + SIGNED));
+        }
+        finally
+        {
+            source.shutdown();
         }
     }
 
@@ -511,12 +543,93 @@ public class SoundCloudAacTrackTest
         }
     }
 
+    // ---- what a failed play is rethrown as
+
+    @Test
+    public void anInterruptWithALinkComesBackAsItIs()
+    {
+        // lavaplayer tells a stop or a seek from a failure by finding the interrupt along the causes
+        Exception interrupted = new FriendlyException("Something went wrong", FriendlyException.Severity.FAULT,
+                new RuntimeException("http://h/c.m4s" + SIGNED, new InterruptedException()));
+        Exception interruptedIo = new RuntimeException("http://h/c.m4s" + SIGNED,
+                new InterruptedIOException("Connection interrupted"));
+        Exception noMessage = new RuntimeException("http://h/c.m4s" + SIGNED, new InterruptedIOException());
+
+        assertSame(interrupted, SoundCloudAacTrack.withoutQueryStrings(interrupted));
+        assertSame(interruptedIo, SoundCloudAacTrack.withoutQueryStrings(interruptedIo));
+        assertSame(noMessage, SoundCloudAacTrack.withoutQueryStrings(noMessage));
+    }
+
+    @Test
+    public void aTimeoutWithALinkIsRedacted()
+    {
+        // lavaplayer reports a timeout as a failure (and logs it), unlike an interrupt
+        Exception timedOut = new FriendlyException("Something went wrong", FriendlyException.Severity.FAULT,
+                new RuntimeException("java.net.SocketTimeoutException at http://h/c.m4s" + SIGNED,
+                        new SocketTimeoutException("Read timed out")));
+
+        Exception redacted = SoundCloudAacTrack.withoutQueryStrings(timedOut);
+
+        assertNotSame(timedOut, redacted);
+        assertNoSignedLink(chain(redacted));
+        assertTrue(chain(redacted), chain(redacted).contains("http://h/c.m4s"));
+        assertTrue(chain(redacted), chain(redacted).contains("java.net.SocketTimeoutException: Read timed out"));
+    }
+
+    @Test
+    public void aFriendlyErrorKeepsItsMessageSeverityAndStackTraces()
+    {
+        IOException chunk = new IOException("Invalid status code from http://h/c.m4s" + SIGNED + " URL: 403");
+        FriendlyException failure = new FriendlyException("Could not load http://h/lookup?client_id=abc&Key-Pair-Id=k",
+                FriendlyException.Severity.SUSPICIOUS, chunk);
+
+        Exception redacted = SoundCloudAacTrack.withoutQueryStrings(failure);
+
+        assertTrue(redacted instanceof FriendlyException);
+        assertEquals("Could not load http://h/lookup", redacted.getMessage());
+        assertEquals(FriendlyException.Severity.SUSPICIOUS, ((FriendlyException) redacted).severity);
+        assertArrayEquals(failure.getStackTrace(), redacted.getStackTrace());
+        Throwable cause = redacted.getCause();
+        assertEquals("java.io.IOException: Invalid status code from http://h/c.m4s URL: 403", cause.getMessage());
+        assertArrayEquals(chunk.getStackTrace(), cause.getStackTrace());
+        assertNull(cause.getCause());
+        assertNoSignedLink(chain(redacted));
+    }
+
+    @Test
+    public void suppressedErrorsAreRedactedToo()
+    {
+        IOException closing = new IOException("Could not close http://h/c.m4s" + SIGNED);
+        IOException failure = new IOException("Segment list failed");
+        failure.addSuppressed(closing);
+
+        Exception redacted = SoundCloudAacTrack.withoutQueryStrings(failure);
+
+        assertNotSame(failure, redacted);
+        assertEquals("java.io.IOException: Segment list failed", redacted.getMessage());
+        assertEquals(1, redacted.getSuppressed().length);
+        Throwable suppressed = redacted.getSuppressed()[0];
+        assertEquals("java.io.IOException: Could not close http://h/c.m4s", suppressed.getMessage());
+        assertArrayEquals(closing.getStackTrace(), suppressed.getStackTrace());
+    }
+
+    @Test
+    public void anErrorWithoutALinkComesBackAsItIs()
+    {
+        Exception plain = new FriendlyException("SoundCloud sent a stream the bot can't read yet",
+                FriendlyException.Severity.SUSPICIOUS, new IOException("SoundCloud answered 403 for the init file"));
+
+        assertSame(plain, SoundCloudAacTrack.withoutQueryStrings(plain));
+    }
+
     // ---- helpers
 
     /** How a play went: what was heard, how it ended, and the error it reported, if any. */
     private static final class Played
     {
         double millis;
+        /** The timecode of every frame heard, in order. */
+        final List<Long> timecodes = new ArrayList<>();
         AudioTrackEndReason endReason;
         FriendlyException failure;
     }
@@ -524,17 +637,18 @@ public class SoundCloudAacTrackTest
     /** Plays {@code track} on lavaplayer's own player and pulls its frames until it ends. */
     private static Played play(AudioTrack track) throws InterruptedException
     {
-        return play(track, -1);
+        return play(track, -1, null);
     }
 
     /**
-     * As {@link #play(AudioTrack)}, but stops the track once {@code stopAfterMs} have been heard (when not negative).
-     * A stop also shrinks the frame buffer to lavaplayer's least (200 ms), so the track is still downloading then.
+     * As {@link #play(AudioTrack)}, but does {@code action} (a stop, a seek) once {@code actAfterMs} have been heard.
+     * The frame buffer is then lavaplayer's least (200 ms), so the track is still downloading when it acts.
      */
-    private static Played play(AudioTrack track, long stopAfterMs) throws InterruptedException
+    private static Played play(AudioTrack track, long actAfterMs, Consumer<AudioPlayer> action)
+            throws InterruptedException
     {
         DefaultAudioPlayerManager manager = new DefaultAudioPlayerManager();
-        if(stopAfterMs >= 0)
+        if(action != null)
             manager.setFrameBufferDuration(200);
         try
         {
@@ -560,6 +674,7 @@ public class SoundCloudAacTrackTest
             AudioTrackExecutor executor = ((InternalAudioTrack) track).getActiveExecutor();
 
             Played played = new Played();
+            boolean acted = false;
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(PLAY_TIMEOUT_MS);
             while(ended.get() == null)
             {
@@ -574,9 +689,15 @@ public class SoundCloudAacTrackTest
                     continue;
                 }
                 if(frame != null)
+                {
                     played.millis += frame.getFormat().frameDuration();
-                if(stopAfterMs >= 0 && played.millis >= stopAfterMs && ended.get() == null)
-                    player.stopTrack();
+                    played.timecodes.add(frame.getTimecode());
+                }
+                if(action != null && !acted && played.millis >= actAfterMs && ended.get() == null)
+                {
+                    acted = true;
+                    action.accept(player);
+                }
             }
             // a failing track ends its frames before it reports the error: wait until it is done reporting
             while(executor.getState() != AudioTrackState.FINISHED)
@@ -602,7 +723,8 @@ public class SoundCloudAacTrackTest
 
     private static void assertNoSignedLink(String text)
     {
-        assertFalse(text, text.contains("Signature=") || text.contains("Policy="));
+        for(String parameter : new String[]{"Signature=", "Policy=", "Key-Pair-Id=", "client_id="})
+            assertFalse(text, text.contains(parameter));
     }
 
     /** Every message along a failure's causes, for an assertion message. */
