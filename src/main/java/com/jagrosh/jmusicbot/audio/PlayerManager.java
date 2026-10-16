@@ -17,6 +17,7 @@ package com.jagrosh.jmusicbot.audio;
 
 import com.dunctebot.sourcemanagers.DuncteBotSources;
 import com.jagrosh.jmusicbot.Bot;
+import com.jagrosh.jmusicbot.audio.soundcloud.SoundCloudSource;
 import com.sedmelluq.discord.lavaplayer.container.MediaContainerRegistry;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
@@ -26,10 +27,10 @@ import com.sedmelluq.discord.lavaplayer.source.beam.BeamAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.getyarn.GetyarnAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.nico.NicoAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.PlayerLibrary;
+import dev.lavalink.youtube.YoutubeAudioSourceManager;
 import dev.lavalink.youtube.YoutubeSource;
 import net.dv8tion.jda.api.entities.Guild;
 import org.slf4j.Logger;
@@ -53,9 +54,12 @@ public class PlayerManager extends DefaultAudioPlayerManager
     {
         TransformativeAudioSourceManager.createTransforms(bot.getConfig().getTransforms()).forEach(t -> registerSourceManager(t));
 
-        registerSourceManager(YoutubeSources.create(bot.getConfig()));
+        YoutubeAudioSourceManager youtube = YoutubeSources.create(bot.getConfig());
+        registerSourceManager(youtube);
 
-        registerSourceManager(SoundCloudAudioSourceManager.createDefault());
+        // lavaplayer's SoundCloud source plus SoundCloud's AAC streams; tracks SoundCloud only offers encrypted
+        // play from YouTube instead (searched on the YouTube source above when they start playing).
+        registerSourceManager(new SoundCloudSource(youtube, this));
         registerSourceManager(new BandcampAudioSourceManager());
         registerSourceManager(new VimeoAudioSourceManager());
         registerSourceManager(new TwitchStreamAudioSourceManager());
