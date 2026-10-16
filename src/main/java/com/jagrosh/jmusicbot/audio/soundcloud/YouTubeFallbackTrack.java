@@ -60,7 +60,6 @@ public class YouTubeFallbackTrack extends DelegatedAudioTrack
 
     private final YouTubeSearch search;
     private final AudioSourceManager source;
-    private volatile boolean playingFromYouTube;
 
     /**
      * @param soundCloudInfo the protected SoundCloud track's info, kept as this track's own
@@ -76,10 +75,11 @@ public class YouTubeFallbackTrack extends DelegatedAudioTrack
 
     /**
      * The YouTube result to play for a SoundCloud track this long: among the first {@value #TOP_RESULTS}, the first
-     * whose length is within 15 % of {@code soundCloudLengthMs}, else the first result (also when the SoundCloud
-     * length is unknown). A live stream's length is unknown, so it is never "within 15 %".
+     * whose length is within 15 % of {@code soundCloudLengthMs}, else the first of them that is not a live stream
+     * (also when the SoundCloud length is unknown). A live stream is never picked: its length is unknown, so it is
+     * never "within 15 %", and it would never end.
      *
-     * @return null when there are no results
+     * @return null when there are no results, or none of the first {@value #TOP_RESULTS} is a normal video
      */
     static AudioTrack pick(List<AudioTrack> results, long soundCloudLengthMs)
     {
@@ -89,7 +89,10 @@ public class YouTubeFallbackTrack extends DelegatedAudioTrack
         for(int i = 0; i < top; i++)
             if(closeInLength(results.get(i), soundCloudLengthMs))
                 return results.get(i);
-        return results.get(0);
+        for(int i = 0; i < top; i++)
+            if(results.get(i) != null && !results.get(i).getInfo().isStream)
+                return results.get(i);
+        return null;
     }
 
     /** The link without its query string, for logging: signed SoundCloud links carry their signature there. */
@@ -101,12 +104,6 @@ public class YouTubeFallbackTrack extends DelegatedAudioTrack
         return query < 0 ? uri : uri.substring(0, query);
     }
 
-    /** Whether this track has started playing its YouTube match (it stays true afterwards). */
-    public boolean isPlayingFromYouTube()
-    {
-        return playingFromYouTube;
-    }
-
     @Override
     public void process(LocalAudioTrackExecutor executor) throws Exception
     {
@@ -115,7 +112,6 @@ public class YouTubeFallbackTrack extends DelegatedAudioTrack
             throw noMatch(null);
         log.info("SoundCloud protects {}; playing YouTube {} instead", withoutQuery(getInfo().uri),
                 match.getIdentifier());
-        playingFromYouTube = true;
         processDelegate((InternalAudioTrack) match, executor);
     }
 

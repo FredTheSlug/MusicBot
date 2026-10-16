@@ -91,7 +91,6 @@ public class SoundCloudSourceTest
 
         assertEquals(Collections.singletonList("ytsearch:Lil Uzi Vert 444222a"), youtube.searches);
         assertEquals(1, youtube.found.get(0).get(1).plays);
-        assertTrue(fallback.isPlayingFromYouTube());
     }
 
     @Test

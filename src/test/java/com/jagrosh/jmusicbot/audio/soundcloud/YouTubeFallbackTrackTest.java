@@ -50,11 +50,17 @@ public class YouTubeFallbackTrackTest
     // ---- which result is picked
 
     @Test
-    public void picksTheClosestLengthAmongTheTopFive()
+    public void firstWithinFifteenPercentAmongTheTopFive()
     {
         List<AudioTrack> results = Arrays.asList(video("hour", 3_600_000), video("seven", 420_000),
                 video("close", 185_000), video("five", 300_000));
         assertEquals("close", YouTubeFallbackTrack.pick(results, THREE_MINUTES).getIdentifier());
+
+        // the rule is "first within 15 %", not "closest" (ruling T3-a): 3:25 is 25 s (14 %) off a 3:00 track and
+        // 3:01 only 1 s, yet the 3:25 result comes first and is picked
+        List<AudioTrack> firstNotClosest = Arrays.asList(video("threeTwentyFive", 205_000),
+                video("threeOhOne", 181_000));
+        assertEquals("threeTwentyFive", YouTubeFallbackTrack.pick(firstNotClosest, THREE_MINUTES).getIdentifier());
     }
 
     @Test
@@ -75,6 +81,39 @@ public class YouTubeFallbackTrackTest
     }
 
     @Test
+    public void aLiveStreamIsNeverTheFallback() throws Exception
+    {
+        // a stream first, then an off-length normal video: the video is the fallback, not the stream
+        List<AudioTrack> streamFirst = Arrays.asList(stream("live"), video("hour", 3_600_000));
+        assertEquals("hour", YouTubeFallbackTrack.pick(streamFirst, THREE_MINUTES).getIdentifier());
+        // also when the SoundCloud length is unknown
+        assertEquals("hour", YouTubeFallbackTrack.pick(streamFirst, 0).getIdentifier());
+        assertEquals("hour", YouTubeFallbackTrack.pick(streamFirst, Long.MAX_VALUE).getIdentifier());
+
+        // a close video still wins over an earlier stream, and over an earlier off-length video
+        List<AudioTrack> closeLater = Arrays.asList(stream("live"), video("hour", 3_600_000),
+                video("close", 181_000));
+        assertEquals("close", YouTubeFallbackTrack.pick(closeLater, THREE_MINUTES).getIdentifier());
+
+        // only streams in the top five: no match, even with a normal video behind them
+        List<AudioTrack> allStreams = Arrays.asList(stream("one"), stream("two"));
+        assertNull(YouTubeFallbackTrack.pick(allStreams, THREE_MINUTES));
+        List<AudioTrack> videoSixth = Arrays.asList(stream("one"), stream("two"), stream("three"), stream("four"),
+                stream("five"), video("sixth", 3_600_000));
+        assertNull(YouTubeFallbackTrack.pick(videoSixth, THREE_MINUTES));
+
+        assertProtected(new YouTubeFallbackTrack(SOUNDCLOUD, query -> allStreams, new NamedSource()));
+
+        // and through the track: the stream is never played, the normal video is
+        Video live = stream("live");
+        Video normal = video("hour", 3_600_000);
+        new YouTubeFallbackTrack(SOUNDCLOUD, query -> Arrays.<AudioTrack>asList(live, normal),
+                new NamedSource()).process(null);
+        assertEquals(0, live.plays);
+        assertEquals(1, normal.plays);
+    }
+
+    @Test
     public void noResultIsTheProtectedMessage() throws Exception
     {
         assertNull(YouTubeFallbackTrack.pick(Collections.emptyList(), THREE_MINUTES));
@@ -82,14 +121,12 @@ public class YouTubeFallbackTrackTest
         YouTubeFallbackTrack nothingFound = new YouTubeFallbackTrack(SOUNDCLOUD, query -> Collections.emptyList(),
                 new NamedSource());
         assertProtected(nothingFound);
-        assertFalse(nothingFound.isPlayingFromYouTube());
 
         YouTubeFallbackTrack searchFailed = new YouTubeFallbackTrack(SOUNDCLOUD, query ->
         {
             throw new FriendlyException("YouTube said no", FriendlyException.Severity.SUSPICIOUS, null);
         }, new NamedSource());
         assertProtected(searchFailed);
-        assertFalse(searchFailed.isPlayingFromYouTube());
     }
 
     // ---- what plays and what is kept
@@ -100,14 +137,12 @@ public class YouTubeFallbackTrackTest
         CountingSearch search = new CountingSearch();
         AudioSourceManager source = new NamedSource();
         YouTubeFallbackTrack track = new YouTubeFallbackTrack(SOUNDCLOUD, search, source);
-        assertFalse(track.isPlayingFromYouTube());
 
         track.process(null);
 
         assertEquals(Collections.singletonList("Lil Uzi Vert 444222a"), search.queries);
         assertEquals(0, search.found.get(0).get(0).plays);
         assertEquals(1, search.found.get(0).get(1).plays);
-        assertTrue(track.isPlayingFromYouTube());
         assertSame(SOUNDCLOUD, track.getInfo());
         assertEquals("444222a", track.getInfo().title);
         assertEquals("Lil Uzi Vert", track.getInfo().author);
@@ -133,7 +168,6 @@ public class YouTubeFallbackTrackTest
         assertSame(SOUNDCLOUD, clone.getInfo());
         assertEquals("requester", clone.getUserData());
         assertSame(track.getSourceManager(), clone.getSourceManager());
-        assertFalse(((YouTubeFallbackTrack) clone).isPlayingFromYouTube());
         assertEquals(1, search.queries.size());
 
         ((YouTubeFallbackTrack) clone).process(null);
@@ -141,7 +175,6 @@ public class YouTubeFallbackTrackTest
         assertEquals(2, search.queries.size());
         assertEquals(1, search.found.get(0).get(1).plays);
         assertEquals(1, search.found.get(1).get(1).plays);
-        assertTrue(((YouTubeFallbackTrack) clone).isPlayingFromYouTube());
     }
 
     @Test
@@ -173,6 +206,12 @@ public class YouTubeFallbackTrackTest
     private static Video video(String id, long lengthMs)
     {
         return new Video(new AudioTrackInfo("Song", "Channel", lengthMs, id, false, "https://youtu.be/" + id));
+    }
+
+    /** A live stream result: lavaplayer gives those an unknown length. */
+    private static Video stream(String id)
+    {
+        return new Video(new AudioTrackInfo("Live", "Channel", Long.MAX_VALUE, id, true, "https://youtu.be/" + id));
     }
 
     /** A YouTube result that only counts how often it is played. */

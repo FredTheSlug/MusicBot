@@ -473,9 +473,9 @@ public class WebServer
      * SoundCloud track the bot plays from YouTube ({@link YouTubeFallbackTrack}), else null. The now-playing payload
      * leaves {@code via} out when this is null.
      * <p>
-     * It keys on the track type, not on {@link YouTubeFallbackTrack#isPlayingFromYouTube()}: the now-playing message is
-     * built before the track's {@code process()} runs the YouTube search, and nothing signals when it flips. A fallback
-     * track either plays from YouTube or fails and is skipped, so the note is right from the start.
+     * It keys on the track type, not on whether the YouTube match has started: the now-playing message is built before
+     * the track's {@code process()} runs the YouTube search, and nothing signals when that happens. A fallback track
+     * either plays from YouTube or fails and is skipped, so the note is right from the start.
      */
     static String viaOf(AudioTrack track)
     {

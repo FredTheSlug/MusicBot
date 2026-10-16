@@ -45,7 +45,8 @@ init + chunk with no failures: AAC-LC, 44.1 kHz, stereo, 431 frames per 10.0 s c
 4. **`YouTubeFallbackTrack extends DelegatedAudioTrack`** — keeps the SoundCloud `AudioTrackInfo` (title, author,
    length, uri, artwork), so queue, History, likes and playlists keep pointing at SoundCloud. When it starts playing it
    searches YouTube (`ytsearch:` + author + title) through the bot's YouTube source, takes the first of the top 5
-   results whose length is within 15 % of the SoundCloud length (else the first result), and plays it as its delegate.
+   results whose length is within 15 % of the SoundCloud length (else the first that is not a live stream), and plays
+   it as its delegate.
 
 `PlayerManager` registers `SoundCloudSource` where `SoundCloudAudioSourceManager.createDefault()` is today; nothing
 else in the play paths changes (Discord commands, panel, playlists, likes, autoplay all use the same manager).
@@ -80,8 +81,8 @@ Signed SoundCloud links (query strings) are never logged.
   stereo), laid out like SoundCloud's (init `ftyp`+`moov`; chunks `styp`+`sidx`+`moof`+`mdat`, ~2 s each). Init +
   2 chunks decode to the right length; a seek into the middle of a chunk starts at the right sample. (No real
   SoundCloud audio is committed.)
-- Fallback track: picks the closest-length result among the top 5, else the first; no result → the message above;
-  the SoundCloud info is kept.
+- Fallback track: picks the first result within 15 % of the length among the top 5, else the first of them that is
+  not a live stream (a live stream is never picked); no result → the message above; the SoundCloud info is kept.
 - `SoundCloudSource`: normal tracks pass through unchanged; `X:` tracks become fallback tracks, also inside a search
   result page, so one protected result no longer breaks a whole `scsearch`.
 - Panel/Discord note: `via` present only for a playing fallback track; footer text.

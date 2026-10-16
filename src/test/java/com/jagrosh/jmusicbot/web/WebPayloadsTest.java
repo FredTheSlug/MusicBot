@@ -101,11 +101,9 @@ public class WebPayloadsTest
                 query -> Collections.<com.sedmelluq.discord.lavaplayer.track.AudioTrack>singletonList(
                         new Song(new AudioTrackInfo("Song", "Channel", 181_000, "abcdefghijk", false,
                                 "https://youtu.be/abcdefghijk"))), null);
-        assertFalse(fallback.isPlayingFromYouTube());
         assertEquals("youtube", WebServer.viaOf(fallback));
 
         fallback.process(null);
-        assertTrue(fallback.isPlayingFromYouTube());
         assertEquals("youtube", WebServer.viaOf(fallback));
     }
 
