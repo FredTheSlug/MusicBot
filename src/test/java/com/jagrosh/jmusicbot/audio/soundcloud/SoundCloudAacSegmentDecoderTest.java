@@ -47,15 +47,16 @@ import static org.junit.Assert.*;
  * the decoder, calling it the way lavaplayer's {@code SoundCloudM3uAudioTrack} does: {@code prepareStream(true)}
  * first, then {@code playStream} with one stream of every chunk from the current one to the end; a seek is
  * {@code resetStream}, {@code prepareStream} and {@code playStream} again from the chunk that holds the target.
- * Lengths are counted in the output format's own samples and allow 50 ms: lavaplayer's AAC decoder spends the first
- * AAC frame (23 ms) of every {@code playStream} on finding the stream's format, and the last unfinished 20 ms output
- * frame is never sent.
+ * The tests run at Discord's output format (48 kHz 16-bit PCM, {@link StandardAudioDataFormats#DISCORD_PCM_S16_LE}),
+ * which is what the bot plays at: lavaplayer resamples the 44.1 kHz source to it. Lengths are counted in the output
+ * format's own samples and allow 50 ms: lavaplayer's AAC decoder spends the first AAC frame (23 ms) of every
+ * {@code playStream} on finding the stream's format, and the last unfinished 20 ms output frame is never sent.
  */
 public class SoundCloudAacSegmentDecoderTest
 {
     private static final String CANT_READ = "SoundCloud sent a stream the bot can't read yet";
     private static final double TOLERANCE_MS = 50;
-    private static final AudioDataFormat FORMAT = StandardAudioDataFormats.COMMON_PCM_S16_LE;
+    private static final AudioDataFormat FORMAT = StandardAudioDataFormats.DISCORD_PCM_S16_LE;
     /** Room for the whole fixture (under 4 s), so playStream never waits for a listener. */
     private static final int BUFFER_MS = 10_000;
 

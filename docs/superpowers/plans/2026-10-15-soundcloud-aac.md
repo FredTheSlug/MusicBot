@@ -74,3 +74,12 @@
 ### Task 5: Patch note
 
 - [ ] Add a new FIRST `patch-notes.json` entry by text in the file's style (id `2026-10-16`, or `-2` if taken — use the date it is written; no `app` field; areas Panel/Discord): SoundCloud songs play again; songs SoundCloud locks (mostly label uploads) play from YouTube instead and say "via YouTube". `PatchNotesFileTest` + Node tests green → commit `patch notes: SoundCloud plays again`.
+
+## Changes during execution
+
+Where the finished code differs from the plan above:
+
+- **Task 2:** the test `aac160kThen96k` became `firstPlainAacInSoundCloudsOrderWins`. lavaplayer 2.2.7 does not expose the bitrate preset, and SoundCloud lists `aac_160k` first, so the handler takes the first plain AAC in SoundCloud's own order.
+- **Task 3:** `YouTubeFallbackTrack.pick`'s last resort changed in the final review from "the first result" to "the first of the top 5 that is not a live stream" (none: the protected message), test `aLiveStreamIsNeverTheFallback`; the test `picksTheClosestLengthAmongTheTopFive` became `firstWithinFifteenPercentAmongTheTopFive` (the rule is "first within 15 %", not "closest"). `isPlayingFromYouTube()` was removed (see Task 4).
+- **Task 4:** the "via YouTube" note keys on `instanceof YouTubeFallbackTrack` (`WebServer.viaOf`, `AudioHandler.footerFor`; test `viaIsYoutubeForAFallbackTrack`), not on `isPlayingFromYouTube()`: the now-playing message is built before the track's `process()` runs the YouTube search, so nothing would signal the flip.
+- **Task 1:** the decoder tests run at Discord's 48 kHz output (`StandardAudioDataFormats.DISCORD_PCM_S16_LE`, which resamples from the 44.1 kHz source), not at 44.1 kHz (`COMMON_PCM_S16_LE`).

@@ -47,6 +47,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * A fallback track is stored like any SoundCloud track (its info, the {@code X:} identifier, under this source's
  * name; lavaplayer's SoundCloud source writes nothing more), so it is restored as a protected SoundCloud track and
  * from there as a fallback track again.
+ * <p>
+ * It does not implement lavaplayer's {@code HttpConfigurable}, which lavaplayer's own sources do: the bot configures
+ * no HTTP settings on its player manager today, but if it ever calls {@code setHttpRequestConfigurator} or
+ * {@code setHttpBuilderConfigurator} on the manager, that would not reach SoundCloud (the wrapped source keeps its
+ * defaults) until this class passes it on.
  */
 public class SoundCloudSource implements AudioSourceManager
 {

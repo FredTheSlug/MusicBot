@@ -38,6 +38,17 @@ import java.util.function.Supplier;
  * per track through its {@link InitLoader}, puts it in front of the chunks and lets lavaplayer's own MP4 reader
  * ({@link MpegFileLoader}) and AAC decoder ({@link MpegAacTrackConsumer}) play the result.
  * <p>
+ * What it relies on in the container:
+ * <ul>
+ *   <li>The init's {@code moov} carries an {@code mvex} (with its {@code trex}), the marker of a fragmented MP4. That is
+ *       what makes lavaplayer's {@code MpegFragmentedFileTrackProvider} take the stream: {@link MpegFileLoader#loadReader}
+ *       hands out that reader only when it saw the {@code mvex}; without one, lavaplayer falls back to its whole-file
+ *       reader, which does not play {@code moof} chunks. A {@code sidx} is not required; SoundCloud's chunks carry
+ *       one, but nothing here depends on it.</li>
+ *   <li>The chunks are {@code moof} + {@code mdat} pairs, read once and only forward through the joined stream: nothing
+ *       is seeked or read twice. A seek is a new stream starting at the chunk that holds the target.</li>
+ * </ul>
+ * <p>
  * How {@code SoundCloudM3uAudioTrack} drives it (one decoder per play of a track):
  * <ul>
  *   <li>{@link #prepareStream} when playback starts and again after every seek; the first call loads the init.</li>
