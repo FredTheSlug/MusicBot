@@ -668,7 +668,8 @@ test('decoExtraFollowsColoursUntilSetByHand', () => {
   const ember = C.chooseBase(kept, 'ember', PIECES);
   assert.equal(ember.colors.decoExtra, '#fde047');
   assert.equal(ember.decoExtraSetByHand, false);
-  // reopening: set by hand when it is neither the theme's accent-light nor its starting theme's own
+  // reopening: set by hand when it is neither the theme's accent-light, nor its starting theme's own, nor that of a built-in
+  // palette whose 16 colours the theme has exactly
   const reopen = (decoExtra, base) => C.fromTheme(savedTheme({ base: base || 'ember', colors: Object.assign({}, COLORS, { decoExtra }) }), PIECES);
   assert.equal(reopen(COLORS.accentLight).decoExtraSetByHand, false);
   assert.equal(reopen('#fde047').decoExtraSetByHand, false, "Ember's own");

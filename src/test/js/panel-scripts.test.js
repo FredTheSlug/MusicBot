@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { panelFunction } = require('./panel-source.js');
 
-const PANEL =fs.readFileSync(path.join(__dirname, '../../main/resources/web/index.html'), 'utf8');
+const PANEL = fs.readFileSync(path.join(__dirname, '../../main/resources/web/index.html'), 'utf8');
 
 /** The panel's inline scripts (the ones written in the page, not loaded from /web/…). */
 function inlineScripts(html) {
