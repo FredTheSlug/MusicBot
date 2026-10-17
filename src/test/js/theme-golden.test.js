@@ -25,19 +25,16 @@ const PIECES_FILE = 'src/main/resources/web/theme-pieces.json';
 const goldenFiles = {};
 
 /* The golden colours of one stylesheet ('panel' or 'mini'): { theme: { key: "rgba(r,g,b,a)" } }. */
-function golden(kind) {
+function goldenOf(kind) {
   if (!goldenFiles[kind]) goldenFiles[kind] = readJson('src/test/resources/theme-golden/' + kind + '.json');
   return goldenFiles[kind];
 }
 
 /*
- * Golden keys that are gone on purpose: a declaration whose colours were replaced by something the evaluator can't
- * see (for example a picture redrawn as a mask). Each entry is reviewed; `theme: [key, ...]` per stylesheet.
+ * Golden keys gone on purpose and new decoration keys added on purpose are listed, each with the reason it was
+ * reviewed, in src/test/resources/theme-golden/allowlist.json (read by this test and by scripts/theme-golden.js).
  */
-const GONE_ON_PURPOSE = {
-  panel: {},
-  mini: {}
-};
+const ALLOWLIST_FILE = 'src/test/resources/theme-golden/allowlist.json';
 
 const DECORATED = ['ember', 'steel', 'grove', 'sumi', 'rasta', 'dawn-dark', 'cipher', 'signal', 'victory', 'neon',
   'revival'];
@@ -166,14 +163,17 @@ test('keysAreSelectorPropertyAndPlaceAndSurviveARewrite', () => {
     'html[data-theme="x"] .header > .bar::before|box-shadow|0',
     'html[data-theme="x"] .header > .bar::before|box-shadow|1',
     'html[data-theme="x"]|--accent-light|0',
+    'html[data-theme="x"]|--accent-rgb|0',
     'html[data-theme="x"]|--accent|0'
   ].sort());
   const golden = Colors.snapshot(SAMPLE, 'x');
   assert.equal(golden['html[data-theme="x"] .card|box-shadow|0'], 'rgba(0,0,0,0.2)', 'a shadow variable is read through');
   assert.equal(golden['html[data-theme="x"] .card|box-shadow|1'], 'rgba(226,130,92,1)', 'the theme\'s own --accent');
   assert.equal(golden['@media (min-width:1280px) html[data-theme="x"] .badge|color|0'], 'rgba(246,239,229,1)');
-  assert.deepEqual(Colors.snapshot(SAMPLE, 'y'), { 'html[data-theme="y"] .card|color|0': 'rgba(18,52,86,1)' },
-    'yGlow is not used by y, and the custom-theme rule belongs to no built-in theme');
+  assert.deepEqual(Colors.snapshot(SAMPLE, 'y'), {
+    'html[data-theme="y"]|--accent-rgb|0': 'rgba(124,92,252,1)',
+    'html[data-theme="y"] .card|color|0': 'rgba(18,52,86,1)'
+  }, 'yGlow is not used by y, the custom-theme rule belongs to no built-in theme, and :root gives y its triple');
   assert.deepEqual(Colors.compareToGolden(golden, SAMPLE_REWRITTEN, 'x'), [],
     'guards, spacing, order and slot expressions keep the keys and the colours');
 });
@@ -189,11 +189,127 @@ test('aChangedOrMissingColourIsReportedUnlessListedAsGone', () => {
   assert.deepEqual(Colors.compareToGolden(golden, gone, 'x'),
     ['gone: @media (min-width:1280px) html[data-theme="x"] .badge|color|0 (was rgba(246,239,229,1))']);
   assert.deepEqual(Colors.compareToGolden(golden, gone, 'x',
-    ['@media (min-width:1280px) html[data-theme="x"] .badge|color|0']), []);
-  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x', ['html[data-theme="x"]|--accent|0']),
+    { gone: ['@media (min-width:1280px) html[data-theme="x"] .badge|color|0'] }), []);
+  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x', { gone: ['html[data-theme="x"]|--accent|0'] }),
     ['listed as gone but still there: html[data-theme="x"]|--accent|0']);
   const broken = SAMPLE.replace('#f6efe5', 'color-mix(in oklab, #f6efe5, white)');
   assert.match(Colors.compareToGolden(golden, broken, 'x').join('\n'), /can't evaluate/);
+});
+
+test('aGuardedDeclarationWinsAsInTheBrowser', () => {
+  // each :not([data-deco-off~=...]) weighs one attribute, so with every piece on a guarded rule beats an unguarded
+  // one whatever their order; !important beats both
+  const x = (rules) => 'html[data-theme="x"] { --accent: #222222; }\n' + rules;
+  const golden = Colors.snapshot(x('html[data-theme="x"] .card { color: #111111; }'), 'x');
+  const guardedFirst = x('html[data-theme="x"]:not([data-deco-off~="a"]) .card { color: #ff0000; }\n' +
+    'html[data-theme="x"] .card { color: #111111; }');
+  assert.deepEqual(Colors.compareToGolden(golden, guardedFirst, 'x'),
+    ['changed: html[data-theme="x"] .card|color|0: was rgba(17,17,17,1), now rgba(255,0,0,1) (#ff0000)']);
+  const twoGuards = x('html[data-theme="x"]:not([data-deco-off~="a"]):not([data-deco-off~="b"]) .card { color: #ff0000; }\n' +
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .card { color: #111111; }');
+  assert.equal(Colors.compareToGolden(golden, twoGuards, 'x').length, 1, 'two guards beat one');
+  const guardList = x('html[data-theme="x"]:not([data-deco-off~="a"], [data-deco-off~="b"]) .card { color: #ff0000; }\n' +
+    'html[data-theme="x"]:not([data-deco-off~="c"]) .card { color: #111111; }');
+  assert.deepEqual(Colors.compareToGolden(golden, guardList, 'x'), [], 'a guard list weighs one guard: the later wins');
+  const important = x('html[data-theme="x"] .card { color: #111111 !important; }\n' +
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .card { color: #ff0000; }');
+  assert.deepEqual(Colors.compareToGolden(golden, important, 'x'), []);
+  // the same for variables: a guarded theme block over a later unguarded one, the theme block over :root
+  const varGolden = Colors.snapshot(x('html[data-theme="x"] .card { color: var(--accent); }'), 'x');
+  const guardedVars = 'html[data-theme="x"]:not([data-deco-off~="a"]) { --accent: #ff0000; }\n' +
+    'html[data-theme="x"] { --accent: #222222; }\nhtml[data-theme="x"] .card { color: var(--accent); }';
+  assert.equal(Colors.themeVars(guardedVars, 'x')['--accent'], '#ff0000');
+  assert.deepEqual(Colors.compareToGolden(varGolden, guardedVars, 'x'), [
+    'changed: html[data-theme="x"]|--accent|0: was rgba(34,34,34,1), now rgba(255,0,0,1) (#ff0000)',
+    'changed: html[data-theme="x"] .card|color|0: was rgba(34,34,34,1), now rgba(255,0,0,1) (var(--accent))'
+  ]);
+  assert.equal(Colors.themeVars('html[data-theme="x"] { --accent: #222222; }\n:root { --accent: #ff0000; }', 'x')
+    ['--accent'], '#222222', 'the theme block beats a later :root');
+  assert.equal(Colors.themeVars('html[data-theme="x"] { --accent: #222222; }\n' +
+    ':root:not([data-deco-off~="a"]):not([data-deco-off~="b"]) { --accent: #ff0000; }', 'x')['--accent'], '#ff0000',
+  'a :root with two guards (0,3,0) beats the theme block (0,1,1)');
+});
+
+test('variablesSetBelowTheThemeBlockAreRefused', () => {
+  // the check resolves every variable at html; one set on an element would be seen differently by that element's
+  // variants (:hover, ::after, descendants), so it is refused rather than guessed
+  assert.throws(() => Colors.decorationColours('html[data-theme="x"] .card { --c: #ff0000; }\n' +
+    'html[data-theme="x"] .card:hover { color: var(--c); }', 'x'), /--c is set by html\[data-theme="x"\] \.card\b/);
+  // an html-level variable built from another one is computed at html: an element can't change it from below
+  assert.throws(() => Colors.decorationColours('html[data-theme="x"] { --accent: #222222; --glow: var(--accent); }\n' +
+    'html[data-theme="x"] .card { --accent: #ff0000; color: var(--glow); }', 'x'),
+  /--accent is set by html\[data-theme="x"\] \.card\b/);
+  // a shared rule setting a variable a theme colour uses
+  assert.throws(() => Colors.decorationColours('html[data-theme="x"] { --accent: #222222; }\n.card { --accent: #ff0000; }\n' +
+    'html[data-theme="x"] .card { color: var(--accent); }', 'x'),
+  /--accent is set by \.card and used by html\[data-theme="x"\] \.card\|color\|0/);
+  // a shared rule's variable no theme colour uses is fine (the panel's layout values), and so is the theme block,
+  // guarded or in an @media copy, which a rule in the same @media sees
+  assert.deepEqual(Colors.snapshot(':root { --card-padding: 16px; }\n.main { --card-padding: 8px; }\n' +
+    'html[data-theme="x"] { --accent: #222222; }\n' +
+    '@media (max-width:640px) { html[data-theme="x"]:not([data-deco-off~="a"]) { --accent: #333333; }\n' +
+    '  html[data-theme="x"] .card { color: var(--accent); padding: var(--card-padding); } }', 'x'), {
+    'html[data-theme="x"]|--accent|0': 'rgba(34,34,34,1)',
+    '@media (max-width:640px) html[data-theme="x"]|--accent|0': 'rgba(51,51,51,1)',
+    '@media (max-width:640px) html[data-theme="x"] .card|color|0': 'rgba(51,51,51,1)'
+  });
+});
+
+test('aNewDecorationIsReportedUnlessListedAsNew', () => {
+  const golden = Colors.snapshot(SAMPLE, 'x');
+  const added = SAMPLE + '\nhtml[data-theme="x"]:not([data-deco-off~="glows"]) .card::after { box-shadow: 0 0 40px #ff00ff; }';
+  assert.deepEqual(Colors.compareToGolden(golden, added, 'x'),
+    ['new: html[data-theme="x"] .card::after|box-shadow|0 (rgba(255,0,255,1))']);
+  assert.deepEqual(Colors.compareToGolden(golden, added, 'x',
+    { added: ['html[data-theme="x"] .card::after|box-shadow|0'] }), []);
+  // a new variable is not a decoration until a rule paints with it
+  assert.deepEqual(Colors.compareToGolden(golden,
+    SAMPLE.replace('--accent-light: #f2a882;', '--accent-light: #f2a882; --deco-extra: #fde047;'), 'x'), []);
+  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x', { added: ['html[data-theme="x"] .nope|color|0'] }),
+    ['listed as new but not there: html[data-theme="x"] .nope|color|0']);
+  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x', { added: ['html[data-theme="x"] .card|background|0'] }),
+    ['listed as new but golden: html[data-theme="x"] .card|background|0']);
+  const unreadable = SAMPLE + '\nhtml[data-theme="x"] .card::after { color: color-mix(in oklab, #000, #fff); }';
+  assert.match(Colors.compareToGolden(golden, unreadable, 'x', { added: ['html[data-theme="x"] .card::after|color|0'] })
+    .join('\n'), /can't evaluate: html\[data-theme="x"\] \.card::after\|color\|0/);
+});
+
+test('theAccentTriplesArePinned', () => {
+  // shared rules paint with rgba(var(--accent-r), var(--accent-g), var(--accent-b), a): the numbers are a colour too
+  const golden = Colors.snapshot(SAMPLE, 'x');
+  assert.equal(golden['html[data-theme="x"]|--accent-rgb|0'], 'rgba(226,130,92,1)');
+  assert.equal(golden['html[data-theme="x"]|--accent2-rgb|0'], undefined, 'no --accent2-r/g/b here');
+  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE.replace('--accent-g: 130;', '--accent-g: 140;'), 'x'),
+    ['changed: html[data-theme="x"]|--accent-rgb|0: was rgba(226,130,92,1), now rgba(226,140,92,1) ' +
+      '(rgb(var(--accent-r), var(--accent-g), var(--accent-b)))']);
+  for (const id of ThemeApply.BUILT_IN) {
+    const block = id === 'nebula' ? ':root' : 'html[data-theme="' + id + '"]';
+    const vars = Colors.themeVars(Colors.panelCss(), id);
+    for (const t of ['accent', 'accent2']) {
+      const rgb = ['r', 'g', 'b'].map((c) => vars['--' + t + '-' + c]).join(',');
+      assert.equal(goldenOf('panel')[id][block + '|--' + t + '-rgb|0'], 'rgba(' + rgb + ',1)', id + ' ' + t);
+    }
+  }
+});
+
+test('theAllowlistsAreOneReviewedFileTheScriptReadsToo', () => {
+  const allow = readJson(ALLOWLIST_FILE);
+  assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose']);
+  for (const list of Object.values(allow)) {
+    assert.deepEqual(Object.keys(list), ['panel', 'mini']);
+    for (const kind of ['panel', 'mini']) {
+      for (const theme of Object.keys(list[kind])) {
+        assert.ok(ThemeApply.BUILT_IN.includes(theme), kind + ': ' + theme);
+        for (const [key, why] of Object.entries(list[kind][theme])) {
+          assert.ok(typeof why === 'string' && why.trim().length >= 10, kind + ' ' + theme + ' ' + key + ': say why');
+        }
+      }
+    }
+  }
+  assert.deepEqual(Colors.allowlist(), allow);
+  const script = fs.readFileSync(path.join(ROOT, 'scripts/theme-golden.js'), 'utf8');
+  assert.match(script, /Colors\.checkSheet\(/, 'the script checks with the shared allowlist');
+  assert.ok(!/ON_PURPOSE\s*=/.test(fs.readFileSync(__filename, 'utf8')), 'no second list in the test');
 });
 
 test('theStylesheetsAreReadAsThePanelAndTheMiniPlayerLoadThem', () => {
@@ -259,24 +375,11 @@ test('piecesListMatchesTheSpec', () => {
 
 // ---- the golden colours
 
-function goldenProblems(kind) {
-  const css = kind === 'panel' ? Colors.panelCss() : Colors.miniCss();
-  const problems = [];
-  for (const theme of Object.keys(golden(kind))) {
-    const gone = GONE_ON_PURPOSE[kind][theme] || [];
-    Colors.compareToGolden(golden(kind)[theme], css, theme, gone).forEach((p) => problems.push(theme + ': ' + p));
-  }
-  for (const theme of Object.keys(GONE_ON_PURPOSE[kind])) {
-    if (!golden(kind)[theme]) problems.push(theme + ': listed as gone but has no golden colours');
-  }
-  return problems;
-}
-
 test('goldenIsTodaysStylesheet', () => {
-  assert.deepEqual(Object.keys(golden('panel')), [...ThemeApply.BUILT_IN]);
-  assert.deepEqual(Object.keys(golden('mini')), [...ThemeApply.BUILT_IN]);
+  assert.deepEqual(Object.keys(goldenOf('panel')), [...ThemeApply.BUILT_IN]);
+  assert.deepEqual(Object.keys(goldenOf('mini')), [...ThemeApply.BUILT_IN]);
   for (const kind of ['panel', 'mini']) {
-    const problems = goldenProblems(kind);
+    const problems = Colors.checkSheet(kind);
     assert.deepEqual(problems, [], kind + ': ' + problems.length + ' decoration colour(s) differ from the golden file');
   }
 });
@@ -285,20 +388,20 @@ test('goldenCoversEveryDecoratedTheme', () => {
   const pieces = readJson(PIECES_FILE);
   for (const kind of ['panel', 'mini']) {
     for (const id of ThemeApply.BUILT_IN) {
-      const keys = Object.keys(golden(kind)[id] || {});
+      const keys = Object.keys(goldenOf(kind)[id] || {});
       const block = kind === 'panel' && id === 'nebula' ? ':root|' : 'html[data-theme="' + id + '"]|';
       assert.ok(keys.some((k) => k.startsWith(block + '--accent|')), kind + ' ' + id + ': its colour slots');
       const decorations = keys.filter((k) => !k.startsWith(block));
       // every theme with pieces in a stylesheet has decorations there: the panel's 11, and all 17 skins
       const decorated = kind === 'mini' || DECORATED.includes(id);
       if (decorated) assert.ok(decorations.length > 0, kind + ' ' + id + ': no decoration colours');
-      for (const k of keys) assert.match(golden(kind)[id][k], /^rgba\(\d+,\d+,\d+,(0|1|0\.\d{1,3})\)$/, k);
+      for (const k of keys) assert.match(goldenOf(kind)[id][k], /^rgba\(\d+,\d+,\d+,(0|1|0\.\d{1,3})\)$/, k);
     }
   }
   // the big ones are all there
-  const count = (kind, id) => Object.keys(golden(kind)[id]).filter((k) => !k.startsWith('html[data-theme="' + id + '"]|'))
+  const count = (kind, id) => Object.keys(goldenOf(kind)[id]).filter((k) => !k.startsWith('html[data-theme="' + id + '"]|'))
     .length;
   assert.ok(count('panel', 'revival') >= 83, 'revival: ' + count('panel', 'revival'));
   assert.ok(count('panel', 'neon') >= 48, 'neon: ' + count('panel', 'neon'));
-  assert.ok(Object.keys(pieces).every((id) => golden('panel')[id] && golden('mini')[id]));
+  assert.ok(Object.keys(pieces).every((id) => goldenOf('panel')[id] && goldenOf('mini')[id]));
 });

@@ -12,8 +12,11 @@
  * Excluded: inside url(). Colours drawn inside pictures (Ember's flame SVGs, Sumi's kanji tile, Revival's grain and
  * star) are not stylesheet colours; the pictures are listed below each theme's count.
  *
+ * Keys gone on purpose and new decoration keys added on purpose are listed, each with its reason, in
+ * src/test/resources/theme-golden/allowlist.json; --check and the test both read it.
+ *
  *   node scripts/theme-golden.js           write the golden files (only if they aren't there yet)
- *   node scripts/theme-golden.js --check   compare today's stylesheets with the golden files, write nothing
+ *   node scripts/theme-golden.js --check   compare today's stylesheets with the golden files (and the allowlist)
  *   node scripts/theme-golden.js --force   write them over the existing ones
  */
 const fs = require('node:fs');
@@ -34,13 +37,10 @@ for (const kind of Object.keys(SHEETS)) {
   const file = path.join(OUT, kind + '.json');
   const css = SHEETS[kind];
   if (check) {
-    const golden = JSON.parse(fs.readFileSync(file, 'utf8'));
-    for (const theme of Object.keys(golden)) {
-      Colors.compareToGolden(golden[theme], css, theme).forEach((p) => {
-        problems++;
-        console.log(kind + ' ' + theme + ': ' + p);
-      });
-    }
+    Colors.checkSheet(kind, css).forEach((p) => {
+      problems++;
+      console.log(kind + ' ' + p);
+    });
     continue;
   }
   const out = {};

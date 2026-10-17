@@ -1,5 +1,7 @@
 {
   "nebula": {
+    ":root|--accent-rgb|0": "rgba(124,92,252,1)",
+    ":root|--accent2-rgb|0": "rgba(224,76,240,1)",
     ":root|--bg-primary|0": "rgba(11,13,23,1)",
     ":root|--bg-secondary|0": "rgba(18,20,39,1)",
     ":root|--bg-card|0": "rgba(24,27,46,1)",
@@ -26,6 +28,8 @@
     "html:not([data-theme]) .header|box-shadow|0": "rgba(0,0,0,0.22)"
   },
   "aurora": {
+    "html[data-theme=\"aurora\"]|--accent-rgb|0": "rgba(45,212,191,1)",
+    "html[data-theme=\"aurora\"]|--accent2-rgb|0": "rgba(34,211,238,1)",
     "html[data-theme=\"aurora\"]|--bg-primary|0": "rgba(10,17,20,1)",
     "html[data-theme=\"aurora\"]|--bg-secondary|0": "rgba(15,24,28,1)",
     "html[data-theme=\"aurora\"]|--bg-card|0": "rgba(21,34,40,1)",
@@ -66,6 +70,8 @@
     "html[data-theme=\"aurora\"] .layout-pane.pane-drop-target|box-shadow|0": "rgba(255,255,255,0.12)"
   },
   "ember": {
+    "html[data-theme=\"ember\"]|--accent-rgb|0": "rgba(249,115,22,1)",
+    "html[data-theme=\"ember\"]|--accent2-rgb|0": "rgba(239,68,68,1)",
     "html[data-theme=\"ember\"]|--bg-primary|0": "rgba(20,12,10,1)",
     "html[data-theme=\"ember\"]|--bg-secondary|0": "rgba(26,16,12,1)",
     "html[data-theme=\"ember\"]|--bg-card|0": "rgba(36,24,21,1)",
@@ -95,6 +101,8 @@
     "html[data-theme=\"ember\"] .layout-pane.card > .pane-drag-bar|border|0": "rgba(255,255,255,0.12)"
   },
   "crimson": {
+    "html[data-theme=\"crimson\"]|--accent-rgb|0": "rgba(239,68,68,1)",
+    "html[data-theme=\"crimson\"]|--accent2-rgb|0": "rgba(251,113,133,1)",
     "html[data-theme=\"crimson\"]|--bg-primary|0": "rgba(15,5,6,1)",
     "html[data-theme=\"crimson\"]|--bg-secondary|0": "rgba(22,8,9,1)",
     "html[data-theme=\"crimson\"]|--bg-card|0": "rgba(31,12,14,1)",
@@ -127,6 +135,8 @@
     "html[data-theme=\"crimson\"] .login-overlay|background|0": "rgba(12,4,5,0.82)"
   },
   "dawn": {
+    "html[data-theme=\"dawn\"]|--accent-rgb|0": "rgba(109,40,217,1)",
+    "html[data-theme=\"dawn\"]|--accent2-rgb|0": "rgba(219,39,119,1)",
     "html[data-theme=\"dawn\"]|--bg-primary|0": "rgba(244,242,239,1)",
     "html[data-theme=\"dawn\"]|--bg-secondary|0": "rgba(234,230,224,1)",
     "html[data-theme=\"dawn\"]|--bg-card|0": "rgba(255,255,255,1)",
@@ -160,6 +170,8 @@
     "html[data-theme=\"dawn\"] .lyrics-line.active|background|0": "rgba(109,40,217,0.08)"
   },
   "dawn-dark": {
+    "html[data-theme=\"dawn-dark\"]|--accent-rgb|0": "rgba(124,58,237,1)",
+    "html[data-theme=\"dawn-dark\"]|--accent2-rgb|0": "rgba(219,39,119,1)",
     "html[data-theme=\"dawn-dark\"]|--bg-primary|0": "rgba(5,4,3,1)",
     "html[data-theme=\"dawn-dark\"]|--bg-secondary|0": "rgba(8,7,6,1)",
     "html[data-theme=\"dawn-dark\"]|--bg-elevated|0": "rgba(12,11,9,1)",
@@ -193,6 +205,8 @@
     "html[data-theme=\"dawn-dark\"] .lyrics-line.active|background|0": "rgba(124,58,237,0.14)"
   },
   "steel": {
+    "html[data-theme=\"steel\"]|--accent-rgb|0": "rgba(56,189,248,1)",
+    "html[data-theme=\"steel\"]|--accent2-rgb|0": "rgba(129,140,248,1)",
     "html[data-theme=\"steel\"]|--bg-primary|0": "rgba(12,15,20,1)",
     "html[data-theme=\"steel\"]|--bg-secondary|0": "rgba(18,22,32,1)",
     "html[data-theme=\"steel\"]|--bg-card|0": "rgba(24,30,42,1)",
@@ -229,6 +243,8 @@
     "html[data-theme=\"steel\"] .layout-pane.pane-drop-target|box-shadow|0": "rgba(255,255,255,0.11)"
   },
   "verdant": {
+    "html[data-theme=\"verdant\"]|--accent-rgb|0": "rgba(52,211,153,1)",
+    "html[data-theme=\"verdant\"]|--accent2-rgb|0": "rgba(163,230,53,1)",
     "html[data-theme=\"verdant\"]|--bg-primary|0": "rgba(10,15,12,1)",
     "html[data-theme=\"verdant\"]|--bg-secondary|0": "rgba(15,24,18,1)",
     "html[data-theme=\"verdant\"]|--bg-card|0": "rgba(21,32,25,1)",
@@ -250,6 +266,8 @@
     "html[data-theme=\"verdant\"] .card|box-shadow|1": "rgba(52,211,153,0.06)"
   },
   "grove": {
+    "html[data-theme=\"grove\"]|--accent-rgb|0": "rgba(52,211,153,1)",
+    "html[data-theme=\"grove\"]|--accent2-rgb|0": "rgba(148,163,184,1)",
     "html[data-theme=\"grove\"]|--bg-primary|0": "rgba(23,27,31,1)",
     "html[data-theme=\"grove\"]|--bg-secondary|0": "rgba(30,35,41,1)",
     "html[data-theme=\"grove\"]|--bg-card|0": "rgba(37,43,51,1)",
@@ -280,6 +298,8 @@
     "html[data-theme=\"grove\"] .layout-pane.card::before|background-image|1": "rgba(37,43,51,0.84)"
   },
   "grapevine": {
+    "html[data-theme=\"grapevine\"]|--accent-rgb|0": "rgba(139,92,246,1)",
+    "html[data-theme=\"grapevine\"]|--accent2-rgb|0": "rgba(34,197,94,1)",
     "html[data-theme=\"grapevine\"]|--bg-primary|0": "rgba(12,10,18,1)",
     "html[data-theme=\"grapevine\"]|--bg-secondary|0": "rgba(17,14,26,1)",
     "html[data-theme=\"grapevine\"]|--bg-card|0": "rgba(24,21,40,1)",
@@ -310,6 +330,8 @@
     "html[data-theme=\"grapevine\"] .login-overlay|background|0": "rgba(8,6,14,0.8)"
   },
   "sumi": {
+    "html[data-theme=\"sumi\"]|--accent-rgb|0": "rgba(196,43,32,1)",
+    "html[data-theme=\"sumi\"]|--accent2-rgb|0": "rgba(26,47,66,1)",
     "html[data-theme=\"sumi\"]|--bg-primary|0": "rgba(6,7,8,1)",
     "html[data-theme=\"sumi\"]|--bg-secondary|0": "rgba(10,12,15,1)",
     "html[data-theme=\"sumi\"]|--bg-card|0": "rgba(16,19,24,1)",
@@ -352,6 +374,8 @@
     "html[data-theme=\"sumi\"] .login-overlay|background|0": "rgba(4,5,6,0.82)"
   },
   "rasta": {
+    "html[data-theme=\"rasta\"]|--accent-rgb|0": "rgba(34,197,94,1)",
+    "html[data-theme=\"rasta\"]|--accent2-rgb|0": "rgba(234,179,8,1)",
     "html[data-theme=\"rasta\"]|--bg-primary|0": "rgba(0,0,0,1)",
     "html[data-theme=\"rasta\"]|--bg-secondary|0": "rgba(0,0,0,1)",
     "html[data-theme=\"rasta\"]|--bg-card|0": "rgba(18,24,18,1)",
@@ -407,6 +431,8 @@
     "html[data-theme=\"rasta\"] .login-overlay|background|0": "rgba(5,8,5,0.78)"
   },
   "cipher": {
+    "html[data-theme=\"cipher\"]|--accent-rgb|0": "rgba(139,92,246,1)",
+    "html[data-theme=\"cipher\"]|--accent2-rgb|0": "rgba(217,70,239,1)",
     "html[data-theme=\"cipher\"]|--bg-primary|0": "rgba(9,7,15,1)",
     "html[data-theme=\"cipher\"]|--bg-secondary|0": "rgba(16,12,26,1)",
     "html[data-theme=\"cipher\"]|--bg-card|0": "rgba(23,18,37,1)",
@@ -477,6 +503,8 @@
     "html[data-theme=\"cipher\"] .login-box|border|0": "rgba(139,92,246,0.28)"
   },
   "signal": {
+    "html[data-theme=\"signal\"]|--accent-rgb|0": "rgba(34,211,238,1)",
+    "html[data-theme=\"signal\"]|--accent2-rgb|0": "rgba(74,222,128,1)",
     "html[data-theme=\"signal\"]|--bg-primary|0": "rgba(5,10,12,1)",
     "html[data-theme=\"signal\"]|--bg-secondary|0": "rgba(10,18,21,1)",
     "html[data-theme=\"signal\"]|--bg-card|0": "rgba(15,26,30,1)",
@@ -543,6 +571,8 @@
     "html[data-theme=\"signal\"] .login-box|box-shadow|0": "rgba(34,211,238,0.12)"
   },
   "victory": {
+    "html[data-theme=\"victory\"]|--accent-rgb|0": "rgba(234,179,8,1)",
+    "html[data-theme=\"victory\"]|--accent2-rgb|0": "rgba(245,158,11,1)",
     "html[data-theme=\"victory\"]|--bg-primary|0": "rgba(14,12,8,1)",
     "html[data-theme=\"victory\"]|--bg-secondary|0": "rgba(22,19,12,1)",
     "html[data-theme=\"victory\"]|--bg-card|0": "rgba(31,26,18,1)",
@@ -605,6 +635,8 @@
     "html[data-theme=\"victory\"] .login-box|box-shadow|1": "rgba(234,179,8,0.1)"
   },
   "neon": {
+    "html[data-theme=\"neon\"]|--accent-rgb|0": "rgba(163,230,53,1)",
+    "html[data-theme=\"neon\"]|--accent2-rgb|0": "rgba(192,132,252,1)",
     "html[data-theme=\"neon\"]|--bg-primary|0": "rgba(18,8,28,1)",
     "html[data-theme=\"neon\"]|--bg-secondary|0": "rgba(26,15,40,1)",
     "html[data-theme=\"neon\"]|--bg-card|0": "rgba(34,20,54,1)",
@@ -690,6 +722,8 @@
     "html[data-theme=\"neon\"] .login-box h2|color|0": "rgba(255,255,255,1)"
   },
   "revival": {
+    "html[data-theme=\"revival\"]|--accent-rgb|0": "rgba(226,130,92,1)",
+    "html[data-theme=\"revival\"]|--accent2-rgb|0": "rgba(242,179,94,1)",
     "html[data-theme=\"revival\"]|--bg-primary|0": "rgba(20,16,13,1)",
     "html[data-theme=\"revival\"]|--bg-secondary|0": "rgba(27,22,18,1)",
     "html[data-theme=\"revival\"]|--bg-card|0": "rgba(33,27,23,1)",
