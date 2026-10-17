@@ -6,7 +6,6 @@ use crate::AppState;
 use serde::Serialize;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 
 const LINK_KINDS: [&str; 4] = ["playlist", "album", "track", "artist"];
 const LINK_HOSTS: [&str; 2] = ["open.spotify.com", "play.spotify.com"];
@@ -211,8 +210,8 @@ pub fn send_current(app: &AppHandle) -> Result<String, String> {
     Ok(format!("Sent “{query}” to the bot"))
 }
 
-/// What gets logged about pasted or dropped text: never the text, which may be anything on the
-/// clipboard. A link is described by its kind only (track, album, playlist).
+/// What gets logged about dropped text: never the text, which may be anything. A link is described
+/// by its kind only (track, album, playlist).
 fn link_input_log(text: &str) -> String {
     let chars = text.chars().count();
     match parse_spotify_link(text) {
@@ -224,17 +223,12 @@ fn link_input_log(text: &str) -> String {
     }
 }
 
-/// Plays the first Spotify link found in pasted or dropped text.
+/// Plays the first Spotify link found in text dropped on the mini-player.
 pub fn play_link_text(app: &AppHandle, text: &str) -> Result<String, String> {
     log::info!("{}", link_input_log(text));
     let link = parse_spotify_link(text).ok_or("That's not a Spotify link")?;
     bridge::send_command_await(app, BotCommand::PlaySpotifyLink(link), SEND_TIMEOUT)?;
     Ok("Sent the Spotify link to the bot".into())
-}
-
-pub fn play_clipboard(app: &AppHandle) -> Result<String, String> {
-    let text = app.clipboard().read_text().map_err(|_| "The clipboard doesn't contain a link".to_string())?;
-    play_link_text(app, &text)
 }
 
 #[cfg(test)]

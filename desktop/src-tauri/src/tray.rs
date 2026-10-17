@@ -16,7 +16,7 @@ pub const NOW_PLAYING: &str = "now-playing";
 pub const TOGGLE_PAUSE: &str = "toggle-pause";
 pub const SKIP: &str = "skip";
 pub const SEND_SPOTIFY: &str = "send-spotify";
-pub const PASTE_SPOTIFY: &str = "paste-spotify";
+pub const PLAY_CLIPBOARD: &str = "play-clipboard";
 pub const SHOW_PANEL: &str = "show-panel";
 pub const MINI_PLAYER: &str = "mini-player";
 pub const NOTIFY_NOW_PLAYING: &str = "notify-now-playing";
@@ -80,7 +80,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let toggle_pause = MenuItem::with_id(app, TOGGLE_PAUSE, "Pause", false, None::<&str>)?;
     let skip = MenuItem::with_id(app, SKIP, "Skip", false, None::<&str>)?;
     let send_spotify = MenuItem::with_id(app, SEND_SPOTIFY, "Send my Spotify song", false, None::<&str>)?;
-    let paste_spotify = MenuItem::with_id(app, PASTE_SPOTIFY, "Play Spotify link from clipboard", true, None::<&str>)?;
+    let play_clipboard = MenuItem::with_id(app, PLAY_CLIPBOARD, "Play link from clipboard", true, None::<&str>)?;
     let show_panel = MenuItem::with_id(app, SHOW_PANEL, "Show panel", true, None::<&str>)?;
     let mini = MenuItem::with_id(app, MINI_PLAYER, "Mini-player", true, None::<&str>)?;
     let current = app.state::<AppState>().settings.lock().unwrap().clone();
@@ -97,7 +97,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &toggle_pause,
             &skip,
             &send_spotify,
-            &paste_spotify,
+            &play_clipboard,
             &PredefinedMenuItem::separator(app)?,
             &show_panel,
             &mini,
@@ -152,11 +152,11 @@ fn on_menu(app: &AppHandle, id: &str) {
             None
         }
         SEND_SPOTIFY => {
-            run_spotify_action(app, spotify::send_current);
+            run_action(app, spotify::send_current);
             None
         }
-        PASTE_SPOTIFY => {
-            run_spotify_action(app, spotify::play_clipboard);
+        PLAY_CLIPBOARD => {
+            run_action(app, mini_player::play_clipboard);
             None
         }
         NOTIFY_NOW_PLAYING | NOTIFY_UP_NEXT | PAUSE_SPOTIFY_AFTER_SEND | START_WITH_WINDOWS => {
@@ -212,8 +212,9 @@ fn toggle_setting(app: &AppHandle, id: &str) {
     }
 }
 
-/// Spotify actions block (media sessions, waiting for the bot), so they run on a worker thread.
-pub(crate) fn run_spotify_action(app: &AppHandle, action: fn(&AppHandle) -> Result<String, String>) {
+/// Actions that block (Spotify's media sessions, the clipboard, waiting for the bot) run on a worker thread; their
+/// answer goes to the mini-player's status line, or a toast.
+pub(crate) fn run_action(app: &AppHandle, action: fn(&AppHandle) -> Result<String, String>) {
     let app = app.clone();
     std::thread::spawn(move || match action(&app) {
         Ok(message) => crate::dispatch_notice(&app, "info", &message),

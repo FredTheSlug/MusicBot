@@ -356,6 +356,8 @@
   }
 
   el('spotifyBtn').addEventListener('click', function () { runAction('mini_send_spotify'); });
+  // The app reads the clipboard and plays a link on it as the search box would; its answer goes on the status line.
+  el('pasteBtn').addEventListener('click', function () { runAction('mini_play_clipboard'); });
 
   var dragDepth = 0;
   window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; el('mini').classList.add('dropping'); });

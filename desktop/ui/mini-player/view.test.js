@@ -1070,10 +1070,68 @@ test('the ♥ sits in the bottom row after the +, with the same look as its neig
   assert.match(compact, /html\.compact #addBtn, html\.compact #likeBtn,/, 'the compact bar keeps only play/pause, skip and the menu');
 });
 
+// ---- Play link from clipboard ----
+
+test('the clipboard button sits in the bottom row after the Spotify logo, looks like its neighbours and hides in the compact bar', () => {
+  const start = MINI_HTML.indexOf('<div class="bottom-row">');
+  const row = MINI_HTML.slice(start, MINI_HTML.indexOf('</div>', start));
+  const paste = row.indexOf('id="pasteBtn"');
+  assert.ok(paste > row.indexOf('id="spotifyBtn"') && paste < row.indexOf('id="lyricsBtn"'), 'between the Spotify logo and the lyrics');
+  assert.equal(MINI_HTML.split('id="pasteBtn"').length, 2, 'once');
+  const tag = row.slice(row.lastIndexOf('<button', paste), row.indexOf('>', paste) + 1);
+  assert.match(tag, /type="button"/);
+  assert.match(tag, /class="icon-btn"/, 'the size, hover and focus of the other bottom-row buttons');
+  assert.match(tag, /title="Play link from clipboard"/);
+  assert.match(tag, /aria-label="Play link from clipboard"/);
+  assert.doesNotMatch(tag, /\b(disabled|hidden)\b/, 'always there: the app says when the clipboard has no link');
+  const at = MINI_CSS.indexOf('\nhtml.compact #restart');
+  const compact = MINI_CSS.slice(at, MINI_CSS.indexOf('display: none; }', at));
+  assert.match(compact, /html\.compact #pasteBtn,/, 'the compact bar keeps only play/pause, skip and the menu');
+});
+
+test('one click asks the app to play the clipboard and shows its answer on the status line', () => {
+  const mini = fs.readFileSync(path.join(__dirname, 'mini.js'), 'utf8');
+  assert.match(mini, /el\('pasteBtn'\)\.addEventListener\('click', function \(\) \{ runAction\('mini_play_clipboard'\); \}\);/);
+  // The page never reads the clipboard itself: the app does, so the window needs no clipboard permission.
+  assert.doesNotMatch(mini, /navigator\.clipboard|clipboard-manager/);
+  const granted = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'src-tauri', 'capabilities', 'mini-player.json'), 'utf8')).permissions;
+  assert.equal(granted.filter((p) => /clipboard/.test(p)).join(), 'allow-mini-play-clipboard');
+});
+
+test('the bottom row fits the 360 px window with every button, the sleep badge and the widest artwork', () => {
+  // The window is always 360 px wide. Revival's record (88 px) is the widest artwork.
+  const px = (rule, prop) => {
+    const m = rule.match(new RegExp('(?:^|[\\s;{])' + prop + ':\\s*([0-9.]+)px'));
+    assert.ok(m, prop + ' in ' + rule);
+    return Number(m[1]);
+  };
+  const mini = cssRule(MINI_CSS, '.mini');
+  const padding = mini.match(/padding:\s*[0-9.]+px\s+([0-9.]+)px/);
+  assert.ok(padding, '.mini padding');
+  const card = 360 - 2 * 1 - 2 * Number(padding[1]) - px(mini, 'gap');
+  const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8').replace(/\r/g, '');
+  const disc = Math.max(px(cssRule(MINI_CSS, '.disc'), 'width'), px(cssRule(themes, 'html[data-theme="revival"] .disc'), 'width'));
+  const room = card - disc - px(cssRule(MINI_CSS, '.info'), 'padding-right');
+
+  const start = MINI_HTML.indexOf('<div class="bottom-row">');
+  const row = MINI_HTML.slice(start, MINI_HTML.indexOf('</section>', start)); // through the menu button, after the status line
+  assert.match(row, /id="menuBtn"/);
+  const buttons = (row.match(/<button [^>]*class="icon-btn/g) || []).length;
+  assert.ok(buttons >= 7, 'every icon button: ' + buttons);
+  const badge = 14; // ☾ at 0.8rem
+  const gap = px(cssRule(MINI_CSS, '.bottom-row'), 'gap');
+  // The status line is one more item (and gap) in the row; it may shrink to nothing, never push a button out.
+  const needed = buttons * px(cssRule(MINI_CSS, '.icon-btn'), 'width') + badge + (buttons + 1) * gap;
+  assert.ok(needed <= room, needed + ' px of buttons in ' + room + ' px');
+  const status = cssRule(MINI_CSS, '.bottom-row .status');
+  assert.match(status, /min-width:\s*0/, 'the status line can shrink to nothing');
+  assert.match(status, /flex:\s*1 1 0/, 'and takes only what is left');
+});
+
 test('every command the mini-player calls is granted to its window and registered with the app', () => {
   const mini = fs.readFileSync(path.join(__dirname, 'mini.js'), 'utf8');
   const called = [...new Set([...mini.matchAll(/(?:invoke|runAction)\('([a-z_]+)'/g)].map((m) => m[1]))];
-  for (const cmd of ['mini_likes', 'mini_like', 'mini_unlike', 'mini_play_likes']) assert.ok(called.includes(cmd), cmd + ' is called');
+  for (const cmd of ['mini_likes', 'mini_like', 'mini_unlike', 'mini_play_likes', 'mini_play_clipboard']) assert.ok(called.includes(cmd), cmd + ' is called');
   const tauri = path.join(__dirname, '..', '..', 'src-tauri');
   const granted = JSON.parse(fs.readFileSync(path.join(tauri, 'capabilities', 'mini-player.json'), 'utf8')).permissions;
   const build = fs.readFileSync(path.join(tauri, 'build.rs'), 'utf8');

@@ -320,6 +320,7 @@ fn main() {
             mini_player::mini_search,
             mini_player::mini_lyrics,
             mini_player::mini_play_link,
+            mini_player::mini_play_clipboard,
             mini_player::mini_get_prefs,
             mini_player::mini_set_opacity,
             mini_player::mini_set_theme,

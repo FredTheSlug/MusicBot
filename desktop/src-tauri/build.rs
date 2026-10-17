@@ -15,6 +15,7 @@ fn main() {
             "mini_search",
             "mini_lyrics",
             "mini_play_link",
+            "mini_play_clipboard",
             "mini_get_prefs",
             "mini_set_opacity",
             "mini_set_theme",

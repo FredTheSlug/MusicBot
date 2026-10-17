@@ -327,7 +327,7 @@ html.compact .controls { grid-area: controls; gap: 4px; }
 html.compact .bottom-row { display: contents; }
 html.compact #menuBtn { grid-area: menu; }
 html.compact #restart, html.compact .ctrl.mode, html.compact .volume,
-html.compact #spotifyBtn, html.compact #lyricsBtn, html.compact #queueBtn, html.compact #addBtn, html.compact #likeBtn,
+html.compact #spotifyBtn, html.compact #pasteBtn, html.compact #lyricsBtn, html.compact #queueBtn, html.compact #addBtn, html.compact #likeBtn,
 html.compact .sleep-badge { display: none; }
 
 /* A message takes the artist line's place for a moment. */
@@ -345,15 +345,17 @@ html.compact[data-theme="revival"] .art { inset: 12px; width: 24px; height: 24px
 html.compact[data-theme="revival"] .spindle { width: 4px; height: 4px; margin: -2px 0 0 -2px; }
 .close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 
-/* Bottom row: Spotify logo, lyrics, status, menu. */
+/* Bottom row: Spotify logo, clipboard, lyrics, queue, +, ♥, sleep badge, status, menu. The window is always 360 px
+   wide: with every button showing (and Revival's wider record) the gaps are what keeps the menu button in the card. */
 .bottom-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   min-width: 0;
 }
 
-.bottom-row .status { flex: 1; }
+/* The status line takes only what the buttons leave, down to nothing; the whole message is in its tooltip. */
+.bottom-row .status { flex: 1 1 0; min-width: 0; }
 
 .icon-btn {
   display: inline-flex;

@@ -165,7 +165,7 @@ pub fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
         HotkeyAction::Skip => Some(BotCommand::Skip),
         HotkeyAction::Restart => Some(BotCommand::RestartTrack),
         HotkeyAction::SendSpotify => {
-            tray::run_spotify_action(app, spotify::send_current);
+            tray::run_action(app, spotify::send_current);
             None
         }
         HotkeyAction::ToggleMiniPlayer => {

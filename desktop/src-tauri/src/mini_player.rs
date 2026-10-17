@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 pub const LABEL: &str = "mini-player";
 const WIDTH: f64 = 360.0;
@@ -848,13 +849,60 @@ pub async fn mini_play_likes(app: AppHandle) -> Result<String, String> {
     .await
 }
 
+const PLAYING_THE_LINK: &str = "Playing the link";
+
 #[tauri::command]
 pub async fn mini_play_link(app: AppHandle, text: String) -> Result<String, String> {
     blocking(move || {
         bridge::send_command_await(&app, lookup::link_command(&text)?, COMMAND_TIMEOUT)?;
-        Ok("Playing the link".to_string())
+        Ok(PLAYING_THE_LINK.to_string())
     })
     .await
+}
+
+// ---- Play link from clipboard (the bottom row's button and the tray) ----
+
+/// What a link on the clipboard plays: exactly what the search box sends for a pasted link.
+fn clipboard_command(text: &str) -> Result<BotCommand, String> {
+    lookup::link_command(text).map_err(|_| "The clipboard doesn't have a link to play".to_string())
+}
+
+fn link_kind(text: &str) -> &'static str {
+    match lookup::link_command(text) {
+        Ok(BotCommand::PlaySpotifyLink(_)) => "spotify link",
+        Ok(BotCommand::PlayQuery(url)) => {
+            let host = url::Url::parse(&url).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)).unwrap_or_default();
+            let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+            if on("youtube.com") || on("youtu.be") {
+                "youtube link"
+            } else if on("soundcloud.com") {
+                "soundcloud link"
+            } else {
+                "other link"
+            }
+        }
+        Ok(_) => "other link",
+        Err(_) => "not a link",
+    }
+}
+
+/// What gets logged about the clipboard: the kind of link and its length, never the text, which may be anything.
+fn clipboard_log(text: &str) -> String {
+    format!("play from clipboard: {} ({} chars)", link_kind(text), text.chars().count())
+}
+
+/// Plays the link on the clipboard. Blocking: call off the main thread.
+pub fn play_clipboard(app: &AppHandle) -> Result<String, String> {
+    // No text at all (an empty clipboard, a picture) is the same as text without a link.
+    let text = app.clipboard().read_text().unwrap_or_default();
+    log::info!("{}", clipboard_log(&text));
+    bridge::send_command_await(app, clipboard_command(&text)?, COMMAND_TIMEOUT)?;
+    Ok(PLAYING_THE_LINK.to_string())
+}
+
+#[tauri::command]
+pub async fn mini_play_clipboard(app: AppHandle) -> Result<String, String> {
+    blocking(move || play_clipboard(&app)).await
 }
 
 #[cfg(test)]
@@ -967,6 +1015,59 @@ mod tests {
             assert_eq!(likes_after(&[quiet.clone()]), LikesAfter::Keep, "{quiet:?}");
         }
         assert_eq!(likes_after(&[]), LikesAfter::Keep);
+    }
+
+    // ---- Play link from clipboard ----
+
+    #[test]
+    fn the_clipboard_is_played_the_way_the_search_box_plays_a_link() {
+        let links = [
+            "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x",
+            "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+            "  https://youtu.be/abc\r\n",
+            "https://soundcloud.com/artist/song",
+            "watch https://example.com/live.m3u8 now",
+        ];
+        for text in links {
+            assert_eq!(clipboard_command(text), lookup::link_command(text), "{text:?}");
+        }
+        assert_eq!(
+            clipboard_command("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x"),
+            Ok(BotCommand::PlaySpotifyLink("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M".into()))
+        );
+        assert_eq!(clipboard_command("  https://youtu.be/abc\r\n"), Ok(BotCommand::PlayQuery("https://youtu.be/abc".into())));
+    }
+
+    #[test]
+    fn a_clipboard_without_a_link_says_so() {
+        for text in ["", "   \n", "daft punk", "httpx://nope", "spotify:user:x", "www.youtube.com/watch?v=x"] {
+            assert_eq!(clipboard_command(text), Err("The clipboard doesn't have a link to play".to_string()), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn the_clipboard_log_names_the_kind_of_link_and_never_the_text() {
+        let cases = [
+            ("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=SECRET", "spotify link"),
+            ("spotify:album:1ATL5GLyefJaxhQzSPVrLX", "spotify link"),
+            ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "youtube link"),
+            ("https://youtu.be/dQw4w9WgXcQ?t=SECRET", "youtube link"),
+            ("https://music.youtube.com/watch?v=dQw4w9WgXcQ", "youtube link"),
+            ("https://soundcloud.com/artist/private-track/s-SECRET", "soundcloud link"),
+            ("https://on.soundcloud.com/AbCdE", "soundcloud link"),
+            ("https://example.com/song.mp3?token=SECRET", "other link"),
+            ("https://youtube.com.evil.io/watch?v=SECRET", "other link"),
+            ("https://notsoundcloud.com/SECRET", "other link"),
+            ("my bank password is hunter2", "not a link"),
+            ("", "not a link"),
+        ];
+        for (text, kind) in cases {
+            let line = clipboard_log(text);
+            assert!(line.contains(&format!("{kind} ({} chars)", text.chars().count())), "{text:?}: {line}");
+            for secret in ["SECRET", "hunter2", "dQw4w9WgXcQ", "4uLU6hMCjMI75M1A2tKUQC", "1ATL5GLyefJaxhQzSPVrLX", "AbCdE", "example.com", "evil", "http"] {
+                assert!(!line.contains(secret), "{text:?}: {line}");
+            }
+        }
     }
 
     const SIZE: (u32, u32) = (360, 140);
