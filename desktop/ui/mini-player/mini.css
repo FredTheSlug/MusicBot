@@ -341,10 +341,11 @@ html.compact .seek { position: absolute; left: 0; right: 0; bottom: 0; margin: 0
 html.compact .seek .progress { height: 3px; border-radius: 0; }
 html.compact .seek:not(.off):hover .progress, html.compact .seek.dragging .progress { height: 5px; }
 
-html.compact[data-theme="revival"] .disc { flex-basis: 48px; width: 48px; height: 48px; }
-html.compact[data-theme="revival"] .disc::before,
-html.compact[data-theme="revival"] .art { inset: 12px; width: 24px; height: 24px; }
-html.compact[data-theme="revival"] .spindle { width: 4px; height: 4px; margin: -2px 0 0 -2px; }
+/* Revival's record (its record piece, themes.css), smaller in the compact bar. */
+html.compact[data-theme="revival"]:not([data-deco-off~="record"]) .disc { flex-basis: 48px; width: 48px; height: 48px; }
+html.compact[data-theme="revival"]:not([data-deco-off~="record"]) .disc::before,
+html.compact[data-theme="revival"]:not([data-deco-off~="record"]) .art { inset: 12px; width: 24px; height: 24px; }
+html.compact[data-theme="revival"]:not([data-deco-off~="record"]) .spindle { width: 4px; height: 4px; margin: -2px 0 0 -2px; }
 .close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 
 /* Bottom row: Spotify logo, clipboard, lyrics, queue, +, ♥, sleep badge, menu. The window is always 360 px wide: with

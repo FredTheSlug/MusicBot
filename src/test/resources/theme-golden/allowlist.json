@@ -17,7 +17,12 @@
         "html[data-theme=\"revival\"]|--card-shadow|1": "the cream top highlight left the variable: the panel's own .card rule paints --card-shadow whatever the pieces (and in a custom theme it stayed cream); it is in Revival's glows .card rule now, mixed from --rv-glint (html[data-theme=\"revival\"] .card|box-shadow|1)"
       }
     },
-    "mini": {}
+    "mini": {
+      "revival": {
+        "html[data-theme=\"revival\"] .mini::before|background|2": "the sunrise glow left the rays' layer: the rays and the glow were two layers of one background on .mini::before, and a declaration sits under one piece; the glow is on .mini::after now (the sunrise piece; z-index -2 keeps it under the rays, above a picture and its dim), the same colour, html[data-theme=\"revival\"] .mini::after|background|0",
+        "html[data-theme=\"revival\"] .mini::before|background|3": "the sunrise glow's transparent end, moved with it to .mini::after (html[data-theme=\"revival\"] .mini::after|background|1)"
+      }
+    }
   },
   "newOnPurpose": {
     "panel": {
@@ -110,7 +115,18 @@
         }
       }
     },
-    "mini": {}
+    "mini": {
+      "revival": {
+        "html[data-theme=\"revival\"] .mini::after|background|0": {
+          "why": "not a new colour: Revival's sunrise glow (golden html[data-theme=\"revival\"] .mini::before|background|2), moved to its own layer so the sunrise piece switches off apart from the rays",
+          "is": "rgba(226,130,92,0.18)"
+        },
+        "html[data-theme=\"revival\"] .mini::after|background|1": {
+          "why": "not a new colour: the sunrise glow's transparent end (golden html[data-theme=\"revival\"] .mini::before|background|3), moved with it",
+          "is": "rgba(0,0,0,0)"
+        }
+      }
+    }
   },
   "changedOnPurpose": {
     "panel": {

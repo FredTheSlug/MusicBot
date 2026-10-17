@@ -1,12 +1,14 @@
 //! The panel's theme as the mini-player uses it. Values come from the remote page, so only known
 //! variable names and plain CSS values (colors, gradients, font lists) get through. Custom themes
 //! people made in the panel come from the bot's `GET /api/themes`: only the ones with a mini-player
-//! version are kept, every color checked, and the list is the only place their values live.
+//! version are kept, every color checked, and the list is the only place their values live. Which of
+//! their base theme's decoration pieces are off comes from the repository's one pieces list.
 
 use crate::settings::Settings;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
+use std::sync::OnceLock;
 
 /// The panel's themes, in the order its theme picker lists them.
 pub const THEME_IDS: [&str; 17] = [
@@ -24,11 +26,43 @@ pub const THEME_VARS: [&str; 16] = [
 pub const FONTS: [&str; 8] =
     ["Inter", "DM Sans", "Outfit", "Syne", "Fraunces", "IBM Plex Mono", "Noto Sans JP", "Shippori Mincho"];
 
-/// The colors of a mini-player version: a theme's 15 colors without `glass`.
+/// The colors a mini-player version needs: a theme's colors without `glass` and the extra decoration color.
 pub const MINI_SLOTS: [&str; 14] = [
     "bgPrimary", "bgSecondary", "bgCard", "bgElevated", "bgHover", "accent", "accentLight", "accent2", "textPrimary",
     "textSecondary", "textTertiary", "border", "borderLight", "success",
 ];
+
+/// The mini-player version's 15th color, the extra decoration color (`--deco-extra`): only when the bot sends a usable
+/// one. A bot from before the pieces sends none, and then the base skin's own shows.
+pub const DECO_EXTRA: &str = "decoExtra";
+
+/// The pieces of every built-in theme's decorations, as the bot lists them for the panel, the theme creator and itself:
+/// the repository's one list, built into the app.
+const THEME_PIECES_JSON: &str = include_str!("../../../src/main/resources/web/theme-pieces.json");
+
+/// One theme's entry in the pieces list (its `decoExtra` and the labels are the panel's business).
+#[derive(Debug, Deserialize)]
+struct ThemePieces {
+    pieces: Vec<Piece>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Piece {
+    id: String,
+    /// Paints the background: off while a custom theme shows its picture.
+    background: bool,
+}
+
+/// The pieces list, read once.
+fn theme_pieces() -> &'static BTreeMap<String, ThemePieces> {
+    static PIECES: OnceLock<BTreeMap<String, ThemePieces>> = OnceLock::new();
+    PIECES.get_or_init(|| serde_json::from_str(THEME_PIECES_JSON).expect("theme-pieces.json is the repository's own list"))
+}
+
+/// A theme's pieces; none for a theme the list doesn't have.
+fn pieces_of(base: &str) -> &'static [Piece] {
+    theme_pieces().get(base).map_or(&[], |t| t.pieces.as_slice())
+}
 
 /// The most custom themes the mini-player lists.
 pub const MAX_CUSTOM_MINIS: usize = 200;
@@ -109,15 +143,18 @@ pub struct CustomMini {
     pub mine: bool,
     /// Private, or hidden by the bot owner: only you can use it.
     pub private: bool,
-    /// The built-in skin to wear when the theme can't be.
+    /// The starting theme: the built-in skin the version wears with its own colors (alone when they can't be used).
     pub base: String,
     pub font: String,
-    /// The 14 colors, `#rrggbb` or `#rrggbbaa`, by slot name.
+    /// The 14 colors, `#rrggbb` or `#rrggbbaa`, by slot name, and `decoExtra` when the bot sent a usable one.
     pub colors: BTreeMap<String, String>,
     /// How much to darken the picture, 0-90.
     pub dim: u8,
     /// The picture's path on the bot (`/theme-images/<32 hex>.<ext>`): set only when this version uses the theme's picture.
     pub picture: Option<String>,
+    /// The base's pieces switched off, for the mini-player's `data-deco-off`: the theme's `decorationsOff` (only the
+    /// base's own ids, once each, in order), and with a picture the base's background pieces too.
+    pub decorations_off: Vec<String>,
 }
 
 /// `#rrggbb` or `#rrggbbaa`, in either case.
@@ -149,6 +186,22 @@ fn clean_name(value: Option<&Value>, fallback: &str) -> String {
     if cut.is_empty() { fallback.to_string() } else { cut.to_string() }
 }
 
+/// The base's pieces a theme switches off: its `decorationsOff` (the base's own ids only, once each, in order; a bot
+/// from before the pieces sends none, and its `effects` is the bot's to turn into pieces), then with a picture the base's
+/// background pieces.
+fn decorations_off(theme: &Value, base: &str, has_picture: bool) -> Vec<String> {
+    let pieces = pieces_of(base);
+    let mut off: Vec<String> = Vec::new();
+    let listed = theme.get("decorationsOff").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str);
+    let pictured = pieces.iter().filter(|p| has_picture && p.background).map(|p| p.id.as_str());
+    for id in listed.chain(pictured) {
+        if pieces.iter().any(|p| p.id == id) && !off.iter().any(|o| o == id) {
+            off.push(id.to_string());
+        }
+    }
+    off
+}
+
 /// One theme from the list, or None when it has no mini-player version or anything about it is unusable.
 fn parse_mini(theme: &Value) -> Option<CustomMini> {
     let id = theme.get("id")?.as_str().filter(|id| valid_custom_id(id))?;
@@ -159,6 +212,9 @@ fn parse_mini(theme: &Value) -> Option<CustomMini> {
     for slot in MINI_SLOTS {
         let color = raw_colors.get(slot)?.as_str().filter(|c| valid_color(c))?;
         colors.insert(slot.to_string(), color.to_string());
+    }
+    if let Some(extra) = raw_colors.get(DECO_EXTRA).and_then(Value::as_str).filter(|c| valid_color(c)) {
+        colors.insert(DECO_EXTRA.to_string(), extra.to_string());
     }
     let uses_picture = mini.get("useImage").and_then(Value::as_bool) == Some(true);
     let picture = if uses_picture {
@@ -177,6 +233,7 @@ fn parse_mini(theme: &Value) -> Option<CustomMini> {
         font: theme.get("font").and_then(Value::as_str).filter(|f| FONTS.contains(f)).unwrap_or(FONTS[0]).to_string(),
         colors,
         dim: mini.get("dim").and_then(Value::as_f64).map_or(0, |d| d.round().clamp(0.0, 90.0) as u8),
+        decorations_off: decorations_off(theme, base, picture.is_some()),
         picture,
     })
 }
@@ -288,7 +345,8 @@ pub fn needs_refresh(report_changed: bool, list_loaded: bool) -> bool {
 /// What the mini-player's UI is told to wear: the skin, the panel's live values for it, and a custom version.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UiTheme {
-    /// The built-in skin; for a custom version the base theme, which shows if its colors can't be used.
+    /// The built-in skin; for a custom version its base theme, which it wears in its own colors with its pieces (and
+    /// which shows as it is if those colors can't be used).
     pub id: String,
     pub vars: BTreeMap<String, String>,
     pub custom: Option<CustomMini>,
@@ -682,9 +740,156 @@ mod tests {
         let v = serde_json::to_value(&got[0]).unwrap();
         let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["base", "colors", "dim", "font", "id", "mine", "name", "owner", "picture", "private"]);
+        assert_eq!(keys, ["base", "colors", "decorationsOff", "dim", "font", "id", "mine", "name", "owner", "picture", "private"]);
         assert_eq!(v["picture"], PIC);
         assert_eq!(v["colors"]["accent2"], "#22d3ee");
+        assert_eq!(v["decorationsOff"], json!([]), "every piece on (Ember has no background piece for the picture to take)");
+    }
+
+    // ---- the pieces of a theme's decorations, and the extra decoration color ----
+
+    /// A theme as the bot sends it since the pieces: its pieces switched off, and 15 mini-player colors.
+    fn api_theme_now(id: &str, base: &str, off: serde_json::Value) -> serde_json::Value {
+        let mut t = api_theme(id, "Now", false);
+        t.as_object_mut().unwrap().remove("effects");
+        t["base"] = json!(base);
+        t["decorationsOff"] = off;
+        t["colors"]["decoExtra"] = json!("#fde047");
+        t["mini"]["colors"]["decoExtra"] = json!("#fde047");
+        t
+    }
+
+    #[test]
+    fn the_pieces_list_is_the_bots_own() {
+        // one list for the panel, the creator, the bot and the mini-player: every theme this app knows, and nothing else
+        let pieces = theme_pieces();
+        assert_eq!(pieces.keys().map(String::as_str).collect::<HashSet<_>>(), THEME_IDS.iter().copied().collect::<HashSet<_>>());
+        for (theme, list) in pieces {
+            assert!(!list.pieces.is_empty(), "{theme}");
+            for p in &list.pieces {
+                assert!(!p.id.is_empty() && p.id.bytes().all(|b| b.is_ascii_lowercase()), "{theme}: {:?} fits in data-deco-off", p.id);
+            }
+        }
+        let ids = |theme: &str| pieces[theme].pieces.iter().map(|p| (p.id.as_str(), p.background)).collect::<Vec<_>>();
+        assert_eq!(ids("nebula"), [("glow", false)]);
+        assert_eq!(
+            ids("revival"),
+            [("sunrise", true), ("rays", true), ("logo", false), ("badge", false), ("sparkles", false), ("record", false), ("glows", false)]
+        );
+        assert_eq!(ids("grove"), [("photo", true), ("hairlines", false), ("glows", false)]);
+    }
+
+    #[test]
+    fn deco_off_reaches_the_mini() {
+        let t = api_theme_now("aaaaaaaaaaaa", "revival", json!(["rays", "record"]));
+        let got = custom_minis(&list(vec![t]));
+        assert_eq!(got[0].decorations_off, ["rays", "record"]);
+        let v = serde_json::to_value(&got[0]).unwrap();
+        assert_eq!(v["decorationsOff"], json!(["rays", "record"]), "as the mini-player reads it");
+        // to the mini-player's UI, as it is
+        let ui = MiniThemeChoice::Custom(got[0].clone()).into_ui(Some("https://x"));
+        assert_eq!(ui.id, "revival");
+        assert_eq!(ui.custom.unwrap().decorations_off, ["rays", "record"]);
+        // only the base's own pieces, once each, in the order given; anything else is left out
+        let odd = api_theme_now("aaaaaaaaaaaa", "revival", json!(["record", "glow", "record", 5, null, "Rays", "rays", "", ["x"], "fire"]));
+        assert_eq!(custom_minis(&list(vec![odd]))[0].decorations_off, ["record", "rays"]);
+        let ember = api_theme_now("aaaaaaaaaaaa", "ember", json!(["rays", "fire", "flames"]));
+        assert_eq!(custom_minis(&list(vec![ember]))[0].decorations_off, ["fire", "flames"]);
+        for nothing in [json!([]), json!(null), json!("rays"), json!({ "0": "rays" }), json!(7)] {
+            let t = api_theme_now("aaaaaaaaaaaa", "revival", nothing.clone());
+            let got = custom_minis(&list(vec![t]));
+            assert_eq!(got.len(), 1, "the theme itself is still offered: {nothing}");
+            assert!(got[0].decorations_off.is_empty(), "{nothing}");
+        }
+    }
+
+    #[test]
+    fn a_picture_switches_the_bases_background_pieces_off() {
+        let with_picture = |base: &str, off: serde_json::Value, use_image: bool| {
+            let mut t = api_theme_now("aaaaaaaaaaaa", base, off);
+            t["mini"]["useImage"] = json!(use_image);
+            t["background"] = json!({ "url": PIC, "dim": 10, "blur": 0, "fit": "cover" });
+            custom_minis(&list(vec![t])).remove(0).decorations_off
+        };
+        // its own list first, then the base's background pieces in the list's order, each once
+        assert_eq!(with_picture("revival", json!(["record"]), true), ["record", "sunrise", "rays"]);
+        assert_eq!(with_picture("revival", json!(["rays"]), true), ["rays", "sunrise"]);
+        assert_eq!(with_picture("grove", json!([]), true), ["photo"]);
+        assert_eq!(with_picture("sumi", json!(["seal"]), true), ["seal", "mist", "kanji"]);
+        assert!(with_picture("nebula", json!([]), true).is_empty(), "a theme with no background piece");
+        // a version that doesn't show the picture keeps its pieces as they are
+        assert_eq!(with_picture("revival", json!(["record"]), false), ["record"]);
+        let mut no_picture = api_theme_now("aaaaaaaaaaaa", "revival", json!([]));
+        no_picture["mini"]["useImage"] = json!(true);
+        assert!(custom_minis(&list(vec![no_picture]))[0].decorations_off.is_empty(), "useImage with no picture is no picture");
+    }
+
+    #[test]
+    fn the_extra_decoration_color_comes_along_when_it_is_usable() {
+        let got = custom_minis(&list(vec![api_theme_now("aaaaaaaaaaaa", "rasta", json!([]))]));
+        assert_eq!(got[0].colors.len(), 15);
+        assert_eq!(got[0].colors["decoExtra"], "#fde047");
+        // a bad one is dropped (the skin's own then shows), the version itself is kept
+        for bad in [json!("red"), json!("#fff"), json!("url(https://x/y)"), json!("#fde047; x"), json!(5), json!(null), json!("")] {
+            let mut t = api_theme_now("aaaaaaaaaaaa", "rasta", json!([]));
+            t["mini"]["colors"]["decoExtra"] = bad.clone();
+            let got = custom_minis(&list(vec![t]));
+            assert_eq!(got.len(), 1, "{bad}");
+            assert_eq!(got[0].colors.len(), 14, "{bad}");
+            assert!(!got[0].colors.contains_key("decoExtra"), "{bad}");
+        }
+        // the 14 are still all needed
+        let mut missing = api_theme_now("aaaaaaaaaaaa", "rasta", json!([]));
+        missing["mini"]["colors"].as_object_mut().unwrap().remove("accent2");
+        assert!(custom_minis(&list(vec![missing])).is_empty());
+        // and nothing else of the theme's colors comes along
+        let mut more = api_theme_now("aaaaaaaaaaaa", "rasta", json!([]));
+        more["mini"]["colors"]["glass"] = json!("#10131ce0");
+        more["mini"]["colors"]["evil"] = json!("#000000");
+        let got = custom_minis(&list(vec![more]));
+        assert_eq!(got[0].colors.len(), 15);
+    }
+
+    #[test]
+    fn old_payload_still_works() {
+        // a theme from a bot before the pieces (what the 0.6.0 app read): `effects`, no decorationsOff, 14 mini-player
+        // colors. Worn on its base skin with every piece on and the skin's own extra decoration color; `effects` is the
+        // bot's to turn into pieces (it does, once updated), not the app's.
+        for effects in [json!(false), json!(true), json!(null)] {
+            let mut t = api_theme("aaaaaaaaaaaa", "Old", false);
+            t["base"] = json!("revival");
+            t["effects"] = effects.clone();
+            assert!(t.get("decorationsOff").is_none() && t["mini"]["colors"].get("decoExtra").is_none());
+            let got = custom_minis(&list(vec![t]));
+            assert_eq!(got.len(), 1, "{effects}");
+            assert!(got[0].decorations_off.is_empty(), "{effects}");
+            assert_eq!(got[0].colors.len(), 14);
+            assert!(!got[0].colors.contains_key("decoExtra"));
+            let ui = MiniThemeChoice::Custom(got[0].clone()).into_ui(Some("https://x"));
+            assert_eq!(ui.id, "revival");
+            let v = serde_json::to_value(&ui).unwrap();
+            assert_eq!(v["custom"]["decorationsOff"], json!([]));
+            assert!(v["custom"]["colors"].get("decoExtra").is_none());
+        }
+        // with a picture: the background pieces are off, as they are for a theme from a new bot
+        let mut pic = api_theme("aaaaaaaaaaaa", "Old", false);
+        pic["base"] = json!("revival");
+        pic["mini"]["useImage"] = json!(true);
+        pic["background"] = json!({ "url": PIC });
+        assert_eq!(custom_minis(&list(vec![pic]))[0].decorations_off, ["sunrise", "rays"]);
+    }
+
+    #[test]
+    fn matching_the_panel_brings_the_custom_themes_pieces() {
+        // the panel wearing a custom theme with a mini-player version: the mini-player wears that version, pieces and all
+        let customs = custom_minis(&list(vec![api_theme_now("k3j9x0q2m7ab", "revival", json!(["rays"]))]));
+        let settings = Settings { panel_theme: Some(panel("revival", "custom:k3j9x0q2m7ab", &[("--accent", "#123456")])), ..Settings::default() };
+        let ui = effective(&settings, &customs).into_ui(Some("https://x"));
+        assert_eq!(ui.id, "revival");
+        assert!(ui.vars.is_empty(), "the version's own colors, not the panel's live ones");
+        let custom = ui.custom.unwrap();
+        assert_eq!(custom.decorations_off, ["rays"]);
+        assert_eq!(custom.colors["decoExtra"], "#fde047");
     }
 
     // ---- which skin the mini-player wears ----

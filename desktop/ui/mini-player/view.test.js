@@ -54,6 +54,7 @@ function fakeRoot() {
   return {
     attrs, props,
     setAttribute(name, value) { attrs[name] = String(value); },
+    removeAttribute(name) { delete attrs[name]; },
     style: { setProperty(name, value) { props[name] = value; }, removeProperty(name) { delete props[name]; } }
   };
 }
@@ -75,7 +76,7 @@ test('applyTheme swaps inline vars', () => {
   applied = applyTheme(root, { id: 'ember', vars: { '--accent': '#f80' } }, applied);
   assert.deepEqual(applied, ['--accent']);
   assert.deepEqual(root.props, { '--accent': '#f80' });
-  assert.equal(root.attrs['data-theme'], 'ember');
+  assert.deepEqual(root.attrs, { 'data-theme': 'ember' }, 'a built-in skin: every piece on, no custom version');
 });
 
 test('applyOpacity sets the card alpha and flags low values', () => {
@@ -322,32 +323,36 @@ const {
 const ThemePalette = require('../../../src/main/resources/web/theme-palette.js');
 const ThemeApply = require('../../../src/main/resources/web/theme-apply.js');
 
-const MINI_COLORS = {
+/* A mini-player version as a bot from before the pieces sent it (the 0.6.0 app's): 14 colours. */
+const OLD_MINI_COLORS = {
   bgPrimary: '#0b0d14', bgSecondary: '#10131c', bgCard: '#161a26', bgElevated: '#1c2131', bgHover: '#262c42',
   accent: '#7c5cff', accentLight: '#a08bff', accent2: '#22d3ee', textPrimary: '#eef0f8', textSecondary: '#9aa0b8',
   textTertiary: '#646a82', border: '#ffffff12', borderLight: '#ffffff1f', success: '#34d399'
 };
+/* ... and as the bot sends it now: the extra decoration colour too. */
+const MINI_COLORS = Object.assign({}, OLD_MINI_COLORS, { decoExtra: '#fde047' });
 const PIC = 'https://cloutkings.duckdns.org/theme-images/' + '9f2c4d6e8a0b1c3d5e7f9a1b3c5d7e9f' + '.webp';
 
 function custom(extra) {
   return Object.assign({
     id: 'k3j9x0q2m7ab', name: 'Midnight Drive', owner: 'fred', mine: false, private: false, base: 'ember', font: 'Outfit',
-    colors: Object.assign({}, MINI_COLORS), dim: 55, picture: null
+    colors: Object.assign({}, MINI_COLORS), dim: 55, picture: null, decorationsOff: []
   }, extra);
 }
 
-test('CUSTOM_SLOTS are the 14 colors of a mini-player version (the theme\'s 16 without glass and the extra decoration color)', () => {
-  // the mini-player version also carries the extra decoration color (decoExtra), which this mini-player doesn't use yet
-  assert.equal(CUSTOM_SLOTS.length, 14);
-  assert.deepEqual(CUSTOM_SLOTS, ThemePalette.MINI_SLOTS.filter((slot) => slot !== 'decoExtra'));
+test('CUSTOM_SLOTS are the 15 colors of a mini-player version (the theme\'s 16 without glass)', () => {
+  assert.equal(CUSTOM_SLOTS.length, 15);
+  assert.deepEqual(CUSTOM_SLOTS, ThemePalette.MINI_SLOTS);
+  assert.equal(CUSTOM_SLOTS[14], 'decoExtra', 'the extra decoration color, last');
 });
 
-test('customVars turns a mini palette into the 16 variables plus the color on the accent', () => {
+test('customVars turns a mini palette into the 16 variables plus the color on the accent, the second accent and the extra decoration color', () => {
   const vars = customVars(custom());
   const SIXTEEN = ['--bg-primary', '--bg-secondary', '--bg-card', '--bg-elevated', '--bg-hover', '--accent', '--accent-light',
     '--accent-glow', '--accent-gradient', '--text-primary', '--text-secondary', '--text-tertiary', '--border', '--border-light',
     '--success', '--font-family'];
-  assert.deepEqual(Object.keys(vars).sort(), SIXTEEN.concat(['--on-accent']).sort());
+  assert.deepEqual(Object.keys(vars).sort(),
+    SIXTEEN.concat(['--on-accent', '--deco-extra', '--accent2-r', '--accent2-g', '--accent2-b']).sort());
   assert.equal(vars['--bg-card'], '#161a26');
   assert.equal(vars['--accent'], '#7c5cff');
   assert.equal(vars['--accent-light'], '#a08bff');
@@ -356,6 +361,26 @@ test('customVars turns a mini palette into the 16 variables plus the color on th
   assert.equal(vars['--accent-gradient'], 'linear-gradient(135deg, #7c5cff, #22d3ee)');
   assert.equal(vars['--font-family'], FONT_STACKS.Outfit);
   assert.equal(vars['--on-accent'], '#000000');
+  assert.equal(vars['--deco-extra'], '#fde047');
+  // the second accent as the skins paint with it (rgba(var(--accent2-r), ...)), as the panel gives it
+  assert.deepEqual([vars['--accent2-r'], vars['--accent2-g'], vars['--accent2-b']], ['34', '211', '238']);
+});
+
+test('the extra decoration color goes inline only when the version has a usable one; the skin\'s own shows otherwise', () => {
+  const without = Object.assign({}, MINI_COLORS);
+  delete without.decoExtra;
+  const vars = customVars(custom({ colors: without }));
+  assert.ok(vars, 'a version without it is still worn');
+  assert.equal('--deco-extra' in vars, false);
+  for (const bad of ['red', '#fff', '#12345', 'url(https://evil/x)', '#fde047; color: red', 5, null, '']) {
+    const odd = customVars(custom({ colors: Object.assign({}, MINI_COLORS, { decoExtra: bad }) }));
+    assert.ok(odd, 'its other colors are still worn: ' + bad);
+    assert.equal('--deco-extra' in odd, false, String(bad));
+  }
+  assert.equal(customVars(custom({ colors: Object.assign({}, MINI_COLORS, { decoExtra: '#FDE047CC' }) }))['--deco-extra'], '#FDE047CC');
+  // the second accent with alpha written out is still its three numbers
+  const alpha = customVars(custom({ colors: Object.assign({}, MINI_COLORS, { accent2: '#22D3EE80' }) }));
+  assert.deepEqual([alpha['--accent2-r'], alpha['--accent2-g'], alpha['--accent2-b']], ['34', '211', '238']);
 });
 
 test('customVars gives the mini-player exactly what the panel\'s creator previews', () => {
@@ -416,30 +441,108 @@ test('onAccent is the same black-or-white rule as the panel\'s', () => {
   }
 });
 
-test('applyTheme wears a custom mini-player version on the neutral skin and takes all of it off again', () => {
+test('customMiniUsesItsBaseSkin', () => {
+  // a custom version wears its starting theme's skin: its decorations, in the version's own colors (inline on <html>),
+  // with data-custom-theme for the few tones the skin can't mix from them (themes.css)
   const root = fakeRoot();
-  let applied = applyTheme(root, { id: 'ember', vars: {}, custom: custom() }, []);
-  assert.equal(root.attrs['data-theme'], 'custom', 'no built-in skin\'s decorations under someone else\'s colors');
-  assert.equal(applied.length, 17);
+  let applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival' }) }, []);
+  assert.deepEqual(root.attrs, { 'data-theme': 'revival', 'data-custom-theme': 'k3j9x0q2m7ab' }, 'every piece on');
+  assert.equal(applied.length, 21);
   assert.equal(root.props['--accent'], '#7c5cff');
   assert.equal(root.props['--on-accent'], '#000000');
   assert.equal(root.props['--font-family'], FONT_STACKS.Outfit);
-  // back to a built-in skin: not one variable of the custom theme stays, the skin's own on-accent returns
+  assert.equal(root.props['--deco-extra'], '#fde047');
+  assert.equal(root.props['--accent2-g'], '211');
+  // every one of the 17 skins
+  for (const id of THEME_IDS) {
+    const r = fakeRoot();
+    applyTheme(r, { id: id, vars: {}, custom: custom({ base: id }) }, []);
+    assert.equal(r.attrs['data-theme'], id);
+  }
+  // back to a built-in skin: not one variable or attribute of the custom version stays, the skin's own on-accent returns
   applied = applyTheme(root, { id: 'aurora', vars: {} }, applied);
   assert.deepEqual(root.props, {});
-  assert.equal(root.attrs['data-theme'], 'aurora');
+  assert.deepEqual(root.attrs, { 'data-theme': 'aurora' });
   // the panel's live values and a custom version never mix
   applied = applyTheme(root, { id: 'neon', vars: { '--accent': '#0ff' } }, applied);
   assert.deepEqual(root.props, { '--accent': '#0ff' });
-  applyTheme(root, { id: 'neon', vars: { '--accent': '#0ff' }, custom: custom() }, applied);
+  assert.deepEqual(root.attrs, { 'data-theme': 'neon' });
+  applyTheme(root, { id: 'neon', vars: { '--accent': '#0ff' }, custom: custom({ base: 'neon' }) }, applied);
   assert.equal(root.props['--accent'], '#7c5cff');
+  assert.equal(root.attrs['data-custom-theme'], 'k3j9x0q2m7ab');
+  // an id that is not one only marks it as custom
+  const odd = fakeRoot();
+  applyTheme(odd, { id: 'ember', vars: {}, custom: custom({ id: '"><b>' }) }, []);
+  assert.equal(odd.attrs['data-custom-theme'], '');
+});
+
+test('a custom version whose base this app doesn\'t know wears the neutral skin, which no rule of themes.css styles', () => {
+  for (const base of ['hologram', '', null, undefined, 5, 'custom', 'Revival']) {
+    const root = fakeRoot();
+    applyTheme(root, { id: 'nebula', vars: {}, custom: custom({ base: base }) }, []);
+    assert.equal(root.attrs['data-theme'], 'custom', String(base));
+    assert.equal(root.props['--accent'], '#7c5cff', 'its own colors, on mini.css\'s base look');
+  }
+  const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8');
+  assert.doesNotMatch(themes, /data-theme="custom"/);
+  assert.doesNotMatch(themes, /data-theme\^=|data-theme\*=|:not\(\[data-theme/);
+});
+
+test('decoOffReachesTheMini', () => {
+  // the version's pieces switched off (the app sends them, sorted out against the base's own pieces)
+  const root = fakeRoot();
+  let applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival', decorationsOff: ['rays', 'record'] }) }, []);
+  assert.equal(root.attrs['data-deco-off'], 'rays record');
+  // as themes.css's guards read it (:not([data-deco-off~="id"])): piece ids once each, in order, nothing else
+  applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival',
+    decorationsOff: ['record', 'record', 'Rays', 'a b', 'x"y', 5, null, '', 'glows'] }) }, applied);
+  assert.equal(root.attrs['data-deco-off'], 'record glows');
+  // none off: no attribute at all
+  applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival', decorationsOff: [] }) }, applied);
+  assert.equal('data-deco-off' in root.attrs, false);
+  for (const odd of [undefined, null, 'rays', { 0: 'rays' }]) {
+    const r = fakeRoot();
+    applyTheme(r, { id: 'revival', vars: {}, custom: custom({ base: 'revival', decorationsOff: odd }) }, []);
+    assert.equal('data-deco-off' in r.attrs, false, String(odd));
+  }
+  // switching away takes it off: to a built-in skin, to the panel's colors, to a version with everything on
+  for (const next of [{ id: 'revival', vars: {} }, { id: 'neon', vars: { '--accent': '#0ff' } },
+    { id: 'revival', vars: {}, custom: custom({ base: 'revival' }) }]) {
+    const r = fakeRoot();
+    const on = applyTheme(r, { id: 'revival', vars: {}, custom: custom({ base: 'revival', decorationsOff: ['record'] }) }, []);
+    assert.equal(r.attrs['data-deco-off'], 'record');
+    applyTheme(r, next, on);
+    assert.equal('data-deco-off' in r.attrs, false, JSON.stringify(next.vars));
+  }
+  // a palette that can't be used shows the base skin as it is: every piece on
+  const broken = fakeRoot();
+  applyTheme(broken, { id: 'revival', vars: {}, custom: custom({ base: 'revival', decorationsOff: ['record'],
+    colors: Object.assign({}, MINI_COLORS, { accent: 'nope' }) }) }, []);
+  assert.deepEqual(broken.attrs, { 'data-theme': 'revival' });
+});
+
+test('oldPayloadStillWorks', () => {
+  // a version from a bot before the pieces, as the app passes it on: 14 colors, no decorationsOff (such a bot sent
+  // `effects`, which the bot itself turns into pieces once it is updated): its base skin, nothing off, the skin's own
+  // extra decoration color
+  const old = custom({ base: 'rasta', effects: false, colors: Object.assign({}, OLD_MINI_COLORS) });
+  delete old.decorationsOff;
+  const vars = customVars(old);
+  assert.ok(vars);
+  assert.equal('--deco-extra' in vars, false, 'Rasta\'s own red, from themes.css');
+  const root = fakeRoot();
+  const applied = applyTheme(root, { id: 'rasta', vars: {}, custom: old }, []);
+  assert.deepEqual(root.attrs, { 'data-theme': 'rasta', 'data-custom-theme': 'k3j9x0q2m7ab' });
+  assert.equal(applied.length, 20);
+  assert.equal(root.props['--accent'], OLD_MINI_COLORS.accent);
+  assert.equal(themePicture({ id: 'rasta', vars: {}, custom: Object.assign({}, old, { picture: PIC }) }, false).url, PIC);
 });
 
 test('applyTheme falls back to the base skin when a custom palette is unusable', () => {
   const root = fakeRoot();
   const colors = Object.assign({}, MINI_COLORS, { accent: 'url(https://evil/x)' });
-  const applied = applyTheme(root, { id: 'ember', vars: {}, custom: custom({ colors }) }, []);
-  assert.equal(root.attrs['data-theme'], 'ember');
+  const applied = applyTheme(root, { id: 'ember', vars: {}, custom: custom({ colors, decorationsOff: ['fire'] }) }, []);
+  assert.deepEqual(root.attrs, { 'data-theme': 'ember' }, 'the hand-tuned skin, every piece on');
   assert.deepEqual(applied, []);
   assert.deepEqual(root.props, {});
 });
@@ -623,12 +726,6 @@ test('What\'s new is a row of the menu\'s main view, not in the settings', () =>
   assert.equal(MINI_HTML.split('id="whatsNewBtn"').length, 2, 'once');
   const settingsBlock = MINI_HTML.slice(settings, MINI_HTML.indexOf('id="lyricsPanel"'));
   assert.doesNotMatch(settingsBlock, /What's new|whatsNew/);
-});
-
-test('a custom skin has no rule of its own in themes.css, so it gets mini.css\'s base look (glow, 16px corners)', () => {
-  const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8');
-  assert.doesNotMatch(themes, /data-theme="custom"/);
-  assert.doesNotMatch(themes, /data-theme\^=|data-theme\*=|:not\(\[data-theme/);
 });
 
 // ---- Light custom versions: readable text below 60% Background ----
@@ -1114,7 +1211,8 @@ test('the bottom row fits the 360 px window with every button, the sleep badge a
   assert.ok(padding, '.mini padding');
   const card = 360 - 2 * 1 - 2 * Number(padding[1]) - px(mini, 'gap');
   const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8').replace(/\r/g, '');
-  const disc = Math.max(px(cssRule(MINI_CSS, '.disc'), 'width'), px(cssRule(themes, 'html[data-theme="revival"] .disc'), 'width'));
+  const disc = Math.max(px(cssRule(MINI_CSS, '.disc'), 'width'),
+    px(cssRule(themes, 'html[data-theme="revival"]:not([data-deco-off~="record"]) .disc'), 'width'));
   const room = card - disc - px(cssRule(MINI_CSS, '.info'), 'padding-right');
 
   const start = MINI_HTML.indexOf('<div class="bottom-row">');

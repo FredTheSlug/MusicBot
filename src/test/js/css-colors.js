@@ -44,11 +44,12 @@
  *   data-deco-off appears in it.
  * - splitFirst(selector) -> { head, rest }: its first compound and the rest. htmlMatches(selector, attrs): does its
  *   <html> part match <html> with these attributes (null for a selector that doesn't start at html / :root)?
- *   attributesMatch(text, attrs) does the same for a string of [attribute] selectors and :not()s.
+ *   attributesMatch(text, attrs) does the same for a string of [attribute] selectors, .classes (attrs.class) and :not()s.
  * - customThemeOf(selector): the theme a custom-theme rule (html[data-custom-theme][data-theme="id"] ...) builds on.
- * - cascadeFlips(css, themeIds) -> [{ theme, piece, key, restored }]: a guard weighs one attribute, so a guarded
- *   declaration T of the theme (or of its custom-theme rules) can beat a rule S that beat it before. S is any unguarded
- *   rule that applies while the theme is on (shared, the theme's own, or only with a custom theme or reduced motion on),
+ * - cascadeFlips(css, themeIds[, statesOf]) -> [{ theme, piece, key, restored }]: a guard weighs one attribute, so a
+ *   guarded declaration T of the theme (or of its custom-theme rules) can beat a rule S that beat it before. S is any
+ *   unguarded rule that applies while the theme is on (shared, the theme's own, or only with a custom theme or reduced
+ *   motion on: the panel's states of <html>; statesOf(themeId) gives another page's, the mini-player's compact bar),
  *   styling what can be the same element (their last compounds share a class or id name, or one is named by a tag
  *   alone that the other has; same pseudo-element) in the same property family (propertyFamily). It flips when S beats
  *   T without its guard and T with it beats S. The theme restores S with a rule under T's piece whose html part has
@@ -1085,11 +1086,19 @@ function splitFirst(selector) {
   return { head: selector, rest: '' };
 }
 
-/* Does a string of attribute selectors ([a], [a="v"], [a~="v"]) and :not()s match an element with these attributes? */
+/*
+ * Does a string of attribute selectors ([a], [a="v"], [a~="v"]), classes (.c: one of the words of attrs.class) and
+ * :not()s match an element with these attributes?
+ */
 function attributesMatch(text, attrs) {
   let i = 0;
   while (i < text.length) {
-    if (text[i] === '[') {
+    if (text[i] === '.') {
+      const end = skipName(text, i + 1);
+      const classes = Object.prototype.hasOwnProperty.call(attrs, 'class') ? attrs.class.split(/\s+/) : [];
+      if (end === i + 1 || !classes.includes(text.slice(i + 1, end))) return false;
+      i = end;
+    } else if (text[i] === '[') {
       const end = closing(text, i);
       const m = /^\s*([-\w]+)\s*(?:(~?=)\s*(?:"([^"]*)"|'([^']*)'|([-\w]+)))?\s*$/.exec(text.slice(i + 1, end - 1));
       if (!m) throw new Error('can\'t read ' + text);
@@ -1204,6 +1213,8 @@ function htmlAndRest(selector) {
     let end = i + 1;
     if (head[i] === '[') {
       end = closing(head, i);
+    } else if (head[i] === '.') {
+      end = skipName(head, i + 1);
     } else if (head[i] === ':') {
       end = skipName(head, i + 1);
       if (head[end] === '(') end = closing(head, end);
@@ -1222,8 +1233,8 @@ function restoredAt(t, s) {
   return [...html].sort().join('') + '|' + (other ? other.rest : ' ' + s.selector);
 }
 
-/* See the top of this file. */
-function cascadeFlips(css, themeIds) {
+/* See the top of this file. statesOf(themeId), when given, replaces themeStates (another page's states of <html>). */
+function cascadeFlips(css, themeIds, statesOf) {
   const all = declarations(rulesOf(css));
   const subjects = new Map();
   const subject = (d) => {
@@ -1232,7 +1243,7 @@ function cascadeFlips(css, themeIds) {
   };
   const out = [];
   themeIds.forEach((themeId) => {
-    const states = themeStates(themeId);
+    const states = (statesOf || themeStates)(themeId);
     const applies = (d) => {
       const m = htmlMatches(d.selector, states[0]);
       return m === null || states.some((s) => htmlMatches(d.selector, s));

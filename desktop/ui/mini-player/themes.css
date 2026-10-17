@@ -1,7 +1,17 @@
 /*
  * One skin per panel theme. Colors and fonts are copied from the panel's own theme CSS
  * (src/main/resources/web/index.html); when the mini-player follows the panel, the panel's live
- * values are set inline on <html> and win over these. Each theme also gets one signature touch.
+ * values are set inline on <html> and win over these. Each theme also gets its signature touches.
+ *
+ * Those touches are the theme's pieces (src/main/resources/web/theme-pieces.json): every rule of one is written
+ * html[data-theme="x"]:not([data-deco-off~="id"]), so <html data-deco-off="id id"> switches pieces off; the shape
+ * (corners, fonts, card style) is no piece. Every decoration color is the theme's color slots, mixed: a custom theme's
+ * mini-player version wears its starting theme's skin with its own colors inline on <html> (view.js customVars), and its
+ * decorations follow them. --deco-extra is the extra decoration color. The few tones no mix of a skin's slots gives are
+ * the skin's own here, and a custom version (data-custom-theme) gets them from its colors in the rule after its block.
+ *
+ * The glow layer behind every card (mini.css's .mini::before) is no skin's own: each skin hides it unless one of its
+ * pieces shows it.
  */
 
 html[data-theme="nebula"] {
@@ -21,9 +31,15 @@ html[data-theme="nebula"] {
   --border-light: rgba(255,255,255,0.1);
   --success: #34d399;
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --deco-extra: #9b82fc;
+  --accent2-r: 224;
+  --accent2-g: 76;
+  --accent2-b: 240;
 }
-/* Nebula: violet and magenta clouds at opposite corners. */
-html[data-theme="nebula"] .mini::after { background: radial-gradient(ellipse 55% 70% at 0% 100%, rgba(224, 76, 240, 0.12), transparent 70%); }
+/* Nebula: violet and magenta clouds at opposite corners (the violet one is mini.css's glow). */
+html[data-theme="nebula"] .mini::before { display: none; }
+html[data-theme="nebula"]:not([data-deco-off~="glow"]) .mini::before { display: block; }
+html[data-theme="nebula"]:not([data-deco-off~="glow"]) .mini::after { background: radial-gradient(ellipse 55% 70% at 0% 100%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12), transparent 70%); }
 
 html[data-theme="aurora"] {
   --bg-primary: #0a1114;
@@ -46,13 +62,23 @@ html[data-theme="aurora"] {
   --meta-transform: uppercase;
   --meta-spacing: 0.12em;
   --on-accent: #04201c;
+  --deco-extra: #5eead4;
+  --accent2-r: 34;
+  --accent2-g: 211;
+  --accent2-b: 238;
+  /* the ribbon's violet: no mix of Aurora's slots gives it (a custom version's is its accent-light, next rule) */
+  --aurora-violet: #a78bfa;
+}
+html[data-custom-theme][data-theme="aurora"] {
+  --aurora-violet: var(--accent-light);
 }
 /* Aurora: a shimmering aurora ribbon along the top edge. */
-html[data-theme="aurora"] .mini::before { background: radial-gradient(ellipse 70% 80% at 0% 0%, rgba(45, 212, 191, 0.16), transparent 70%); }
-html[data-theme="aurora"] .mini::after {
+html[data-theme="aurora"] .mini::before { display: none; }
+html[data-theme="aurora"]:not([data-deco-off~="glow"]) .mini::before { display: block; background: radial-gradient(ellipse 70% 80% at 0% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%); }
+html[data-theme="aurora"]:not([data-deco-off~="glow"]) .mini::after {
   inset: 0 0 auto 0;
   height: 3px;
-  background: linear-gradient(90deg, #2dd4bf, #22d3ee, #a78bfa, #2dd4bf);
+  background: linear-gradient(90deg, var(--accent), rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)), var(--aurora-violet), var(--accent));
   background-size: 300% 100%;
   animation: auroraShift 8s linear infinite;
 }
@@ -77,11 +103,16 @@ html[data-theme="ember"] {
   --font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --radius: 22px;
   --on-accent: #ffffff;
+  --deco-extra: #fde047;
+  --accent2-r: 239;
+  --accent2-g: 68;
+  --accent2-b: 68;
 }
 /* Ember: a flickering fire glow rising from the bottom. */
-html[data-theme="ember"] .mini::before { background: radial-gradient(ellipse 60% 70% at 100% 0%, rgba(239, 68, 68, 0.12), transparent 70%); }
-html[data-theme="ember"] .mini::after {
-  background: radial-gradient(ellipse 85% 65% at 50% 125%, rgba(249, 115, 22, 0.38), transparent 70%);
+html[data-theme="ember"] .mini::before { display: none; }
+html[data-theme="ember"]:not([data-deco-off~="fire"]) .mini::before { display: block; background: radial-gradient(ellipse 60% 70% at 100% 0%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12), transparent 70%); }
+html[data-theme="ember"]:not([data-deco-off~="fire"]) .mini::after {
+  background: radial-gradient(ellipse 85% 65% at 50% 125%, color-mix(in srgb, var(--accent) 38%, transparent), transparent 70%);
   animation: emberFlicker 3.2s ease-in-out infinite;
 }
 @keyframes emberFlicker {
@@ -108,10 +139,22 @@ html[data-theme="crimson"] {
   --success: #4ade80;
   --font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --radius: 18px;
+  --deco-extra: #fca5a5;
+  --accent2-r: 251;
+  --accent2-g: 113;
+  --accent2-b: 133;
+  /* the vignette's deep reds, redder than any of Crimson's slots (a custom version's are its accents, next rule) */
+  --crimson-red: #ef4444;
+  --crimson-rose: #e11d48;
+}
+html[data-custom-theme][data-theme="crimson"] {
+  --crimson-red: var(--accent);
+  --crimson-rose: rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b));
 }
 /* Crimson: a deep red vignette. */
-html[data-theme="crimson"] .mini::before { background: radial-gradient(ellipse 65% 85% at 100% 0%, rgba(239, 68, 68, 0.22), transparent 70%); }
-html[data-theme="crimson"] .mini::after { background: radial-gradient(ellipse 60% 70% at 0% 100%, rgba(225, 29, 72, 0.14), transparent 70%); }
+html[data-theme="crimson"] .mini::before { display: none; }
+html[data-theme="crimson"]:not([data-deco-off~="glow"]) .mini::before { display: block; background: radial-gradient(ellipse 65% 85% at 100% 0%, color-mix(in srgb, var(--crimson-red) 22%, transparent), transparent 70%); }
+html[data-theme="crimson"]:not([data-deco-off~="glow"]) .mini::after { background: radial-gradient(ellipse 60% 70% at 0% 100%, color-mix(in srgb, var(--crimson-rose) 14%, transparent), transparent 70%); }
 
 html[data-theme="dawn"] {
   --bg-primary: #f4f2ef;
@@ -135,10 +178,11 @@ html[data-theme="dawn"] {
   --title-weight: 700;
   --title-spacing: -0.03em;
   --legibility-shadow: 0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.7);
+  --deco-extra: #7c3aed;
 }
-/* Dawn: paper-flat and editorial, with a gradient rule down the left edge. */
-html[data-theme="dawn"] .mini::before { background: none; }
-html[data-theme="dawn"] .mini::after { inset: 0 auto 0 0; width: 3px; background: var(--accent-gradient); }
+/* Dawn: paper-flat and editorial (no glow, flat buttons), with a gradient rule down the left edge. */
+html[data-theme="dawn"] .mini::before { display: none; }
+html[data-theme="dawn"]:not([data-deco-off~="glow"]) .mini::after { inset: 0 auto 0 0; width: 3px; background: var(--accent-gradient); }
 html[data-theme="dawn"] .ctrl { box-shadow: none; }
 
 html[data-theme="dawn-dark"] {
@@ -162,10 +206,12 @@ html[data-theme="dawn-dark"] {
   --ctrl-radius: 2px;
   --title-weight: 700;
   --title-spacing: -0.03em;
+  --deco-extra: #c4b5fd;
 }
 /* Dawn Dark: the same editorial rule, on near-black. */
-html[data-theme="dawn-dark"] .mini::before { background: radial-gradient(ellipse 70% 60% at 100% 0%, rgba(124, 58, 237, 0.12), transparent 70%); }
-html[data-theme="dawn-dark"] .mini::after { inset: 0 auto 0 0; width: 3px; background: var(--accent-gradient); }
+html[data-theme="dawn-dark"] .mini::before { display: none; }
+html[data-theme="dawn-dark"]:not([data-deco-off~="wash"]) .mini::before { display: block; background: radial-gradient(ellipse 70% 60% at 100% 0%, color-mix(in srgb, var(--accent-glow) 50%, transparent), transparent 70%); }
+html[data-theme="dawn-dark"]:not([data-deco-off~="edge"]) .mini::after { inset: 0 auto 0 0; width: 3px; background: var(--accent-gradient); }
 
 html[data-theme="steel"] {
   --bg-primary: #0c0f14;
@@ -190,10 +236,12 @@ html[data-theme="steel"] {
   --meta-transform: uppercase;
   --meta-spacing: 0.06em;
   --on-accent: #04121c;
+  --deco-extra: #7dd3fc;
 }
 /* Steel: brushed metal and square edges. */
-html[data-theme="steel"] .mini::before { background: linear-gradient(180deg, rgba(56, 189, 248, 0.09), transparent 45%); }
-html[data-theme="steel"] .mini::after { background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px); }
+html[data-theme="steel"] .mini::before { display: none; }
+html[data-theme="steel"]:not([data-deco-off~="wash"]) .mini::before { display: block; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 45%); }
+html[data-theme="steel"]:not([data-deco-off~="sheen"]) .mini::after { background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px); }
 
 html[data-theme="verdant"] {
   --bg-primary: #0a0f0c;
@@ -214,10 +262,15 @@ html[data-theme="verdant"] {
   --font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --radius: 18px;
   --on-accent: #04140d;
+  --deco-extra: #6ee7b7;
+  --accent2-r: 163;
+  --accent2-g: 230;
+  --accent2-b: 53;
 }
 /* Verdant: leafy light from the lower corner. */
-html[data-theme="verdant"] .mini::before { background: radial-gradient(ellipse 70% 85% at 0% 100%, rgba(52, 211, 153, 0.2), transparent 70%); }
-html[data-theme="verdant"] .mini::after { background: radial-gradient(ellipse 50% 60% at 100% 0%, rgba(163, 230, 53, 0.09), transparent 70%); }
+html[data-theme="verdant"] .mini::before { display: none; }
+html[data-theme="verdant"]:not([data-deco-off~="glow"]) .mini::before { display: block; background: radial-gradient(ellipse 70% 85% at 0% 100%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 70%); }
+html[data-theme="verdant"]:not([data-deco-off~="glow"]) .mini::after { background: radial-gradient(ellipse 50% 60% at 100% 0%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.09), transparent 70%); }
 
 html[data-theme="grove"] {
   --bg-primary: #171b1f;
@@ -238,10 +291,12 @@ html[data-theme="grove"] {
   --font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --radius: 18px;
   --on-accent: #052016;
+  --deco-extra: #6ee7b7;
 }
-/* Grove: slate with a mossy corner. */
-html[data-theme="grove"] .mini::before { background: radial-gradient(ellipse 60% 75% at 0% 0%, rgba(52, 211, 153, 0.14), transparent 70%); }
-html[data-theme="grove"] .mini::after { background: linear-gradient(160deg, rgba(148, 163, 184, 0.06), transparent 50%); }
+/* Grove: slate with a mossy corner (its slate is the quieter text color, as the panel's hairlines are). */
+html[data-theme="grove"] .mini::before { display: none; }
+html[data-theme="grove"]:not([data-deco-off~="glows"]) .mini::before { display: block; background: radial-gradient(ellipse 60% 75% at 0% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%); }
+html[data-theme="grove"]:not([data-deco-off~="glows"]) .mini::after { background: linear-gradient(160deg, color-mix(in srgb, var(--text-secondary) 6%, transparent), transparent 50%); }
 
 html[data-theme="grapevine"] {
   --bg-primary: #0c0a12;
@@ -261,10 +316,15 @@ html[data-theme="grapevine"] {
   --success: #4ade80;
   --font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --radius: 18px;
+  --deco-extra: #c4b5fd;
+  --accent2-r: 34;
+  --accent2-g: 197;
+  --accent2-b: 94;
 }
 /* Grapevine: violet fruit, green vine. */
-html[data-theme="grapevine"] .mini::before { background: radial-gradient(ellipse 60% 80% at 100% 0%, rgba(167, 139, 250, 0.22), transparent 70%); }
-html[data-theme="grapevine"] .mini::after { background: radial-gradient(ellipse 55% 70% at 0% 100%, rgba(34, 197, 94, 0.12), transparent 70%); }
+html[data-theme="grapevine"] .mini::before { display: none; }
+html[data-theme="grapevine"]:not([data-deco-off~="glow"]) .mini::before { display: block; background: radial-gradient(ellipse 60% 80% at 100% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%); }
+html[data-theme="grapevine"]:not([data-deco-off~="glow"]) .mini::after { background: radial-gradient(ellipse 55% 70% at 0% 100%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12), transparent 70%); }
 
 html[data-theme="sumi"] {
   --bg-primary: #060708;
@@ -286,10 +346,12 @@ html[data-theme="sumi"] {
   --radius: 4px;
   --ctrl-radius: 4px;
   --title-font: 'Shippori Mincho', 'Noto Sans JP', serif;
+  --deco-extra: #e85d52;
 }
 /* Sumi: ink wash, a brush stroke under the title and a red seal. */
-html[data-theme="sumi"] .mini::before { background: radial-gradient(ellipse 55% 120% at 0% 50%, rgba(242, 235, 227, 0.06), transparent 70%); }
-html[data-theme="sumi"] .mini::after {
+html[data-theme="sumi"] .mini::before { display: none; }
+html[data-theme="sumi"]:not([data-deco-off~="mist"]) .mini::before { display: block; background: radial-gradient(ellipse 55% 120% at 0% 50%, color-mix(in srgb, var(--text-primary) 6%, transparent), transparent 70%); }
+html[data-theme="sumi"]:not([data-deco-off~="seal"]) .mini::after {
   inset: auto 12px 12px auto;
   width: 13px;
   height: 13px;
@@ -298,7 +360,7 @@ html[data-theme="sumi"] .mini::after {
   opacity: calc(var(--card-alpha) * 0.85);
   transform: rotate(-5deg);
 }
-html[data-theme="sumi"] .title {
+html[data-theme="sumi"]:not([data-deco-off~="seal"]) .title {
   padding-bottom: 3px;
   background: linear-gradient(90deg, var(--accent) 0, var(--accent) 35%, transparent 75%) left bottom / 100% 2px no-repeat;
 }
@@ -324,13 +386,24 @@ html[data-theme="rasta"] {
   --meta-transform: uppercase;
   --meta-spacing: 0.08em;
   --title-weight: 700;
+  --deco-extra: #dc2626;
+  --accent2-r: 234;
+  --accent2-g: 179;
+  --accent2-b: 8;
+  /* the flag's gold, a deeper step of the second accent than any mix of Rasta's slots (a custom version's is the
+     panel's mix, next rule) */
+  --rasta-gold: #ca8a04;
 }
-/* Rasta: the green, gold and red stripe. */
-html[data-theme="rasta"] .mini::before { background: radial-gradient(ellipse 60% 80% at 0% 100%, rgba(34, 197, 94, 0.16), transparent 70%); }
-html[data-theme="rasta"] .mini::after {
+html[data-custom-theme][data-theme="rasta"] {
+  --rasta-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 86%, black);
+}
+/* Rasta: the green, gold and red stripe (the red is the extra decoration color). */
+html[data-theme="rasta"] .mini::before { display: none; }
+html[data-theme="rasta"]:not([data-deco-off~="stripe"]) .mini::before { display: block; background: radial-gradient(ellipse 60% 80% at 0% 100%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%); }
+html[data-theme="rasta"]:not([data-deco-off~="stripe"]) .mini::after {
   inset: 0 0 auto 0;
   height: 4px;
-  background: linear-gradient(90deg, #15803d 0 33.3%, #ca8a04 33.3% 66.6%, #dc2626 66.6% 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 65%, black) 0 33.3%, var(--rasta-gold) 33.3% 66.6%, var(--deco-extra) 66.6% 100%);
 }
 html[data-theme="rasta"] .ctrl.primary { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
 
@@ -357,16 +430,19 @@ html[data-theme="cipher"] {
   --title-spacing: 0;
   --meta-transform: uppercase;
   --meta-spacing: 0.08em;
+  --deco-extra: #22d3ee;
 }
-/* Cipher: a terminal grid, a prompt and a blinking caret. */
-html[data-theme="cipher"] .mini::after {
+/* Cipher: a terminal grid (with mini.css's glow, as the panel's grid has its glows), a prompt and a blinking caret. */
+html[data-theme="cipher"] .mini::before { display: none; }
+html[data-theme="cipher"]:not([data-deco-off~="grid"]) .mini::before { display: block; }
+html[data-theme="cipher"]:not([data-deco-off~="grid"]) .mini::after {
   background-image:
-    linear-gradient(rgba(139, 92, 246, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(139, 92, 246, 0.08) 1px, transparent 1px);
+    linear-gradient(color-mix(in srgb, var(--accent) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, transparent) 1px, transparent 1px);
   background-size: 14px 14px;
 }
-html[data-theme="cipher"] .title::before { content: '> '; color: var(--accent); }
-html[data-theme="cipher"] .meta::after { content: '\258C'; margin-left: 2px; color: var(--accent); animation: cipherCaret 1.1s steps(1) infinite; }
+html[data-theme="cipher"]:not([data-deco-off~="prompt"]) .title::before { content: '> '; color: var(--accent); }
+html[data-theme="cipher"]:not([data-deco-off~="prompt"]) .meta::after { content: '\258C'; margin-left: 2px; color: var(--accent); animation: cipherCaret 1.1s steps(1) infinite; }
 @keyframes cipherCaret { 50% { opacity: 0; } }
 
 html[data-theme="signal"] {
@@ -392,13 +468,15 @@ html[data-theme="signal"] {
   --meta-transform: uppercase;
   --meta-spacing: 0.1em;
   --on-accent: #032026;
+  --deco-extra: #67e8f9;
 }
-/* Signal: CRT scanlines and a cyan sweep. */
-html[data-theme="signal"] .mini::before { background: radial-gradient(ellipse 60% 80% at 0% 0%, rgba(34, 211, 238, 0.14), transparent 70%); }
-html[data-theme="signal"] .mini::after {
+/* Signal: CRT scanlines and a cyan sweep (with their glow, as the panel's scanlines have it). */
+html[data-theme="signal"] .mini::before { display: none; }
+html[data-theme="signal"]:not([data-deco-off~="scanlines"]) .mini::before { display: block; background: radial-gradient(ellipse 60% 80% at 0% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%); }
+html[data-theme="signal"]:not([data-deco-off~="scanlines"]) .mini::after {
   background:
-    linear-gradient(180deg, transparent 0 45%, rgba(34, 211, 238, 0.08) 50%, transparent 55%) 0 0 / 100% 300%,
-    repeating-linear-gradient(0deg, transparent 0 2px, rgba(34, 211, 238, 0.05) 2px 3px);
+    linear-gradient(180deg, transparent 0 45%, color-mix(in srgb, var(--accent) 8%, transparent) 50%, transparent 55%) 0 0 / 100% 300%,
+    repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--accent) 5%, transparent) 2px 3px);
   animation: signalSweep 6s linear infinite;
 }
 @keyframes signalSweep { from { background-position: 0 100%, 0 0; } to { background-position: 0 -200%, 0 0; } }
@@ -424,11 +502,13 @@ html[data-theme="victory"] {
   --title-weight: 700;
   --title-spacing: -0.02em;
   --on-accent: #1a1405;
+  --deco-extra: #fde047;
 }
-/* Victory: gold light and a podium sheen. */
-html[data-theme="victory"] .mini::before { background: radial-gradient(ellipse 55% 70% at 15% 20%, rgba(234, 179, 8, 0.18), transparent 70%); }
-html[data-theme="victory"] .mini::after { background: linear-gradient(165deg, rgba(234, 179, 8, 0.08) 0%, transparent 40%); }
-html[data-theme="victory"] .progress-fill { box-shadow: 0 0 12px rgba(234, 179, 8, 0.6); }
+/* Victory: gold light and a podium sheen (its gold glows), and a gilded progress bar. */
+html[data-theme="victory"] .mini::before { display: none; }
+html[data-theme="victory"]:not([data-deco-off~="glows"]) .mini::before { display: block; background: radial-gradient(ellipse 55% 70% at 15% 20%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%); }
+html[data-theme="victory"]:not([data-deco-off~="glows"]) .mini::after { background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 40%); }
+html[data-theme="victory"]:not([data-deco-off~="gilded"]) .progress-fill { box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent); }
 
 html[data-theme="neon"] {
   --bg-primary: #12081c;
@@ -451,13 +531,18 @@ html[data-theme="neon"] {
   --meta-transform: uppercase;
   --meta-spacing: 0.12em;
   --on-accent: #12081c;
+  --deco-extra: #d9f99d;
+  --accent2-r: 192;
+  --accent2-g: 132;
+  --accent2-b: 252;
 }
-/* Neon: lime tubes glowing on purple. */
-html[data-theme="neon"] .mini { border-color: color-mix(in srgb, rgba(163, 230, 53, 0.35) calc(var(--card-alpha) * 100%), transparent); }
-html[data-theme="neon"] .mini::before { background: radial-gradient(ellipse 60% 80% at 100% 0%, rgba(192, 132, 252, 0.25), transparent 70%); }
-html[data-theme="neon"] .mini::after { background: radial-gradient(ellipse 55% 70% at 0% 100%, rgba(163, 230, 53, 0.12), transparent 70%); }
-html[data-theme="neon"] .title { text-shadow: 0 0 10px rgba(163, 230, 53, 0.55); }
-html[data-theme="neon"] .progress-fill { box-shadow: 0 0 14px rgba(163, 230, 53, 0.8), 0 0 4px #d9f99d; }
+/* Neon: lime tubes glowing on purple (its glows and outline), and a glowing title and progress bar. */
+html[data-theme="neon"]:not([data-deco-off~="glows"]) .mini { border-color: color-mix(in srgb, color-mix(in srgb, var(--accent) 35%, transparent) calc(var(--card-alpha) * 100%), transparent); }
+html[data-theme="neon"] .mini::before { display: none; }
+html[data-theme="neon"]:not([data-deco-off~="glows"]) .mini::before { display: block; background: radial-gradient(ellipse 60% 80% at 100% 0%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.25), transparent 70%); }
+html[data-theme="neon"]:not([data-deco-off~="glows"]) .mini::after { background: radial-gradient(ellipse 55% 70% at 0% 100%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%); }
+html[data-theme="neon"]:not([data-deco-off~="title"]) .title { text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent); }
+html[data-theme="neon"]:not([data-deco-off~="title"]) .progress-fill { box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 80%, transparent), 0 0 4px var(--accent-light); }
 
 html[data-theme="revival"] {
   --bg-primary: #14100d;
@@ -480,32 +565,59 @@ html[data-theme="revival"] {
   --title-font: 'Fraunces', Georgia, 'Times New Roman', serif;
   --title-style: italic;
   --on-accent: #1a120d;
+  --deco-extra: #f2a882;
+  --accent2-r: 242;
+  --accent2-g: 179;
+  --accent2-b: 94;
+  /* Revival's own tones, mixed from the slots as the panel mixes them: the record stays black whatever the colors,
+     black with a breath of the accent and the quiet text; the spindle is the amber, the text colors and their light */
+  --rv-amber: rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b));
+  --rv-smoke: color-mix(in srgb, var(--accent) 20.5%, var(--text-tertiary));
+  --rv-groove: color-mix(in srgb, var(--rv-smoke) 12.3%, black);
+  --rv-ridge: color-mix(in srgb, var(--rv-smoke) 17.5%, black);
+  --rv-hub: color-mix(in srgb, var(--rv-smoke) 6.7%, black);
+  --rv-spindle: color-mix(in srgb, color-mix(in srgb, var(--rv-amber) 37.2%, var(--text-primary)) 29.4%, var(--text-secondary));
+  /* tones no mix of Revival's slots gives (the label's red, redder than any of them; the record's cream glint, lighter):
+     Revival's own here; a custom version gets them from its colors, as the panel's do (next rule) */
+  --rv-ember: #d4694a;
+  --rv-glint: #ffe4c4;
 }
-/* Revival: sunburst rays and the artwork as a spinning record. */
-html[data-theme="revival"] .mini::before {
-  background:
-    repeating-conic-gradient(from 0deg at 0% 100%, rgba(242, 179, 94, 0.07) 0deg 4deg, transparent 4deg 12deg),
-    radial-gradient(ellipse 70% 90% at 0% 100%, rgba(226, 130, 92, 0.18), transparent 70%);
+html[data-custom-theme][data-theme="revival"] {
+  --rv-ember: color-mix(in srgb, var(--accent) 90%, black);
+  --rv-glint: color-mix(in srgb, var(--accent-light) 25%, white);
 }
-html[data-theme="revival"] .disc {
+/*
+ * Revival: sunburst rays and a sunrise glow from the lower corner, and the artwork as a spinning record. The rays are
+ * the layer in front (::before); the glow (::after) sits under them, still over a custom version's picture.
+ */
+html[data-theme="revival"] .mini::before { display: none; }
+html[data-theme="revival"]:not([data-deco-off~="rays"]) .mini::before {
+  display: block;
+  background: repeating-conic-gradient(from 0deg at 0% 100%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.07) 0deg 4deg, transparent 4deg 12deg);
+}
+html[data-theme="revival"]:not([data-deco-off~="sunrise"]) .mini::after {
+  z-index: -2;
+  background: radial-gradient(ellipse 70% 90% at 0% 100%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%);
+}
+html[data-theme="revival"]:not([data-deco-off~="record"]) .disc {
   flex-basis: 88px;
   width: 88px;
   height: 88px;
   border-radius: 50%;
   overflow: visible;
   background:
-    conic-gradient(from 20deg, transparent 0 25deg, rgba(255, 228, 196, 0.12) 45deg, transparent 65deg 205deg, rgba(255, 228, 196, 0.08) 225deg, transparent 245deg),
-    repeating-radial-gradient(circle, #15110f 0 1.5px, #1e1915 1.5px 3px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(242, 179, 94, 0.18);
+    conic-gradient(from 20deg, transparent 0 25deg, color-mix(in srgb, var(--rv-glint) 12%, transparent) 45deg, transparent 65deg 205deg, color-mix(in srgb, var(--rv-glint) 8%, transparent) 225deg, transparent 245deg),
+    repeating-radial-gradient(circle, var(--rv-groove) 0 1.5px, var(--rv-ridge) 1.5px 3px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.18);
 }
-html[data-theme="revival"] .disc::before {
+html[data-theme="revival"]:not([data-deco-off~="record"]) .disc::before {
   content: '';
   position: absolute;
   inset: 22px;
   border-radius: 50%;
-  background: linear-gradient(45deg, #d4694a, #f2b35e);
+  background: linear-gradient(45deg, var(--rv-ember), var(--rv-amber));
 }
-html[data-theme="revival"] .art {
+html[data-theme="revival"]:not([data-deco-off~="record"]) .art {
   inset: 22px;
   width: 44px;
   height: 44px;
@@ -513,8 +625,8 @@ html[data-theme="revival"] .art {
   animation: spin 6s linear infinite;
   animation-play-state: paused;
 }
-html[data-theme="revival"] .art.spinning { animation-play-state: running; }
-html[data-theme="revival"] .spindle {
+html[data-theme="revival"]:not([data-deco-off~="record"]) .art.spinning { animation-play-state: running; }
+html[data-theme="revival"]:not([data-deco-off~="record"]) .spindle {
   display: block;
   position: absolute;
   top: 50%;
@@ -523,6 +635,6 @@ html[data-theme="revival"] .spindle {
   height: 6px;
   margin: -3px 0 0 -3px;
   border-radius: 50%;
-  background: #0c0908;
-  box-shadow: 0 0 0 1.5px #d9c4ad;
+  background: var(--rv-hub);
+  box-shadow: 0 0 0 1.5px var(--rv-spindle);
 }

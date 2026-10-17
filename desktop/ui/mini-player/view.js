@@ -39,9 +39,13 @@
 
   // ---- Custom themes: the mini-player versions people made in the panel ----
 
-  /** The 14 colors of a mini-player version (a theme's 15 without glass). */
+  /**
+   * The 15 colors of a mini-player version (a theme's 16 without glass). The last, the extra decoration color, may be
+   * missing (a bot from before the pieces sends 14): the skin's own shows then.
+   */
   var CUSTOM_SLOTS = ['bgPrimary', 'bgSecondary', 'bgCard', 'bgElevated', 'bgHover', 'accent', 'accentLight', 'accent2',
-    'textPrimary', 'textSecondary', 'textTertiary', 'border', 'borderLight', 'success'];
+    'textPrimary', 'textSecondary', 'textTertiary', 'border', 'borderLight', 'success', 'decoExtra'];
+  var DECO_EXTRA = 'decoExtra';
 
   /** The fonts a theme may use, with the fallbacks the panel gives each (ThemeApply.FONT_STACKS; a test keeps them equal). */
   var FONT_STACKS = Object.freeze({
@@ -94,18 +98,20 @@
 
   /**
    * The inline variables for a custom mini-player version: the 16 the panel's themes set (glow and gradient derived from
-   * the accent as the panel derives them, the font from the theme's font), --on-accent, and for dark text the light
-   * --legibility-shadow. null when any of the 14
-   * colors is not a plain #rrggbb / #rrggbbaa, so nothing from the page's data ever becomes more than a color.
-   * custom = {colors, font, ...} as the app sends it.
+   * the accent as the panel derives them, the font from the theme's font), --on-accent, the second accent as the skins
+   * paint with it (--accent2-r/g/b, as the panel's ThemePalette.cssVars gives it), --deco-extra when the version has a
+   * usable extra decoration color (else the skin's own shows), and for dark text the light --legibility-shadow. null
+   * when any of the other 14 colors is not a plain #rrggbb / #rrggbbaa, so nothing from the page's data ever becomes
+   * more than a color. custom = {colors, font, ...} as the app sends it.
    */
   function customVars(custom) {
     var colors = custom && typeof custom === 'object' ? custom.colors : null;
     if (!colors || typeof colors !== 'object') return null;
     for (var i = 0; i < CUSTOM_SLOTS.length; i++) {
       var color = colors[CUSTOM_SLOTS[i]];
-      if (typeof color !== 'string' || !COLOR.test(color)) return null;
+      if (CUSTOM_SLOTS[i] !== DECO_EXTRA && (typeof color !== 'string' || !COLOR.test(color))) return null;
     }
+    var accent2 = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(colors.accent2);
     var vars = {
       '--bg-primary': colors.bgPrimary,
       '--bg-secondary': colors.bgSecondary,
@@ -124,32 +130,66 @@
       '--border-light': colors.borderLight,
       '--success': colors.success,
       '--font-family': fontStack(custom.font),
-      '--on-accent': onAccent(colors.accent)
+      '--on-accent': onAccent(colors.accent),
+      '--accent2-r': String(parseInt(accent2[1], 16)),
+      '--accent2-g': String(parseInt(accent2[2], 16)),
+      '--accent2-b': String(parseInt(accent2[3], 16))
     };
+    var extra = colors[DECO_EXTRA];
+    if (typeof extra === 'string' && COLOR.test(extra)) vars['--deco-extra'] = extra;
     // Dark text (a light version) must not get the default black halo below 60% Background: nearly unreadable over a
     // dark wallpaper. It gets Dawn's light glow instead; light text keeps mini.css's dark default.
     if (onAccent(colors.textPrimary) === '#ffffff') vars['--legibility-shadow'] = LIGHT_LEGIBILITY_SHADOW;
     return vars;
   }
 
+  /** A skin of themes.css: one of the panel's 17 themes, or null. */
+  function knownSkin(id) {
+    for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === id) return id;
+    return null;
+  }
+
+  /* A piece's id, as theme-pieces.json has them: what fits in data-deco-off. */
+  var PIECE_ID = /^[a-z]+$/;
+
+  /** A custom version's pieces switched off, as data-deco-off holds them: piece ids, once each, in order ('' for none). */
+  function decoOff(custom) {
+    var list = custom && Array.isArray(custom.decorationsOff) ? custom.decorationsOff : [];
+    var out = [];
+    list.forEach(function (id) { if (typeof id === 'string' && PIECE_ID.test(id) && out.indexOf(id) < 0) out.push(id); });
+    return out.join(' ');
+  }
+
   /**
    * Shows theme {id, vars, custom?}: data-theme picks the built-in skin, inline vars (the panel's live colors)
-   * override it. A custom mini-player version (custom) wears the neutral skin ("custom": the base look of mini.css, no
-   * built-in decorations) with its own variables; when its palette is unusable the base skin (id) shows instead.
-   * Vars from the previous theme that this one lacks are removed. Returns the names set.
+   * override it. A custom mini-player version (custom) wears its starting theme's skin (its base; the neutral "custom",
+   * mini.css's base look, for a base this app doesn't know) with its own variables, data-custom-theme (the skin derives
+   * the few tones its colors can't mix from the version's colors) and data-deco-off (its pieces switched off). When its
+   * palette is unusable the base skin (id) shows as it is. Vars and attributes from the previous theme that this one
+   * lacks are removed. Returns the names set.
    */
   function applyTheme(root, theme, previous) {
     var vars = (theme && theme.vars) || {};
     var skin = (theme && theme.id) || 'nebula';
     var custom = theme && theme.custom ? customVars(theme.custom) : null;
+    var off = '';
     if (custom) {
       vars = custom;
-      skin = 'custom';
+      skin = knownSkin(theme.custom.base) || 'custom';
+      off = decoOff(theme.custom);
     }
     var names = Object.keys(vars);
     (previous || []).forEach(function (name) { if (names.indexOf(name) < 0) root.style.removeProperty(name); });
     names.forEach(function (name) { root.style.setProperty(name, vars[name]); });
     root.setAttribute('data-theme', skin);
+    if (custom) {
+      var id = theme.custom.id;
+      root.setAttribute('data-custom-theme', typeof id === 'string' && THEME_ID.test(id) ? id : '');
+    } else {
+      root.removeAttribute('data-custom-theme');
+    }
+    if (off) root.setAttribute('data-deco-off', off);
+    else root.removeAttribute('data-deco-off');
     return names;
   }
 
