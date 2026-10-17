@@ -1,6 +1,9 @@
 {
   "goneOnPurpose": {
     "panel": {
+      "rasta": {
+        "html[data-theme=\"rasta\"]|--card-shadow|1": "the green ring left the variable: the panel's own .card rule paints --card-shadow whatever the pieces, so with lyric off every card kept the ring; it is in Rasta's lyric .card rule now (html[data-theme=\"rasta\"] .card|box-shadow|1 still pins it)"
+      },
       "cipher": {
         "html[data-theme=\"cipher\"]|--card-shadow|1": "the variable holds the black shadow alone now, so it is its only colour (|0, listed as changed); the black shadow and the ring it followed are both still pinned by html[data-theme=\"cipher\"] .card|box-shadow|0 and |1"
       },
@@ -18,6 +21,72 @@
   },
   "newOnPurpose": {
     "panel": {
+      "ember": {
+        "html[data-theme=\"ember\"] body::after|background-image|0": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the big left flame's tip, the old picture's #fef08a (pinned to it here)",
+          "is": "rgba(254,240,138,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|1": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the big left flame's middle (offset 0.42), the old picture's #fb923c (pinned to it here)",
+          "is": "rgba(251,146,60,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|2": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the big left flame's foot, the old picture's #dc2626 at 0.5 (pinned to it here)",
+          "is": "rgba(220,38,38,0.5)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|3": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the big right flame's tip, the old picture's #fde047 (pinned to it here)",
+          "is": "rgba(253,224,71,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|4": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the big right flame's middle (offset 0.5), the old picture's #f97316 (pinned to it here)",
+          "is": "rgba(249,115,22,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|5": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the big right flame's foot, the old picture's #b91c1c at 0.45 (pinned to it here)",
+          "is": "rgba(185,28,28,0.45)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|6": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the small left flame's tip, the old picture's #fcd34d (pinned to it here)",
+          "is": "rgba(252,211,77,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|7": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the small left flame's middle (offset 0.55), the old picture's #ea580c (pinned to it here)",
+          "is": "rgba(234,88,12,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|8": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the small left flame's foot, the old picture's #991b1b at 0.35 (pinned to it here)",
+          "is": "rgba(153,27,27,0.35)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|9": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the small right flame's tip, the old picture's #fef08a (pinned to it here)",
+          "is": "rgba(254,240,138,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|10": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the small right flame's middle (offset 0.5), the old picture's #f97316 (pinned to it here)",
+          "is": "rgba(249,115,22,1)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-image|11": {
+          "why": "Ember's corner flames: the stops of the old flame pictures (SVG data URIs, not in the golden file) are a gradient of the stylesheet now, seen through a flame-shaped mask; this is the small right flame's foot, the old picture's #dc2626 at 0.4 (pinned to it here)",
+          "is": "rgba(220,38,38,0.4)"
+        }
+      },
+      "sumi": {
+        "html[data-theme=\"sumi\"] body::after|background-color|0": {
+          "why": "Sumi's kanji watermark: its colour was drawn inside the tile picture (fill #f2ebe3 at 0.07, not in the golden file); the tile is a mask now and the watermark is the theme's text colour at 7% seen through it (the same #f2ebe3 at 0.07 here)",
+          "is": "rgba(242,235,227,0.07)"
+        }
+      },
+      "neon": {
+        "html[data-theme=\"neon\"] .ctrl-btn.repeat-active:hover|color|0": {
+          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
+          "is": "rgba(217,249,157,1)"
+        },
+        "html[data-theme=\"neon\"] .ctrl-btn.shuffle-active:hover|color|0": {
+          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
+          "is": "rgba(217,249,157,1)"
+        }
+      },
       "revival": {
         "html[data-theme=\"revival\"]::after|background-color|0": {
           "why": "Revival's film grain: its colour was drawn inside its picture (not in the golden file); the picture is a mask now and the grain shows the theme's text colour through it, on its own layer (html::after) because a mask covers a whole element",
@@ -38,16 +107,6 @@
         "html[data-theme=\"revival\"] .card|box-shadow|1": {
           "why": "not a new colour: the cream top highlight that was inside --card-shadow (golden html[data-theme=\"revival\"]|--card-shadow|1, rgba(255,236,214,0.05)), now under the glows piece and mixed from --rv-glint so a custom theme reaches it",
           "is": "rgba(255,236,214,0.05)"
-        }
-      },
-      "neon": {
-        "html[data-theme=\"neon\"] .ctrl-btn.repeat-active:hover|color|0": {
-          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
-          "is": "rgba(217,249,157,1)"
-        },
-        "html[data-theme=\"neon\"] .ctrl-btn.shuffle-active:hover|color|0": {
-          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
-          "is": "rgba(217,249,157,1)"
         }
       }
     },

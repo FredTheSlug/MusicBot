@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
-  <!-- Rotation baked in (no CSS transform on full-viewport layer). Faint tile for Sumi watermark. -->
+  <!-- Rotation baked in (no CSS transform on full-viewport layer). The mask of the Sumi watermark: the glyphs
+       are its shape only; index.html fills it with the theme's text colour at 7%. -->
   <g transform="rotate(-12 150 150)">
-    <g fill="#f2ebe3" opacity="0.07" font-family="Noto Sans JP, Yu Mincho, MS PGothic, sans-serif" font-weight="500">
+    <g font-family="Noto Sans JP, Yu Mincho, MS PGothic, sans-serif" font-weight="500">
       <text x="28" y="88" font-size="62">�</text>
       <text x="168" y="118" font-size="48">}</text>
       <text x="56" y="218" font-size="42">�</text>

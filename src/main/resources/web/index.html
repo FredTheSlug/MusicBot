@@ -3040,6 +3040,24 @@
             --upload-zone-padding: 32px;
             --search-container-gap: 14px;
             --bg-shift-duration: 30s;
+            /* The flames' shapes: masks (nothing in them is a colour; the colours are the gradients they show) */
+            --ember-flame: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 72'%3E%3Cpath d='M20 3C6 26 1 38 1 51c0 13 7 21 19 19 12 2 19-6 19-19 0-13-5-25-19-48z'/%3E%3C/svg%3E");
+            --ember-flame-small: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 56'%3E%3Cpath d='M16 2C5 20 1 30 1 40c0 9 5 15 15 14 10 1 15-5 15-14 0-10-4-20-15-38z'/%3E%3C/svg%3E");
+            /* Fire tones no mix of the slots gives (the amber of the header's flame edge, the flames' pale tips, deep
+               orange and reds): Ember's own values here; a custom theme gets them from its colours (next rule) */
+            --ember-amber: #fbbf24;
+            --ember-pale: #fef08a;
+            --ember-deep: #ea580c;
+            --ember-red: #dc2626;
+            --ember-red-deep: #b91c1c;
+        }
+
+        html[data-custom-theme][data-theme="ember"] {
+            --ember-amber: color-mix(in srgb, var(--deco-extra) 70%, var(--accent));
+            --ember-pale: color-mix(in srgb, var(--deco-extra) 50%, white);
+            --ember-deep: color-mix(in srgb, var(--accent) 90%, black);
+            --ember-red: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 92%, black);
+            --ember-red-deep: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 77%, black);
         }
 
         @keyframes emberFlameDecalFlicker {
@@ -3053,27 +3071,57 @@
             50% { transform: translateY(-5px); }
         }
 
-        /* Ember — corner flame decals (fixed, non-interactive) */
-        html[data-theme="ember"] body::after {
+        /*
+         * Ember — corner flames (fixed, non-interactive). Its decorations are pieces (theme-pieces.json): flames, edge (fire
+         * is the mini-player's). Each flame is a flame-shaped mask over a gradient in the theme's colours, in the same box:
+         * the gradient runs from the flame's tip to its foot (where the old pictures' gradients ran), and the masks give
+         * the shapes. At rest (reduced motion) the flames keep the flicker's quietest opacity.
+         */
+        html[data-theme="ember"]:not([data-deco-off~="flames"]) body::after {
             content: '';
             position: fixed;
             inset: 0;
             z-index: 0;
             pointer-events: none;
             contain: strict;
+            opacity: 0.42;
             animation: emberFlameDecalFlicker 3.2s ease-in-out infinite, emberFlameDecalBob 5.5s ease-in-out infinite;
             background-repeat: no-repeat;
             background-image:
-                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 72'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop stop-color='%23fef08a'/%3E%3Cstop offset='0.42' stop-color='%23fb923c'/%3E%3Cstop offset='1' stop-color='%23dc2626' stop-opacity='0.5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23a)' d='M20 3C6 26 1 38 1 51c0 13 7 21 19 19 12 2 19-6 19-19 0-13-5-25-19-48z'/%3E%3C/svg%3E"),
-                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 72'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop stop-color='%23fde047'/%3E%3Cstop offset='0.5' stop-color='%23f97316'/%3E%3Cstop offset='1' stop-color='%23b91c1c' stop-opacity='0.45'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg transform='matrix(-1 0 0 1 40 0)'%3E%3Cpath fill='url(%23b)' d='M20 3C6 26 1 38 1 51c0 13 7 21 19 19 12 2 19-6 19-19 0-13-5-25-19-48z'/%3E%3C/g%3E%3C/svg%3E"),
-                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 56'%3E%3Cdefs%3E%3ClinearGradient id='c' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop stop-color='%23fcd34d'/%3E%3Cstop offset='0.55' stop-color='%23ea580c'/%3E%3Cstop offset='1' stop-color='%23991b1b' stop-opacity='0.35'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23c)' d='M16 2C5 20 1 30 1 40c0 9 5 15 15 14 10 1 15-5 15-14 0-10-4-20-15-38z'/%3E%3C/svg%3E"),
-                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 56'%3E%3Cdefs%3E%3ClinearGradient id='d' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop stop-color='%23fef08a'/%3E%3Cstop offset='0.5' stop-color='%23f97316'/%3E%3Cstop offset='1' stop-color='%23dc2626' stop-opacity='0.4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg transform='matrix(-1 0 0 1 32 0)'%3E%3Cpath fill='url(%23d)' d='M16 2C5 20 1 30 1 40c0 9 5 15 15 14 10 1 15-5 15-14 0-10-4-20-15-38z'/%3E%3C/g%3E%3C/svg%3E");
+                linear-gradient(180deg, var(--ember-pale) 4.17%, var(--accent-light) 43.43%, color-mix(in srgb, var(--ember-red) 50%, transparent) 97.65%),
+                linear-gradient(180deg, var(--deco-extra) 4.17%, var(--accent) 50.91%, color-mix(in srgb, var(--ember-red-deep) 45%, transparent) 97.65%),
+                linear-gradient(180deg, color-mix(in srgb, color-mix(in srgb, var(--deco-extra) 85%, var(--accent)) 93%, white) 3.57%, var(--ember-deep) 54.75%, color-mix(in srgb, color-mix(in srgb, var(--ember-red) 70%, black) 35%, transparent) 96.62%),
+                linear-gradient(180deg, var(--ember-pale) 3.57%, var(--accent) 50.1%, color-mix(in srgb, var(--ember-red) 40%, transparent) 96.62%);
             background-size:
-                min(92px, 14vw) auto,
-                min(88px, 13vw) auto,
-                min(56px, 9vw) auto,
-                min(52px, 8vw) auto;
+                min(92px, 14vw) calc(min(92px, 14vw) * 1.8),
+                min(88px, 13vw) calc(min(88px, 13vw) * 1.8),
+                min(56px, 9vw) calc(min(56px, 9vw) * 1.75),
+                min(52px, 8vw) calc(min(52px, 8vw) * 1.75);
             background-position:
+                left max(8px, env(safe-area-inset-left)) bottom max(20px, env(safe-area-inset-bottom)),
+                right max(8px, env(safe-area-inset-right)) bottom max(24px, env(safe-area-inset-bottom)),
+                left min(22vw, 280px) bottom max(14px, env(safe-area-inset-bottom)),
+                right min(20vw, 260px) bottom max(18px, env(safe-area-inset-bottom));
+            -webkit-mask-image: var(--ember-flame), var(--ember-flame), var(--ember-flame-small), var(--ember-flame-small);
+            mask-image: var(--ember-flame), var(--ember-flame), var(--ember-flame-small), var(--ember-flame-small);
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-size:
+                min(92px, 14vw) calc(min(92px, 14vw) * 1.8),
+                min(88px, 13vw) calc(min(88px, 13vw) * 1.8),
+                min(56px, 9vw) calc(min(56px, 9vw) * 1.75),
+                min(52px, 8vw) calc(min(52px, 8vw) * 1.75);
+            mask-size:
+                min(92px, 14vw) calc(min(92px, 14vw) * 1.8),
+                min(88px, 13vw) calc(min(88px, 13vw) * 1.8),
+                min(56px, 9vw) calc(min(56px, 9vw) * 1.75),
+                min(52px, 8vw) calc(min(52px, 8vw) * 1.75);
+            -webkit-mask-position:
+                left max(8px, env(safe-area-inset-left)) bottom max(20px, env(safe-area-inset-bottom)),
+                right max(8px, env(safe-area-inset-right)) bottom max(24px, env(safe-area-inset-bottom)),
+                left min(22vw, 280px) bottom max(14px, env(safe-area-inset-bottom)),
+                right min(20vw, 260px) bottom max(18px, env(safe-area-inset-bottom));
+            mask-position:
                 left max(8px, env(safe-area-inset-left)) bottom max(20px, env(safe-area-inset-bottom)),
                 right max(8px, env(safe-area-inset-right)) bottom max(24px, env(safe-area-inset-bottom)),
                 left min(22vw, 280px) bottom max(14px, env(safe-area-inset-bottom)),
@@ -3347,7 +3395,15 @@
             --upload-zone-padding: 16px;
         }
 
+        /* Steel's decorations are pieces (theme-pieces.json): wash (sheen is the mini-player's). The accent wash is the
+           panel's drifting glow, held still and lighter; without the piece there is no glow at all. The rest of Steel
+           is its shape: hairline borders, flat rail lyrics and grey handles, in the slots' colours. */
         html[data-theme="steel"] body::before {
+            display: none;
+        }
+
+        html[data-theme="steel"]:not([data-deco-off~="wash"]) body::before {
+            display: block;
             animation: none;
             opacity: 0.72;
         }
@@ -3428,7 +3484,9 @@
             --ctrl-btn-size: 44px;
         }
 
-        html[data-theme="grove"] .card {
+        /* Grove's decorations are pieces (theme-pieces.json): photo, hairlines, glows.
+           html[data-deco-off~="<id>"] drops a piece's rules; every decoration colour comes from the slots above. */
+        html[data-theme="grove"]:not([data-deco-off~="glows"]) .card {
             box-shadow: var(--card-shadow), 0 0 72px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05);
         }
 
@@ -3436,34 +3494,37 @@
             border-radius: 14px;
         }
 
-        html[data-theme="grove"] .header {
-            border-bottom-color: rgba(148, 163, 184, 0.12);
+        /* Slate hairlines: the header's and the drag bars' borders, and the drag bars' slate wash */
+        html[data-theme="grove"]:not([data-deco-off~="hairlines"]) .header {
+            border-bottom-color: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12);
         }
 
-        html[data-theme="grove"] .layout-pane.card > .pane-drag-bar {
-            background: linear-gradient(180deg, rgba(148, 163, 184, 0.08) 0%, rgba(30, 35, 41, 0.35) 100%);
-            border-bottom-color: rgba(148, 163, 184, 0.12);
+        html[data-theme="grove"]:not([data-deco-off~="hairlines"]) .layout-pane.card > .pane-drag-bar {
+            background: linear-gradient(180deg, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.08) 0%, color-mix(in srgb, var(--bg-secondary) 35%, transparent) 100%);
+            border-bottom-color: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12);
         }
 
         html[data-theme="grove"] .login-overlay {
-            background: rgba(23, 27, 31, 0.74);
+            background: color-mix(in srgb, var(--bg-primary) 74%, transparent);
         }
 
         html[data-theme="grove"] body {
-            background-color: #171b1f;
+            background-color: var(--bg-primary);
         }
 
+        /* The page is plain: the panel's drifting glow is not part of Grove */
         html[data-theme="grove"] body::before {
-            animation: none;
-            opacity: 0;
+            display: none;
         }
 
-        html[data-theme="grove"] .layout-pane.card {
+        /* The forest photo stays a photo, whatever the colours; the veil over it is the card colour. Without it a card
+           is the panel's own (its card colour). */
+        html[data-theme="grove"]:not([data-deco-off~="photo"]) .layout-pane.card {
             background: transparent;
             isolation: isolate;
         }
 
-        html[data-theme="grove"] .layout-pane.card::before {
+        html[data-theme="grove"]:not([data-deco-off~="photo"]) .layout-pane.card::before {
             content: '';
             position: absolute;
             inset: 0;
@@ -3471,7 +3532,7 @@
             border-radius: inherit;
             pointer-events: none;
             background-image:
-                linear-gradient(rgba(37, 43, 51, 0.84), rgba(37, 43, 51, 0.84)),
+                linear-gradient(color-mix(in srgb, var(--bg-card) 84%, transparent), color-mix(in srgb, var(--bg-card) 84%, transparent)),
                 url("/web/grove-bg-atliens.jpg");
             background-size: cover;
             background-position: center;
@@ -3601,10 +3662,27 @@
             --col-radius: 6px;
             --col-resize-radius: 4px;
             --bg-shift-duration: 48s;
+            /* The gold of the current lyric's frame, a tone no mix of the slots gives: Sumi's own value here; a custom
+               theme takes its extra decoration colour (next rule) */
+            --sumi-gold: #c9a227;
         }
 
-        /* Lighter mist layer: no filter (expensive on 200%×200% surface) and no motion (saves compositor work). */
+        html[data-custom-theme][data-theme="sumi"] {
+            --sumi-gold: var(--deco-extra);
+        }
+
+        /*
+         * Sumi's decorations are pieces (theme-pieces.json): mist, kanji, lines, hanko (seal is the mini-player's).
+         * html[data-deco-off~="<id>"] drops a piece's rules; every decoration colour comes from the slots above.
+         * The ink mist is the panel's drifting glow, lighter: no filter (expensive on 200%×200% surface) and no motion
+         * (saves compositor work). Without the mist piece there is no glow at all.
+         */
         html[data-theme="sumi"] body::before {
+            display: none;
+        }
+
+        html[data-theme="sumi"]:not([data-deco-off~="mist"]) body::before {
+            display: block;
             opacity: 0.38;
             filter: none;
             animation: none;
@@ -3612,35 +3690,45 @@
 
         /*
          * Sumi — faint repeating kanji tile; cached /web asset, larger tile = fewer repeats, no CSS transform on viewport.
+         * The tile is a mask (its glyphs carry no colour): the watermark is the theme's text colour seen through it.
          */
-        html[data-theme="sumi"] body::after {
+        html[data-theme="sumi"]:not([data-deco-off~="kanji"]) body::after {
             content: '';
             position: fixed;
             inset: 0;
             z-index: 0;
             pointer-events: none;
             opacity: 1;
-            background-image: url("/web/sumi-kanji-tile.svg");
-            background-size: 420px 420px;
-            background-repeat: repeat;
+            background-color: color-mix(in srgb, var(--text-primary) 7%, transparent);
+            -webkit-mask: url("/web/sumi-kanji-tile.svg") 0 0 / 420px 420px repeat;
+            mask: url("/web/sumi-kanji-tile.svg") 0 0 / 420px 420px repeat;
             contain: paint;
         }
 
-        html[data-theme="sumi"] .header {
-            border-bottom: 1px solid rgba(196, 43, 32, 0.35);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 -1px 0 rgba(26, 47, 66, 0.5);
+        /* The vermilion header lines: the header's border and the indigo line inside it */
+        html[data-theme="sumi"]:not([data-deco-off~="lines"]) .header {
+            border-bottom: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 -1px 0 rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.5);
         }
 
         html[data-theme="sumi"] .card {
             border: 1px solid var(--border);
-            box-shadow: var(--card-shadow), inset 3px 0 0 0 rgba(196, 43, 32, 0.92);
+        }
+
+        /* The hanko card edge: the vermilion edge of a card, of its drag bar and of the current lyric */
+        html[data-theme="sumi"]:not([data-deco-off~="hanko"]) .card {
+            box-shadow: var(--card-shadow), inset 3px 0 0 0 rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.92);
         }
 
         html[data-theme="sumi"] .layout-pane.card > .pane-drag-bar {
-            background: linear-gradient(90deg, rgba(26, 47, 66, 0.9) 0%, rgba(196, 43, 32, 0.5) 100%);
             border-radius: var(--pane-drag-radius);
         }
 
+        html[data-theme="sumi"]:not([data-deco-off~="hanko"]) .layout-pane.card > .pane-drag-bar {
+            background: linear-gradient(90deg, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.9) 0%, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.5) 100%);
+        }
+
+        /* Titles in warm paper: the text colour with a little of the quieter text and of the accent */
         html[data-theme="sumi"] .card-title,
         html[data-theme="sumi"] .pane-header-row .card-title,
         html[data-theme="sumi"] .pane-header-with-actions .card-title,
@@ -3649,7 +3737,7 @@
             font-weight: 600;
             letter-spacing: var(--card-title-spacing);
             text-transform: none;
-            color: #e8dfd4;
+            color: color-mix(in srgb, color-mix(in srgb, var(--text-primary) 88.5%, var(--text-secondary)) 97.5%, var(--accent));
         }
 
         html[data-theme="sumi"] .lyrics-scroll,
@@ -3664,10 +3752,14 @@
 
         html[data-theme="sumi"] .lyrics-line.active {
             border-radius: var(--lyrics-line-radius);
+        }
+
+        /* The current lyric's vermilion edge takes 3px of its padding: both go with the piece */
+        html[data-theme="sumi"]:not([data-deco-off~="hanko"]) .lyrics-line.active {
             border-left: 3px solid var(--accent);
             padding-left: calc(var(--lyrics-line-pad-x) - 3px);
-            background: linear-gradient(90deg, rgba(196, 43, 32, 0.14), rgba(26, 47, 66, 0.12));
-            box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.15);
+            background: linear-gradient(90deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14), rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12));
+            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sumi-gold) 15%, transparent);
         }
 
         html[data-theme="sumi"] .guild-selector label {
@@ -3678,10 +3770,13 @@
         }
 
         html[data-theme="sumi"] .login-overlay {
-            background: rgba(4, 5, 6, 0.82);
+            background: color-mix(in srgb, color-mix(in srgb, var(--bg-primary) 70%, black) 82%, transparent);
         }
 
-        /* Rasta — black page backdrop; green/gold/red UI accents */
+        /* Rasta — black page backdrop; green/gold/red UI accents
+           Its decorations are pieces (theme-pieces.json): stripe, titles, bar, lyric.
+           html[data-deco-off~="<id>"] drops a piece's rules; every decoration colour comes from the slots below (the
+           flag's red is --deco-extra). */
         html[data-theme="rasta"] {
             --bg-primary: #000000;
             --bg-secondary: #000000;
@@ -3722,7 +3817,8 @@
             --logo-icon-radius: 12px;
             --logo-letter-spacing: -0.03em;
             --pane-history-align-max: 400px;
-            --card-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(34, 197, 94, 0.08);
+            /* The card's shadow only (the panel's .card paints it): its green ring is the lyric piece's */
+            --card-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
             --card-title-spacing: 0.12em;
             --card-title-size: 0.72rem;
             --track-title-size: 1.48rem;
@@ -3739,31 +3835,56 @@
             --col-radius: 14px;
             --col-resize-radius: 10px;
             --bg-shift-duration: 28s;
+            /* The flag's tones no mix of the slots gives (lighter and darker steps of its green, gold and red): Rasta's
+               own values here; a custom theme gets them from its colours (next rule). The bar's green is the accent's
+               own darker step (a mix with black). */
+            --rasta-green: #16a34a;
+            --rasta-gold: #ca8a04;
+            --rasta-title-green: #4ade80;
+            --rasta-title-gold: #facc15;
+            --rasta-title-red: #f87171;
+            --rasta-bar-gold: #a16207;
+            --rasta-bar-red: #b91c1c;
         }
 
+        html[data-custom-theme][data-theme="rasta"] {
+            --rasta-green: color-mix(in srgb, var(--accent) 85%, black);
+            --rasta-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 86%, black);
+            --rasta-title-green: color-mix(in srgb, var(--accent) 50%, var(--accent-light));
+            --rasta-title-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 75%, white);
+            --rasta-title-red: color-mix(in srgb, var(--deco-extra) 70%, white);
+            --rasta-bar-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 69%, black);
+            --rasta-bar-red: color-mix(in srgb, var(--deco-extra) 84%, black);
+        }
+
+        /* The page is plain black: the panel's drifting glow is not part of Rasta */
         html[data-theme="rasta"] body::before {
             display: none;
         }
 
-        html[data-theme="rasta"] .header {
+        /* The flag stripe takes the header's border's place; without it the border is back */
+        html[data-theme="rasta"]:not([data-deco-off~="stripe"]) .header {
             border-bottom: none;
         }
 
-        html[data-theme="rasta"] .header::after {
+        html[data-theme="rasta"]:not([data-deco-off~="stripe"]) .header::after {
             content: '';
             position: absolute;
             left: 0;
             right: 0;
             bottom: 0;
             height: 3px;
-            background: linear-gradient(90deg, #16a34a 0%, #eab308 50%, #dc2626 100%);
+            background: linear-gradient(90deg, var(--rasta-green) 0%, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 50%, var(--deco-extra) 100%);
             pointer-events: none;
             z-index: 1;
         }
 
         html[data-theme="rasta"] .card {
             border: 1px solid var(--border);
-            box-shadow: var(--card-shadow);
+        }
+
+        html[data-theme="rasta"]:not([data-deco-off~="lyric"]) .card {
+            box-shadow: var(--card-shadow), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
         }
 
         html[data-theme="rasta"] .card-title,
@@ -3774,25 +3895,35 @@
             letter-spacing: var(--card-title-spacing);
             text-transform: uppercase;
             font-size: var(--card-title-size);
-            background: linear-gradient(90deg, #4ade80, #facc15, #f87171);
+        }
+
+        /* Flag-coloured titles: the gradient shows through the letters; without it a title is the panel's own text */
+        html[data-theme="rasta"]:not([data-deco-off~="titles"]) .card-title,
+        html[data-theme="rasta"]:not([data-deco-off~="titles"]) .pane-header-row .card-title,
+        html[data-theme="rasta"]:not([data-deco-off~="titles"]) .pane-header-with-actions .card-title,
+        html[data-theme="rasta"]:not([data-deco-off~="titles"]) .playlist-header .card-title {
+            background: linear-gradient(90deg, var(--rasta-title-green), var(--rasta-title-gold), var(--rasta-title-red));
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
         }
 
-        html[data-theme="rasta"] .layout-pane.card > .pane-drag-bar {
-            background: linear-gradient(90deg, #15803d 0%, #a16207 50%, #b91c1c 100%);
+        html[data-theme="rasta"]:not([data-deco-off~="bar"]) .layout-pane.card > .pane-drag-bar {
+            background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 65%, black) 0%, var(--rasta-bar-gold) 50%, var(--rasta-bar-red) 100%);
             opacity: 0.92;
         }
 
-        html[data-theme="rasta"] .layout-pane.card > .pane-drag-bar:hover {
+        html[data-theme="rasta"]:not([data-deco-off~="bar"]) .layout-pane.card > .pane-drag-bar:hover {
             filter: brightness(1.12);
         }
 
         html[data-theme="rasta"] .lyrics-line.active {
             border-radius: var(--lyrics-line-radius);
-            background: linear-gradient(90deg, rgba(22, 163, 74, 0.22), rgba(202, 138, 4, 0.14), rgba(220, 38, 38, 0.2));
-            box-shadow: 0 0 28px rgba(34, 197, 94, 0.12), inset 0 0 0 1px rgba(234, 179, 8, 0.2);
+        }
+
+        html[data-theme="rasta"]:not([data-deco-off~="lyric"]) .lyrics-line.active {
+            background: linear-gradient(90deg, color-mix(in srgb, var(--rasta-green) 22%, transparent), color-mix(in srgb, var(--rasta-gold) 14%, transparent), color-mix(in srgb, var(--deco-extra) 20%, transparent));
+            box-shadow: 0 0 28px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12), inset 0 0 0 1px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.2);
         }
 
         html[data-theme="rasta"] .guild-selector label {
@@ -3802,7 +3933,7 @@
         }
 
         html[data-theme="rasta"] .login-overlay {
-            background: rgba(5, 8, 5, 0.78);
+            background: color-mix(in srgb, color-mix(in srgb, var(--bg-card) 30%, black) 78%, transparent);
         }
 
         html[data-theme="dawn"] .login-overlay {
@@ -3813,7 +3944,15 @@
             background: rgba(0, 0, 0, 0.88);
         }
 
+        /* Dawn Dark's decorations are pieces (theme-pieces.json): wash (edge is the mini-player's). The ambient wash is
+           the panel's drifting glow, lighter; without the piece there is no glow at all. The rest of Dawn Dark is its
+           shape, Dawn's editorial blocks in the slots' colours. */
         html[data-theme="dawn-dark"] body::before {
+            display: none;
+        }
+
+        html[data-theme="dawn-dark"]:not([data-deco-off~="wash"]) body::before {
+            display: block;
             opacity: 0.42;
             filter: saturate(0.92);
         }
@@ -3914,7 +4053,7 @@
             overflow: visible;
         }
 
-        html[data-theme="ember"] .header::after {
+        html[data-theme="ember"]:not([data-deco-off~="edge"]) .header::after {
             content: '';
             position: absolute;
             left: 0;
@@ -3924,10 +4063,10 @@
             pointer-events: none;
             background: linear-gradient(90deg,
                 transparent 0%,
-                rgba(251, 191, 36, 0.22) 18%,
-                rgba(249, 115, 22, 0.38) 42%,
-                rgba(239, 68, 68, 0.28) 68%,
-                rgba(251, 191, 36, 0.18) 88%,
+                color-mix(in srgb, var(--ember-amber) 22%, transparent) 18%,
+                rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.38) 42%,
+                rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.28) 68%,
+                color-mix(in srgb, var(--ember-amber) 18%, transparent) 88%,
                 transparent 100%);
             opacity: 0.75;
             mix-blend-mode: screen;
@@ -3963,6 +4102,19 @@
 
         html[data-theme="ember"] .upload-zone {
             border-width: 3px;
+        }
+
+        /* Reduce motion (the panel's switch, or the system setting): the flames and the flame edge stand still */
+        html[data-reduce-motion][data-theme="ember"] body::after,
+        html[data-reduce-motion][data-theme="ember"] .header::after {
+            animation: none !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html[data-theme="ember"] body::after,
+            html[data-theme="ember"] .header::after {
+                animation: none !important;
+            }
         }
 
         /* Dawn (+ Dawn Dark) — editorial offset block: brutalist shadow, sentence titles, open lyrics */
@@ -5701,7 +5853,7 @@
         /*
          * Custom themes (script sets html[data-custom-theme] while one is on). Keep this block after every built-in
          * theme: where specificity ties, the later rule wins.
-         * The page color follows the theme's own (Grove sets a fixed one on body).
+         * The page color follows the theme's own.
          */
         html[data-custom-theme] body {
             background-color: var(--bg-primary);

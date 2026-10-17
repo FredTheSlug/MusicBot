@@ -5,7 +5,9 @@
  * scripts/theme-golden.js from the stylesheets of that day; every later rewrite has to keep evaluating to them.
  *
  * Excluded: inside url(). Colours drawn inside pictures (Ember's flame SVGs, Sumi's kanji tile, Revival's grain and
- * star) are not in the golden files; those pieces are checked by their own tests and by eye.
+ * star) are not in the golden files. Those pictures are masks now, with no colour in them, over colours of the
+ * stylesheet (listed in newOnPurpose with the pictures' old colours, and checked by their own tests); their shapes are
+ * checked by eye.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -474,11 +476,30 @@ test('goldenCoversEveryDecoratedTheme', () => {
 });
 
 // ---- the rewritten themes: colours from the slots, every rule of a piece under its guard, shape left unguarded,
-// no cascade turned by a guard, motion that can stop (each theme joins these as its decorations are rewritten)
+// no cascade turned by a guard, motion that can stop (every decorated theme's decorations are rewritten now)
 
 const PIECES = readJson(PIECES_FILE);
 
-const REWRITTEN = ['revival', 'neon', 'signal', 'victory', 'cipher'];
+const REWRITTEN = DECORATED.slice();
+
+/*
+ * At least this many decoration colours a custom palette is checked against, and declarations under a piece, per theme
+ * (about what each has today): a theme whose decorations went missing wholesale shows. Steel and Dawn Dark have one
+ * piece in the panel, their accent wash; the rest of them is their shape (CARD_STYLE).
+ */
+const FLOORS = {
+  revival: { checked: 80, guarded: 160 },
+  neon: { checked: 40, guarded: 75 },
+  signal: { checked: 35, guarded: 60 },
+  victory: { checked: 30, guarded: 35 },
+  cipher: { checked: 30, guarded: 40 },
+  ember: { checked: 16, guarded: 30 },
+  rasta: { checked: 25, guarded: 30 },
+  sumi: { checked: 15, guarded: 20 },
+  grove: { checked: 9, guarded: 15 },
+  steel: { checked: 1, guarded: 3 },
+  'dawn-dark': { checked: 9, guarded: 3 }
+};
 
 function pieceIds(themeId) {
   return PIECES[themeId].pieces.map((p) => p.id);
@@ -560,20 +581,89 @@ for (const themeId of REWRITTEN) {
       const readThroughASlot = e.via.some((name) => Object.prototype.hasOwnProperty.call(inline, name));
       if (Colors.sameColour(Colors.format(before), after) && !readThroughASlot) stuck.push(e.key + ': ' + e.expr);
     }
-    assert.ok(checked >= (themeId === 'revival' ? 80 : 20), 'checked ' + checked);
+    assert.ok(checked >= FLOORS[themeId].checked, 'checked ' + checked);
     assert.deepEqual(stuck, [], 'colours a custom theme can\'t reach');
   });
 }
 
 /*
  * Pieces the panel doesn't have: they are the mini-player's only (the panel's version of the theme never had them):
- * Cipher's "> " prompt and blinking caret, Neon's glowing title and progress bar.
+ * Cipher's "> " prompt and blinking caret, Neon's glowing title and progress bar, Ember's fire glow, Sumi's seal and
+ * brush stroke, Steel's top sheen and brushed lines, Dawn Dark's gradient edge. (Grove's glows are its cards' soft
+ * green halo in the panel.)
  */
-const MINI_ONLY = { cipher: ['prompt'], neon: ['title'] };
+const MINI_ONLY = { cipher: ['prompt'], neon: ['title'], ember: ['fire'], sumi: ['seal'], steel: ['sheen'],
+  'dawn-dark': ['edge'] };
+
+/*
+ * A theme's card style that has a colour: chrome that is the theme's shape (spec §3: radius, fonts, density and card
+ * style come with the starting theme, whatever its pieces), so it stays with every piece off and isn't under one.
+ * Pinned one declaration at a time, [normalized selector, properties]; each paints only with the palette's slots (what a
+ * custom theme sets, so its colours reach it) or with plain black, white and see-through (cardStyleIsPinnedAndInTheSlots),
+ * and none is on a pseudo-element (in a decorated theme that is a decoration's own layer). Steel's and Dawn Dark's
+ * chrome is all of this kind: the spec counts no decoration colour of theirs, and the same rules are Aurora's and Dawn's,
+ * themes without decorations. The others': plain borders, the login veil, label colours, Ember's card hairline.
+ */
+const CARD_STYLE = {
+  ember: [
+    ['html[data-theme="ember"] .card', ['box-shadow']],
+    ['html[data-theme="ember"] .layout-pane.card > .pane-drag-bar', ['border']],
+    ['html[data-theme="ember"] .upload-zone', ['border-width']]
+  ],
+  rasta: [
+    ['html[data-theme="rasta"] .card', ['border']],
+    ['html[data-theme="rasta"] .guild-selector label', ['color']],
+    ['html[data-theme="rasta"] .login-overlay', ['background']]
+  ],
+  sumi: [
+    ['html[data-theme="sumi"] .card', ['border']],
+    ['html[data-theme="sumi"] .card-title', ['color']],
+    ['html[data-theme="sumi"] .pane-header-row .card-title', ['color']],
+    ['html[data-theme="sumi"] .pane-header-with-actions .card-title', ['color']],
+    ['html[data-theme="sumi"] .playlist-header .card-title', ['color']],
+    ['html[data-theme="sumi"] .lyrics-meta', ['color']],
+    ['html[data-theme="sumi"] .login-overlay', ['background']]
+  ],
+  grove: [
+    ['html[data-theme="grove"] .login-overlay', ['background']],
+    ['html[data-theme="grove"] body', ['background-color']]
+  ],
+  steel: [
+    ['html[data-theme="steel"] .card', ['border', 'box-shadow']],
+    ['html[data-theme="steel"] .header', ['border-bottom', 'backdrop-filter']],
+    ['html[data-theme="steel"] .layout-pane.card > .pane-drag-bar', ['border-bottom']],
+    ['html[data-theme="steel"] .lyrics-line', ['border-left']],
+    ['html[data-theme="steel"] .lyrics-line.active', ['border-left-color', 'background', 'box-shadow', 'background-image']],
+    ['html[data-theme="steel"] .col-resize-handle', ['border-color', 'background']],
+    ['html[data-theme="steel"] .col-resize-handle:hover', ['background', 'border-color', 'box-shadow']],
+    ['html[data-theme="steel"] .col-resize-handle:focus-visible', ['background', 'border-color', 'box-shadow']],
+    ['html[data-theme="steel"] .layout-col.layout-col-over', ['background', 'box-shadow']],
+    ['html[data-theme="steel"] .pane-resize-handle:hover', ['background']],
+    ['html[data-theme="steel"] .pane-resize-handle:focus-visible', ['background']],
+    ['html[data-theme="steel"] .layout-pane.pane-drop-target', ['box-shadow']]
+  ],
+  'dawn-dark': [
+    ['html[data-theme="dawn-dark"] .login-overlay', ['background']],
+    ['html[data-theme="dawn-dark"] .card', ['border', 'box-shadow']],
+    ['html[data-theme="dawn-dark"] .layout-pane.card > .pane-drag-bar', ['border-bottom', 'background']],
+    ['html[data-theme="dawn-dark"] .pane-header-row .card-title', ['color']],
+    ['html[data-theme="dawn-dark"] .pane-header-with-actions .card-title', ['color']],
+    ['html[data-theme="dawn-dark"] .playlist-header .card-title', ['color']],
+    ['html[data-theme="dawn-dark"] .lyrics-scroll', ['border', 'background']],
+    ['html[data-theme="dawn-dark"] .lyrics-line.active', ['border-left', 'background', 'box-shadow']]
+  ]
+};
+
+/* Is this declaration pinned as card style (an unguarded one, outside @media)? */
+function isCardStyle(d, themeId, cardStyle) {
+  const list = cardStyle !== undefined ? cardStyle : CARD_STYLE[themeId] || [];
+  return d.rule.at.length === 0 && Colors.guardsOf(d.spaced).mentions === 0 &&
+    list.some(([selector, props]) => d.selector === selector && props.includes(d.decl.prop));
+}
 
 /*
  * Where a theme's decorations (its custom-theme rules' too) aren't each under exactly one of its pieces, right after its
- * html part; and variables set anywhere but its bare blocks.
+ * html part (its pinned card style aside); and variables set anywhere but its bare blocks.
  */
 function pieceGuardProblems(css, themeId, ids) {
   const vars = Colors.themeVars(css, themeId);
@@ -592,7 +682,7 @@ function pieceGuardProblems(css, themeId, ids) {
       if (!blocks.includes(d.selector)) problems.push(at + d.spaced + ' { ' + d.decl.prop + ' }: a variable below html');
       continue;
     }
-    if (guards.mentions === 0 && !decorates(d, vars)) continue;
+    if (guards.mentions === 0 && (!decorates(d, vars) || isCardStyle(d, themeId))) continue;
     const head = Colors.splitFirst(d.selector).head.replace(/::?[-\w]+$/, '');
     if (guards.mentions !== 1 || guards.ids.length !== 1) {
       problems.push(at + d.spaced + ' { ' + d.decl.prop + ' }: ' + guards.ids.length + ' guards');
@@ -620,7 +710,9 @@ for (const themeId of REWRITTEN) {
  * margin*, padding*, gap, row-gap, column-gap), flex layout (flex-wrap, align-content, justify-content),
  * scrollbar-width, and a border taken away (border, border-top/right/bottom/left: none or 0). Nothing on a
  * pseudo-element: in a decorated theme that is a decoration's own layer, all of it the piece's. Besides the shape: the
- * variables of its bare blocks (the theme block, the custom-theme block), and animation: none where motion is reduced.
+ * variables of its bare blocks (the theme block, the custom-theme block), animation: none where motion is reduced, and a
+ * layer taken away (display: none, on a pseudo-element too: it can't paint; Rasta's and Grove's plain pages hide the
+ * panel's drifting glow, and Steel, Sumi and Dawn Dark hide it unless their wash or mist piece shows it).
  */
 const SHAPE = new RegExp('^(font|font-[a-z-]+|letter-spacing|word-spacing|line-height|text-transform|text-align|' +
   'text-overflow|white-space|overflow(-[xy])?|border(-(top|bottom)-(left|right))?-radius|(min-|max-)?(width|height)|' +
@@ -635,6 +727,7 @@ function isShape(d, themeId) {
     return /\[data-reduce-motion\]/.test(Colors.splitFirst(d.selector).head) ||
       d.rule.at.join(' ') === '@media (prefers-reduced-motion:reduce)';
   }
+  if (prop === 'display' && /^none$/i.test(value)) return true;
   if (Colors.subjectOf(d.selector).pseudo) return false;
   return SHAPE.test(prop) || (BORDER_TAKEN_AWAY.test(prop) && /^(none|0)$/i.test(value));
 }
@@ -643,8 +736,9 @@ function isShape(d, themeId) {
  * Layout effects of a piece that the shape rule alone would let pass (they are shape properties), pinned to their
  * piece: [piece, normalized selector, properties]. Signal's caption sits in a gutter under the header's content: with
  * the caption off the header is the panel's own, no empty gap; its HUD rule under a pane's header has room around it
- * that goes with it. Victory's gold rule takes the header border's place: with the rule off the border is back.
- * Neon's drag bar is a 4px lime rail: with the rails off it is the panel's own drag bar.
+ * that goes with it. Victory's gold rule and Rasta's flag stripe take the header border's place: with the rule or the
+ * stripe off the border is back. Neon's drag bar is a 4px lime rail: with the rails off it is the panel's own drag bar.
+ * Sumi's current lyric gives 3px of its padding to its vermilion edge: with the hanko off the padding is whole again.
  */
 const LAYOUT_EFFECTS = {
   signal: [
@@ -654,16 +748,18 @@ const LAYOUT_EFFECTS = {
   ],
   victory: [['rule', 'html[data-theme="victory"] .header', ['border-bottom']]],
   neon: [['rails', 'html[data-theme="neon"] .layout-pane.card > .pane-drag-bar',
-    ['border-bottom', 'min-height', 'padding-top', 'padding-bottom']]]
+    ['border-bottom', 'min-height', 'padding-top', 'padding-bottom']]],
+  rasta: [['stripe', 'html[data-theme="rasta"] .header', ['border-bottom']]],
+  sumi: [['hanko', 'html[data-theme="sumi"] .lyrics-line.active', ['padding-left']]]
 };
 
 /*
  * What keeps a theme's pieces from switching off cleanly (its custom-theme rules' too): a declaration under a guard
  * that isn't one piece's, doesn't apply with every piece on, applies with every piece off, or doesn't follow its own
- * piece alone; an unguarded one that isn't the theme's shape; a pinned layout effect that isn't under its piece. Every
- * declaration of a guarded rule counts (its layout effects too).
+ * piece alone; an unguarded one that isn't the theme's shape or its pinned card style; a pinned layout effect that isn't
+ * under its piece. Every declaration of a guarded rule counts (its layout effects too).
  */
-function piecesOffProblems(decls, themeId, ids, effects) {
+function piecesOffProblems(decls, themeId, ids, effects, cardStyle) {
   const problems = [];
   let guarded = 0;
   for (const d of decls) {
@@ -684,7 +780,7 @@ function piecesOffProblems(decls, themeId, ids, effects) {
           problems.push(where + ': ' + id + ' alone ' + (alone ? 'leaves it on' : 'switches it off'));
         }
       }
-    } else if (!isShape(d, themeId)) {
+    } else if (!isShape(d, themeId) && !isCardStyle(d, themeId, cardStyle)) {
       problems.push(where + ': not under a piece, and not the theme\'s shape');
     }
   }
@@ -704,7 +800,7 @@ function piecesOffProblems(decls, themeId, ids, effects) {
 test('allPiecesOffLeavesNoDecoration', () => {
   for (const themeId of REWRITTEN) {
     const found = piecesOffProblems(panelDeclarations(), themeId, pieceIds(themeId), LAYOUT_EFFECTS[themeId]);
-    assert.ok(found.guarded >= 20, themeId + ': ' + found.guarded + ' declarations under a piece');
+    assert.ok(found.guarded >= FLOORS[themeId].guarded, themeId + ': ' + found.guarded + ' declarations under a piece');
     assert.deepEqual(found.problems, [], themeId);
   }
 });
@@ -724,10 +820,16 @@ test('thePiecesOffCheckSeesALeftover', () => {
     'html[data-custom-theme][data-theme="x"] .track-title { text-shadow: 0 0 12px var(--accent); }',
     'html[data-custom-theme][data-theme="x"] .card { --pad: 2px; }',
     'html[data-custom-theme][data-theme="x"]:not([data-deco-off~="b"]) .logo { color: blue; }',
-    'html[data-custom-theme][data-theme="y"] .logo { color: green; }'
+    'html[data-custom-theme][data-theme="y"] .logo { color: green; }',
+    // a layer taken away is shape; one shown is not
+    'html[data-theme="x"] body::before { display: none; }',
+    'html[data-theme="x"] body::after { display: block; }',
+    // card style passes only where pinned (here: .tile's border), and only for the pinned property
+    'html[data-theme="x"] .tile { border: 1px solid var(--accent); color: var(--accent); }'
   ].join('\n');
   const found = piecesOffProblems(Colors.declarations(css), 'x', ['a', 'b'],
-    [['a', 'html[data-theme="x"] .header', ['padding-bottom', 'border-bottom']]]);
+    [['a', 'html[data-theme="x"] .header', ['padding-bottom', 'border-bottom']]],
+    [['html[data-theme="x"] .tile', ['border']]]);
   assert.deepEqual(found.problems, [
     'html[data-theme="x"] .header { position: relative }: not under a piece, and not the theme\'s shape',
     'html[data-theme="x"] .header { border-top: 1px solid }: not under a piece, and not the theme\'s shape',
@@ -738,10 +840,95 @@ test('thePiecesOffCheckSeesALeftover', () => {
     'html[data-custom-theme][data-theme="x"] .track-title { text-shadow: 0 0 12px var(--accent) }: not under a piece, ' +
       'and not the theme\'s shape',
     'html[data-custom-theme][data-theme="x"] .card { --pad: 2px }: not under a piece, and not the theme\'s shape',
+    'html[data-theme="x"] body::after { display: block }: not under a piece, and not the theme\'s shape',
+    'html[data-theme="x"] .tile { color: var(--accent) }: not under a piece, and not the theme\'s shape',
     'html[data-theme="x"] .header { padding-bottom }: belongs to a',
     'html[data-theme="x"] .header { border-bottom }: belongs to a'
   ]);
   assert.equal(found.guarded, 5);
+});
+
+/* The colours written out in an expression (hex, rgb()/hsl() of numbers, named), inside a color-mix() too. */
+function literalColours(expr) {
+  const found = [];
+  const text = expr.replace(/--[-\w]+/g, ' '); // a variable's name is no colour (--rasta-gold)
+  for (const m of text.matchAll(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\([^()]*\)|\b[a-z]+\b/gi)) {
+    try {
+      found.push(Colors.evaluate(m[0]));
+    } catch (e) {
+      // not a colour (in, srgb, var, ...)
+    }
+  }
+  return found;
+}
+
+/*
+ * What keeps a theme's pinned card style from being its shape: an entry that isn't there, is under a piece or in an
+ * @media, is on a pseudo-element, or paints with anything but the palette's slots and plain black, white and
+ * see-through (a colour of the theme's own, or a variable of its own, would stay whatever a custom theme's colours).
+ */
+function cardStyleProblems(css, themeId, cardStyle) {
+  const vars = Colors.themeVars(css, themeId);
+  const decls = Colors.declarations(css);
+  const problems = [];
+  for (const [selector, props] of cardStyle) {
+    if (Colors.subjectOf(selector).pseudo) problems.push(selector + ': a pseudo-element is a decoration\'s layer');
+    for (const prop of props) {
+      const found = decls.filter((d) => d.selector === selector && d.decl.prop === prop);
+      if (!found.some((d) => isCardStyle(d, themeId, cardStyle))) {
+        problems.push(selector + ' { ' + prop + ' }: pinned as card style but not there, unguarded and outside @media');
+      }
+      for (const d of found) {
+        if (!isCardStyle(d, themeId, cardStyle)) continue;
+        for (const expr of Colors.declarationColours(d.decl.prop, d.decl.value, vars)) {
+          if (neutral(Colors.evaluate(expr, vars))) continue;
+          const own = [...Colors.variablesRead(expr, vars)].filter((name) => !Colors.isSlot(name));
+          const written = literalColours(expr).filter((c) => !neutral(c));
+          if (Colors.variablesRead(expr, vars).size === 0 || own.length > 0 || written.length > 0) {
+            problems.push(selector + ' { ' + prop + ' }: ' + expr + ' is not the slots\' (' +
+              (own.length ? own.join(', ') : 'a colour of its own') + ')');
+          }
+        }
+      }
+    }
+  }
+  return problems;
+}
+
+test('cardStyleIsPinnedAndInTheSlots', () => {
+  const css = Colors.panelCss();
+  for (const themeId of Object.keys(CARD_STYLE)) {
+    assert.ok(DECORATED.includes(themeId), themeId);
+    assert.deepEqual(cardStyleProblems(css, themeId, CARD_STYLE[themeId]), [], themeId);
+  }
+  const sample = [
+    'html[data-theme="x"] { --accent: #222222; --border: rgba(255, 255, 255, 0.1); --x-gold: #c9a227;',
+    '  --x-ring: var(--accent); --accent-r: 34; --accent-g: 34; --accent-b: 34; }',
+    'html[data-theme="x"] .card { border: 1px solid var(--border); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05); }',
+    'html[data-theme="x"] .tile { background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14); }',
+    'html[data-theme="x"] .badge { color: #c9a227; border-color: var(--x-gold); outline-color: var(--x-ring);',
+    '  background: color-mix(in srgb, color-mix(in srgb, #c9a227 50%, white) 80%, var(--accent));',
+    '  text-decoration-color: color-mix(in srgb, var(--accent) 50%, white); }',
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .logo { color: var(--accent); }',
+    'html[data-theme="x"] .chip::after { color: var(--accent); }'
+  ].join('\n');
+  assert.deepEqual(cardStyleProblems(sample, 'x', [
+    ['html[data-theme="x"] .card', ['border', 'box-shadow']],
+    ['html[data-theme="x"] .tile', ['background']],
+    ['html[data-theme="x"] .badge', ['color', 'border-color', 'outline-color', 'background', 'text-decoration-color']],
+    ['html[data-theme="x"] .logo', ['color']],
+    ['html[data-theme="x"] .chip::after', ['color']],
+    ['html[data-theme="x"] .nope', ['color']]
+  ]), [
+    'html[data-theme="x"] .badge { color }: #c9a227 is not the slots\' (a colour of its own)',
+    'html[data-theme="x"] .badge { border-color }: var(--x-gold) is not the slots\' (--x-gold)',
+    'html[data-theme="x"] .badge { outline-color }: var(--x-ring) is not the slots\' (--x-ring)',
+    'html[data-theme="x"] .badge { background }: color-mix(in srgb, color-mix(in srgb, #c9a227 50%, white) 80%, ' +
+      'var(--accent)) is not the slots\' (a colour of its own)',
+    'html[data-theme="x"] .logo { color }: pinned as card style but not there, unguarded and outside @media',
+    'html[data-theme="x"] .chip::after: a pseudo-element is a decoration\'s layer',
+    'html[data-theme="x"] .nope { color }: pinned as card style but not there, unguarded and outside @media'
+  ]);
 });
 
 test('aCustomThemeRuleIsCheckedForPiecesToo', () => {
@@ -966,35 +1153,141 @@ test('reducedMotionStopsEveryAnimatedPiece', () => {
   const names = new Set(found.animated.flatMap((d) => d.decl.value.match(/[A-Za-z][\w-]*/g)
     .filter((w) => /[A-Z]/.test(w) && /^[a-z]/.test(w))));
   assert.deepEqual([...names].sort(),
-    ['bgShift', 'revivalFloat', 'revivalGlowPulse', 'revivalRays', 'revivalRaysIn', 'revivalSpin', 'revivalSunrise']);
+    ['bgShift', 'emberFlameDecalBob', 'emberFlameDecalFlicker', 'revivalFloat', 'revivalGlowPulse', 'revivalRays',
+      'revivalRaysIn', 'revivalSpin', 'revivalSunrise']);
   assert.deepEqual(found.problems, []);
 });
+
+/* An SVG used as a mask carries no colour: nothing in it makes one, and no attribute is one (only its shape counts). */
+function assertCarriesNoColour(svg, where) {
+  assert.ok(!/<(feColorMatrix|feFlood|feComponentTransfer|feDiffuseLighting|feSpecularLighting|linearGradient|radialGradient)\b/i
+    .test(svg), where + ': nothing in it makes a colour');
+  assert.ok(!/\bstyle\s*=/.test(svg), where + ': no style attribute');
+  for (const m of svg.matchAll(/([-\w:]+)\s*=\s*(["'])([^"']*)\2/g)) {
+    assert.ok(!/^(fill|stroke|stop-color|flood-color|lighting-color|color)$/i.test(m[1]), where + ': ' + m[1]);
+    if (m[1] === 'xmlns') continue;
+    assert.throws(() => Colors.evaluate(m[3]), Error, where + ': ' + m[1] + '="' + m[3] + '" is a colour');
+  }
+}
+
+/* The url()s in a theme's own declarations (its custom-theme rules' too): { d, link }. */
+function urlsOf(themeId) {
+  const out = [];
+  for (const d of panelDeclarations()) {
+    if (!ownedBy(d, themeId)) continue;
+    for (const m of d.decl.value.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'\s)]*))\s*\)/g)) {
+      out.push({ d: d, link: [m[1], m[2], m[3]].find((g) => g !== undefined) });
+    }
+  }
+  return out;
+}
 
 test('revivalImagesCarryNoColour', () => {
   // Revival's film grain and its logo's star are masks: what shows through them is painted with the theme's colours
   const images = [];
-  for (const d of panelDeclarations()) {
-    if (d.theme !== 'revival') continue;
-    for (const m of d.decl.value.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'\s)]*))\s*\)/g)) {
-      const link = [m[1], m[2], m[3]].find((g) => g !== undefined);
-      assert.match(link, /^data:image\/svg\+xml,/, d.spaced + ': a picture drawn here');
-      images.push({ selector: d.spaced, prop: d.decl.prop, svg: decodeURIComponent(link) });
-    }
+  for (const { d, link } of urlsOf('revival')) {
+    assert.match(link, /^data:image\/svg\+xml,/, d.spaced + ': a picture drawn here');
+    images.push({ selector: d.spaced, prop: d.decl.prop, svg: decodeURIComponent(link) });
   }
   assert.ok(images.some((i) => /feTurbulence/.test(i.svg) && /::after$/.test(i.selector)), 'the grain');
   assert.ok(images.some((i) => /<polygon/.test(i.svg) && /\.logo-icon::before$/.test(i.selector)), 'the star');
   for (const image of images) {
     const where = image.selector + ' { ' + image.prop + ' }';
     assert.match(image.prop, /^(-webkit-)?mask(-image)?$/, where + ': a mask, not a picture');
-    assert.ok(!/<(feColorMatrix|feFlood|feComponentTransfer|feDiffuseLighting|feSpecularLighting|linearGradient|radialGradient)\b/i
-      .test(image.svg), where + ': nothing in it makes a colour');
-    assert.ok(!/\bstyle\s*=/.test(image.svg), where + ': no style attribute');
-    for (const m of image.svg.matchAll(/([-\w:]+)\s*=\s*(["'])([^"']*)\2/g)) {
-      assert.ok(!/^(fill|stroke|stop-color|flood-color|lighting-color|color)$/i.test(m[1]), where + ': ' + m[1]);
-      if (m[1] === 'xmlns') continue;
-      assert.throws(() => Colors.evaluate(m[3]), Error, where + ': ' + m[1] + '="' + m[3] + '" is a colour');
+    assertCarriesNoColour(image.svg, where);
+  }
+});
+
+test('emberFlamesAreMasksNotColours', () => {
+  // Ember's four corner flames were SVG pictures, each filled with a gradient of three colour stops from its tip to its
+  // foot (the second and fourth mirrored, which the flames' symmetric outlines don't show). They are flame-shaped masks
+  // now, nothing in them a colour, over gradients in the theme's colours, one per flame, in the same boxes: the colours
+  // of the stylesheet (newOnPurpose pins them too), which for built-in Ember are the old stops'.
+  const OLD_STOPS = [ // each old picture's stops: [offset, stop-color, stop-opacity]
+    [[0, '#fef08a', 1], [0.42, '#fb923c', 1], [1, '#dc2626', 0.5]],
+    [[0, '#fde047', 1], [0.5, '#f97316', 1], [1, '#b91c1c', 0.45]],
+    [[0, '#fcd34d', 1], [0.55, '#ea580c', 1], [1, '#991b1b', 0.35]],
+    [[0, '#fef08a', 1], [0.5, '#f97316', 1], [1, '#dc2626', 0.4]]
+  ];
+  const OLD_OUTLINES = [ // the two outlines (big and small) the pictures drew, in their viewBoxes
+    ['0 0 40 72', 'M20 3C6 26 1 38 1 51c0 13 7 21 19 19 12 2 19-6 19-19 0-13-5-25-19-48z'],
+    ['0 0 32 56', 'M16 2C5 20 1 30 1 40c0 9 5 15 15 14 10 1 15-5 15-14 0-10-4-20-15-38z']
+  ];
+  const css = Colors.panelCss();
+  const flames = 'html[data-theme="ember"] body::after';
+  const fills = new Map(Colors.decorationColours(css, 'ember').map((e) => [e.key, e]));
+  const rows = [];
+  OLD_STOPS.forEach((stops, flame) => stops.forEach(([offset, hex, opacity], i) => {
+    const e = fills.get(flames + '|background-image|' + (flame * 3 + i));
+    assert.ok(e, 'flame ' + (flame + 1) + ', stop ' + (i + 1));
+    const was = Colors.evaluate(hex);
+    was[3] = opacity;
+    const now = Colors.evaluate(e.expr, e.vars);
+    rows.push('flame ' + (flame + 1) + ' at ' + offset + ': ' + Colors.format(was) + ' -> ' + Colors.format(now) + ' (' +
+      e.expr + ')');
+    assert.ok(Colors.sameColour(Colors.format(was), now), rows[rows.length - 1]);
+  }));
+  assert.equal(rows.length, 12);
+  assert.ok(!fills.has(flames + '|background-image|12'), 'twelve fills, as the pictures had stops');
+  // the pictures: data URIs with nothing in them that is a colour, the old outlines, used as masks only
+  const pictures = urlsOf('ember');
+  assert.ok(pictures.length > 0);
+  const vars = Colors.themeVars(css, 'ember');
+  const outlines = new Set();
+  for (const { d, link } of pictures) {
+    const where = d.spaced + ' { ' + d.decl.prop + ' }';
+    assert.match(link, /^data:image\/svg\+xml,/, where + ': a picture of the stylesheet');
+    const svg = decodeURIComponent(link);
+    assertCarriesNoColour(svg, where);
+    const outline = OLD_OUTLINES.find(([box, path]) => svg.includes("viewBox='" + box + "'") && svg.includes("d='" + path + "'"));
+    assert.ok(outline, where + ': one of the old flames\' outlines');
+    outlines.add(outline[0]);
+    const readers = d.decl.prop.startsWith('--')
+      ? panelDeclarations().filter((r) => !r.decl.prop.startsWith('--') && Colors.variablesRead(r.decl.value, vars).has(d.decl.prop))
+      : [d];
+    assert.ok(readers.length > 0, where + ': used');
+    for (const r of readers) {
+      assert.ok(ownedBy(r, 'ember') && /^(-webkit-)?mask(-image)?$/.test(r.decl.prop),
+        where + ': read by ' + r.spaced + ' { ' + r.decl.prop + ' }, not a mask');
     }
   }
+  assert.equal(outlines.size, 2, 'both outlines');
+  // one mask layer per gradient, in the same boxes
+  const own = panelDeclarations().filter((d) => d.selector === flames && Colors.guardsOf(d.spaced).ids[0] === 'flames');
+  const value = (prop) => {
+    const found = own.filter((d) => d.decl.prop === prop);
+    assert.equal(found.length, 1, prop);
+    return found[0].decl.value.replace(/\s+/g, ' ').trim();
+  };
+  assert.equal((value('background-image').match(/linear-gradient\(/g) || []).length, 4);
+  for (const prefix of ['', '-webkit-']) {
+    assert.equal(value(prefix + 'mask-image').split(',').length, 4, prefix + 'mask-image');
+    assert.equal(value(prefix + 'mask-size'), value('background-size'), prefix + 'mask-size');
+    assert.equal(value(prefix + 'mask-position'), value('background-position'), prefix + 'mask-position');
+    assert.equal(value(prefix + 'mask-repeat'), value('background-repeat'), prefix + 'mask-repeat');
+  }
+});
+
+test('sumiKanjiIsAMask', () => {
+  // the kanji watermark's tile drew its colour itself (fill #f2ebe3 at opacity 0.07); it is a mask now, its glyphs only
+  // a shape, and what shows through it is the theme's text colour at 7% (for built-in Sumi the same #f2ebe3 at 0.07)
+  const css = Colors.panelCss();
+  const pictures = urlsOf('sumi');
+  assert.deepEqual(pictures.map((p) => p.d.decl.prop).sort(), ['-webkit-mask', 'mask']);
+  for (const { d, link } of pictures) {
+    assert.equal(link, '/web/sumi-kanji-tile.svg', d.spaced + ' { ' + d.decl.prop + ' }');
+    assert.equal(d.selector, 'html[data-theme="sumi"] body::after');
+    assert.deepEqual(Colors.guardsOf(d.spaced).ids, ['kanji']);
+  }
+  const fill = panelDeclarations().filter((d) => d.selector === 'html[data-theme="sumi"] body::after' &&
+    d.decl.prop === 'background-color');
+  assert.equal(fill.length, 1);
+  assert.equal(fill[0].decl.value, 'color-mix(in srgb, var(--text-primary) 7%, transparent)');
+  assert.equal(Colors.format(Colors.evaluate(fill[0].decl.value, Colors.themeVars(css, 'sumi'))), 'rgba(242,235,227,0.07)');
+  const svg = fs.readFileSync(path.join(ROOT, 'src/main/resources/web/sumi-kanji-tile.svg'), 'utf8');
+  assertCarriesNoColour(svg, 'sumi-kanji-tile.svg');
+  assert.ok(!/\b(opacity|fill-opacity|stroke-opacity)\s*=/.test(svg), 'its alpha is the stylesheet\'s 7%, not the tile\'s');
+  assert.equal((svg.match(/<text\b/g) || []).length, 4, 'the tile\'s four glyphs');
 });
 
 test('everyThemeBlockDefinesItsDecoExtra', () => {
