@@ -38,6 +38,7 @@ import org.json.JSONObject;
 public final class ThemePieces
 {
     private static final String RESOURCE = "/web/theme-pieces.json";
+    /** A piece id: a-z and 0-9, in parts joined by single dashes (the panel's theme-apply.js and the mini-player's view.js read ids by the same pattern; a test keeps the three equal). */
     private static final Pattern ID = Pattern.compile("[a-z0-9]+(-[a-z0-9]+)*");
     private static final Pattern COLOR = Pattern.compile("#[0-9a-f]{6}");
 

@@ -318,7 +318,7 @@ test('pickerError shows the bot\'s words, short and on one line', () => {
 
 const {
   customVars, onAccent, fontStack, themeMenu, themeLabel, pictureLayer, themePicture, CUSTOM_SLOTS, FONT_STACKS,
-  LIGHT_LEGIBILITY_SHADOW, DARK_LEGIBILITY_SHADOW, themeSetArgs
+  LIGHT_LEGIBILITY_SHADOW, DARK_LEGIBILITY_SHADOW, themeSetArgs, PIECE_ID
 } = require('./view.js');
 const ThemePalette = require('../../../src/main/resources/web/theme-palette.js');
 const ThemeApply = require('../../../src/main/resources/web/theme-apply.js');
@@ -497,6 +497,11 @@ test('decoOffReachesTheMini', () => {
   applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival',
     decorationsOff: ['record', 'record', 'Rays', 'a b', 'x"y', 5, null, '', 'glows'] }) }, applied);
   assert.equal(root.attrs['data-deco-off'], 'record glows');
+  // ids of the bot's grammar (digits and inner dashes too: the panel and the bot take them, so the app does)
+  applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival',
+    decorationsOff: ['rays', 'glow-2', 'a1', '-x', 'x-', 'a--b'] }) }, applied);
+  assert.equal(root.attrs['data-deco-off'], 'rays glow-2 a1');
+  assert.equal(PIECE_ID.source, ThemeApply.PIECE_ID.source, 'the panel\'s pattern');
   // none off: no attribute at all
   applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival', decorationsOff: [] }) }, applied);
   assert.equal('data-deco-off' in root.attrs, false);

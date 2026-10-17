@@ -427,6 +427,29 @@ test('withoutThePiecesListOnlyTheSavedIdsThatLookLikeIdsGoThrough', () => {
   assert.equal(ThemeApply.decoOffFor(theme({ base: '__proto__', decorationsOff: ['glow'] }), true, PIECES), '');
 });
 
+test('pieceIdsHaveOneGrammarEverywhere', () => {
+  // a piece id goes into data-deco-off, a list of words: a-z and 0-9, in parts joined by single dashes. The bot
+  // (ThemePieces.java, when it reads the list), the panel (theme-apply.js) and the mini-player (view.js) read ids by this
+  // one pattern; the app (theme.rs) keeps only the ids of the list itself, so it follows whatever the list holds
+  const GRAMMAR = '[a-z0-9]+(?:-[a-z0-9]+)*';
+  const MiniView = require('../../../desktop/ui/mini-player/view.js');
+  const javaSource = fs.readFileSync(
+    path.join(__dirname, '../../main/java/com/jagrosh/jmusicbot/theme/ThemePieces.java'), 'utf8');
+  const java = /Pattern ID = Pattern\.compile\("([^"\\]+)"\);/.exec(javaSource)[1];
+  assert.equal(java.replace(/\((?!\?)/g, '(?:'), GRAMMAR, 'ThemePieces.ID (its group only groups)');
+  assert.equal(ThemeApply.PIECE_ID.source, '^' + GRAMMAR + '$', 'theme-apply.js');
+  assert.equal(MiniView.PIECE_ID.source, '^' + GRAMMAR + '$', 'view.js');
+  // and they give every id the same verdict (Java's matches() takes the whole id, as ^...$ does)
+  const readers = { 'ThemePieces.java': new RegExp('^(?:' + java + ')$'), 'theme-apply.js': ThemeApply.PIECE_ID,
+    'view.js': MiniView.PIECE_ID };
+  const ids = { glow: true, rays: true, 'glow-2': true, a1: true, '2b': true, 'top-sheen-x': true, '': false, Rays: false,
+    'a b': false, a_b: false, '-a': false, 'a-': false, 'a--b': false, 'a"b': false, 'rays\n': false, '\u00e4': false };
+  for (const [id, ok] of Object.entries(ids)) {
+    for (const [who, pattern] of Object.entries(readers)) assert.equal(pattern.test(id), ok, who + ': ' + JSON.stringify(id));
+  }
+  for (const base of Object.keys(PIECES)) PIECES[base].pieces.forEach((p) => assert.match(p.id, ThemeApply.PIECE_ID, base));
+});
+
 test('decoOffForIsPure', () => {
   const t = deepFreeze(theme({ base: 'revival', decorationsOff: ['record', 'rays'] }));
   const pieces = deepFreeze(JSON.parse(JSON.stringify(PIECES)));

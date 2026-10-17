@@ -766,6 +766,12 @@ mod tests {
         t
     }
 
+    /// The one grammar of a piece id (the bot's ThemePieces, the panel's theme-apply.js and view.js read ids by it): a-z and
+    /// 0-9, in parts joined by single dashes. The app itself keeps only the list's own ids.
+    fn fits_piece_grammar(id: &str) -> bool {
+        id.split('-').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()))
+    }
+
     #[test]
     fn the_pieces_list_is_the_bots_own() {
         // one list for the panel, the creator, the bot and the mini-player: every theme this app knows, and nothing else
@@ -774,8 +780,11 @@ mod tests {
         for (theme, list) in pieces {
             assert!(!list.pieces.is_empty(), "{theme}");
             for p in &list.pieces {
-                assert!(!p.id.is_empty() && p.id.bytes().all(|b| b.is_ascii_lowercase()), "{theme}: {:?} fits in data-deco-off", p.id);
+                assert!(fits_piece_grammar(&p.id), "{theme}: {:?} fits in data-deco-off", p.id);
             }
+        }
+        for (id, fits) in [("glow", true), ("glow-2", true), ("a1", true), ("", false), ("Rays", false), ("a b", false), ("-a", false), ("a-", false), ("a--b", false)] {
+            assert_eq!(fits_piece_grammar(id), fits, "{id:?}");
         }
         let ids = |theme: &str| pieces[theme].pieces.iter().map(|p| (p.id.as_str(), p.background)).collect::<Vec<_>>();
         assert_eq!(ids("nebula"), [("glow", false)]);

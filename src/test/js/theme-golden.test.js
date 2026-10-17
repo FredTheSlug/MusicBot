@@ -436,7 +436,7 @@ test('piecesListMatchesTheSpec', () => {
     assert.deepEqual(pieces[id].pieces, expected, id);
     const ids = pieces[id].pieces.map((p) => p.id);
     assert.equal(new Set(ids).size, ids.length, id + ': ids are unique');
-    ids.forEach((pid) => assert.match(pid, /^[a-z]+$/, id + ': ' + pid + ' fits in data-deco-off'));
+    ids.forEach((pid) => assert.match(pid, ThemeApply.PIECE_ID, id + ': ' + pid + ' fits in data-deco-off'));
   }
   const special = { rasta: '#dc2626', cipher: '#22d3ee', ember: '#fde047' };
   for (const id of ThemeApply.BUILT_IN) {

@@ -152,8 +152,11 @@
     return null;
   }
 
-  /* A piece's id, as theme-pieces.json has them: what fits in data-deco-off. */
-  var PIECE_ID = /^[a-z]+$/;
+  /*
+   * A piece's id, as theme-pieces.json has them and the bot and the panel read them (one grammar: a-z and 0-9, in parts
+   * joined by single dashes; a test keeps the three equal): what fits in data-deco-off.
+   */
+  var PIECE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
   /** A custom version's pieces switched off, as data-deco-off holds them: piece ids, once each, in order ('' for none). */
   function decoOff(custom) {
@@ -635,7 +638,7 @@
     lyricsButtonEnabled: lyricsButtonEnabled,
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
     customVars: customVars, onAccent: onAccent, fontStack: fontStack, themeMenu: themeMenu, themeLabel: themeLabel,
-    pictureLayer: pictureLayer, themePicture: themePicture, CUSTOM_SLOTS: CUSTOM_SLOTS, FONT_STACKS: FONT_STACKS,
+    pictureLayer: pictureLayer, themePicture: themePicture, CUSTOM_SLOTS: CUSTOM_SLOTS, FONT_STACKS: FONT_STACKS, PIECE_ID: PIECE_ID,
     LIGHT_LEGIBILITY_SHADOW: LIGHT_LEGIBILITY_SHADOW, DARK_LEGIBILITY_SHADOW: DARK_LEGIBILITY_SHADOW, themeSetArgs: themeSetArgs,
     spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly, oneAtATime: oneAtATime,
     currentLyricIndex: currentLyricIndex, trackKey: trackKey

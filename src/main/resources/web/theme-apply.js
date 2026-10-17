@@ -44,7 +44,8 @@
     var COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
     /* The extra decoration color is never see-through (the server's rule too). */
     var OPAQUE_COLOR = /^#[0-9a-f]{6}$/i;
-    /* What a piece id looks like (theme-pieces.json): it goes into data-deco-off, a space-separated list. */
+    /* What a piece id looks like (theme-pieces.json): it goes into data-deco-off, a space-separated list. The bot's
+       ThemePieces and the mini-player's view.js read ids by the same pattern (a test keeps the three equal). */
     var PIECE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
     /* The secret link of a theme's picture, exactly as the server makes it. Anything else is not used. */
     var PICTURE_URL = /^\/theme-images\/[0-9a-f]{32}\.(?:jpg|png|webp|gif)$/;
@@ -296,6 +297,7 @@
         BUILT_IN: BUILT_IN,
         FONT_STACKS: FONT_STACKS,
         RADIUS_VARS: RADIUS_VARS,
+        PIECE_ID: PIECE_ID,
         UNTITLED: UNTITLED,
         localPicture: localPicture,
         pictureUrl: pictureUrl,
