@@ -2,7 +2,7 @@
   "goneOnPurpose": {
     "panel": {
       "rasta": {
-        "html[data-theme=\"rasta\"]|--card-shadow|1": "the green ring left the variable: the panel's own .card rule paints --card-shadow whatever the pieces, so with lyric off every card kept the ring; it is in Rasta's lyric .card rule now (html[data-theme=\"rasta\"] .card|box-shadow|1 still pins it)"
+        "html[data-theme=\"rasta\"]|--card-shadow|1": "the green ring left the variable: the panel's own .card rule paints --card-shadow, and a colour of the theme's own there would stay in a custom theme; the ring is Rasta's card style now, in its own .card rule from the accent triple (pinned in CARD_STYLE; html[data-theme=\"rasta\"] .card|box-shadow|1 still pins it)"
       },
       "cipher": {
         "html[data-theme=\"cipher\"]|--card-shadow|1": "the variable holds the black shadow alone now, so it is its only colour (|0, listed as changed); the black shadow and the ring it followed are both still pinned by html[data-theme=\"cipher\"] .card|box-shadow|0 and |1"

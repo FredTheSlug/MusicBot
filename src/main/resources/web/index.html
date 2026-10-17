@@ -3494,14 +3494,15 @@
             border-radius: 14px;
         }
 
-        /* Slate hairlines: the header's and the drag bars' borders, and the drag bars' slate wash */
+        /* Slate hairlines: the header's and the drag bars' borders, and the drag bars' slate wash, in the quieter text
+           colour (Grove's slate), so they stay slate in a custom palette */
         html[data-theme="grove"]:not([data-deco-off~="hairlines"]) .header {
-            border-bottom-color: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12);
+            border-bottom-color: color-mix(in srgb, var(--text-secondary) 12%, transparent);
         }
 
         html[data-theme="grove"]:not([data-deco-off~="hairlines"]) .layout-pane.card > .pane-drag-bar {
-            background: linear-gradient(180deg, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.08) 0%, color-mix(in srgb, var(--bg-secondary) 35%, transparent) 100%);
-            border-bottom-color: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12);
+            background: linear-gradient(180deg, color-mix(in srgb, var(--text-secondary) 8%, transparent) 0%, color-mix(in srgb, var(--bg-secondary) 35%, transparent) 100%);
+            border-bottom-color: color-mix(in srgb, var(--text-secondary) 12%, transparent);
         }
 
         html[data-theme="grove"] .login-overlay {
@@ -3705,7 +3706,11 @@
             contain: paint;
         }
 
-        /* The vermilion header lines: the header's border and the indigo line inside it */
+        html[data-theme="sumi"] .header {
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        /* The vermilion header lines: the header's border and the indigo line inside it (with the drop shadow above) */
         html[data-theme="sumi"]:not([data-deco-off~="lines"]) .header {
             border-bottom: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 -1px 0 rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.5);
@@ -3817,7 +3822,7 @@
             --logo-icon-radius: 12px;
             --logo-letter-spacing: -0.03em;
             --pane-history-align-max: 400px;
-            /* The card's shadow only (the panel's .card paints it): its green ring is the lyric piece's */
+            /* The card's shadow only (the panel's .card paints it): its green ring is in Rasta's .card rule */
             --card-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
             --card-title-spacing: 0.12em;
             --card-title-size: 0.72rem;
@@ -3850,9 +3855,11 @@
         html[data-custom-theme][data-theme="rasta"] {
             --rasta-green: color-mix(in srgb, var(--accent) 85%, black);
             --rasta-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 86%, black);
-            --rasta-title-green: color-mix(in srgb, var(--accent) 50%, var(--accent-light));
-            --rasta-title-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 75%, white);
-            --rasta-title-red: color-mix(in srgb, var(--deco-extra) 70%, white);
+            /* the titles' tones lean on the text colour, so every part of the gradient reads on the card (3:1 at
+               least) in a light palette as in a dark one */
+            --rasta-title-green: color-mix(in srgb, var(--accent) 55%, var(--text-primary));
+            --rasta-title-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 55%, var(--text-primary));
+            --rasta-title-red: color-mix(in srgb, var(--deco-extra) 55%, var(--text-primary));
             --rasta-bar-gold: color-mix(in srgb, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 69%, black);
             --rasta-bar-red: color-mix(in srgb, var(--deco-extra) 84%, black);
         }
@@ -3879,11 +3886,9 @@
             z-index: 1;
         }
 
+        /* The cards' edge (their border and green ring) is Rasta's card style, not a piece */
         html[data-theme="rasta"] .card {
             border: 1px solid var(--border);
-        }
-
-        html[data-theme="rasta"]:not([data-deco-off~="lyric"]) .card {
             box-shadow: var(--card-shadow), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
         }
 
@@ -4068,7 +4073,7 @@
                 rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.28) 68%,
                 color-mix(in srgb, var(--ember-amber) 18%, transparent) 88%,
                 transparent 100%);
-            opacity: 0.75;
+            opacity: 0.42;
             mix-blend-mode: screen;
             animation: emberFlameDecalFlicker 2.8s ease-in-out infinite reverse;
         }

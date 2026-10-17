@@ -602,7 +602,9 @@ const MINI_ONLY = { cipher: ['prompt'], neon: ['title'], ember: ['fire'], sumi: 
  * custom theme sets, so its colours reach it) or with plain black, white and see-through (cardStyleIsPinnedAndInTheSlots),
  * and none is on a pseudo-element (in a decorated theme that is a decoration's own layer). Steel's and Dawn Dark's
  * chrome is all of this kind: the spec counts no decoration colour of theirs, and the same rules are Aurora's and Dawn's,
- * themes without decorations. The others': plain borders, the login veil, label colours, Ember's card hairline.
+ * themes without decorations. The others': plain borders, the login veil, label colours, Ember's card hairline and
+ * Rasta's card ring (no piece of theirs is about the cards' edges), Sumi's header drop shadow (its lines piece takes
+ * only the vermilion and indigo lines).
  */
 const CARD_STYLE = {
   ember: [
@@ -611,11 +613,12 @@ const CARD_STYLE = {
     ['html[data-theme="ember"] .upload-zone', ['border-width']]
   ],
   rasta: [
-    ['html[data-theme="rasta"] .card', ['border']],
+    ['html[data-theme="rasta"] .card', ['border', 'box-shadow']],
     ['html[data-theme="rasta"] .guild-selector label', ['color']],
     ['html[data-theme="rasta"] .login-overlay', ['background']]
   ],
   sumi: [
+    ['html[data-theme="sumi"] .header', ['box-shadow']],
     ['html[data-theme="sumi"] .card', ['border']],
     ['html[data-theme="sumi"] .card-title', ['color']],
     ['html[data-theme="sumi"] .pane-header-row .card-title', ['color']],
@@ -1148,6 +1151,49 @@ test('neonTextUsesTheTextSlot', () => {
     .map((d) => d.spaced + ' { ' + d.decl.prop + ' }'), [], 'no white of its own but its text slot');
 });
 
+test('rastaTitlesStayReadableInCustomPalettes', () => {
+  // Rasta's card titles are a flag gradient seen through the letters: every part of it (the stops and the colours the
+  // browser blends between them) is at least 3:1 against the card, in generated light and dark palettes alike (the
+  // custom tones lean on the text colour, not on white), and in built-in Rasta
+  const css = Colors.panelCss();
+  const customRules = {};
+  panelDeclarations().filter((d) => d.rule.at.length === 0 &&
+    d.selector === 'html[data-custom-theme][data-theme="rasta"]').forEach((d) => {
+    customRules[d.decl.prop] = d.decl.value;
+  });
+  const titles = panelDeclarations().filter((d) => d.selector === 'html[data-theme="rasta"] .card-title' &&
+    d.decl.prop === 'background' && Colors.guardsOf(d.spaced).ids[0] === 'titles');
+  assert.equal(titles.length, 1);
+  const hex = (c) => '#' + c.slice(0, 3).map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0'))
+    .join('');
+  const worst = (vars) => {
+    const stops = Colors.declarationColours('background', titles[0].decl.value, vars).map((e) => Colors.evaluate(e, vars));
+    assert.equal(stops.length, 3);
+    const card = hex(Colors.evaluate('var(--bg-card)', vars));
+    let min = Infinity;
+    for (let i = 0; i + 1 < stops.length; i++) {
+      for (let step = 0; step <= 20; step++) {
+        const t = step / 20;
+        min = Math.min(min, ThemePalette.contrast(hex([0, 1, 2].map((k) => stops[i][k] * (1 - t) + stops[i + 1][k] * t)), card));
+      }
+    }
+    return min;
+  };
+  const builtIn = Colors.themeVars(css, 'rasta');
+  assert.ok(worst(builtIn) >= 3, 'built-in Rasta: ' + worst(builtIn).toFixed(2));
+  const palettes = [['#3b82f6', '#f8fafc', 'light'], ['#22c55e', '#ffffff', 'light'], ['#eab308', '#fffbeb', 'light'],
+    ['#dc2626', '#fff1f2', 'light'], ['#8b5cf6', '#faf5ff', 'light'], ['#3b82f6', '#0b1020', 'dark'],
+    ['#dc2626', '#0a0a0a', 'dark'], ['#eab308', '#000000', 'dark'], ['#22c55e', '#0b1410', 'dark'], ['#1e3a8a', '#020617', 'dark']];
+  const low = [];
+  for (const [accent, background, mode] of palettes) {
+    const vars = Object.assign({}, builtIn, customRules,
+      ThemePalette.cssVars(ThemePalette.generate(accent, background, mode)));
+    const ratio = worst(vars);
+    if (ratio < 3) low.push(accent + ' on ' + background + ' (' + mode + '): ' + ratio.toFixed(2) + ':1');
+  }
+  assert.deepEqual(low, []);
+});
+
 test('reducedMotionStopsEveryAnimatedPiece', () => {
   const found = motionProblems(REWRITTEN);
   const names = new Set(found.animated.flatMap((d) => d.decl.value.match(/[A-Za-z][\w-]*/g)
@@ -1266,6 +1312,105 @@ test('emberFlamesAreMasksNotColours', () => {
     assert.equal(value(prefix + 'mask-position'), value('background-position'), prefix + 'mask-position');
     assert.equal(value(prefix + 'mask-repeat'), value('background-repeat'), prefix + 'mask-repeat');
   }
+  // each gradient runs where its old picture's ran: top to bottom over the outline's height (an SVG gradient's offsets
+  // are of the shape's bounding box), its box the outline's whole viewBox
+  const layers = (text) => {
+    const out = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '(') depth++;
+      else if (text[i] === ')') depth--;
+      else if (text[i] === ',' && depth === 0) {
+        out.push(text.slice(start, i).trim());
+        start = i + 1;
+      }
+    }
+    return out.concat([text.slice(start).trim()]);
+  };
+  const masks = layers(value('mask-image'));
+  const gradients = layers(value('background-image'));
+  const sizes = layers(value('background-size'));
+  const written = [];
+  gradients.forEach((gradient, n) => {
+    const name = /^var\((--[-\w]+)\)$/.exec(masks[n])[1];
+    const svg = decodeURIComponent(/url\("([^"]*)"\)/.exec(vars[name])[1]);
+    const [box, path] = OLD_OUTLINES.find(([b, p]) => svg.includes("viewBox='" + b + "'") && svg.includes("d='" + p + "'"));
+    const [, , w, h] = box.split(' ').map(Number);
+    assert.match(sizes[n], new RegExp('^(min\\([^)]*\\)) calc\\(\\1 \\* ' + String(h / w).replace('.', '\\.') + '\\)$'),
+      'layer ' + n + ': the box is the viewBox, ' + w + ' by ' + h);
+    const ys = [];
+    let at = null;
+    let x0 = 0;
+    let y0 = 0;
+    for (const token of path.match(/[A-Za-z]|-?\d*\.?\d+/g)) {
+      if (/[A-Za-z]/.test(token)) {
+        at = { cmd: token, nums: [] };
+        continue;
+      }
+      at.nums.push(+token);
+      if (at.cmd === 'M' && at.nums.length === 2) {
+        [x0, y0] = at.nums;
+        ys.push(y0);
+        at.nums = [];
+      } else if (/^[Cc]$/.test(at.cmd) && at.nums.length === 6) {
+        const p = at.cmd === 'c' ? at.nums.map((v, k) => v + (k % 2 === 0 ? x0 : y0)) : at.nums;
+        for (let s = 0; s <= 2000; s++) {
+          const t = s / 2000;
+          const u = 1 - t;
+          ys.push(u * u * u * y0 + 3 * u * u * t * p[1] + 3 * u * t * t * p[3] + t * t * t * p[5]);
+        }
+        [x0, y0] = [p[4], p[5]];
+        at.nums = [];
+      }
+    }
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+    const args = layers(/^linear-gradient\((.*)\)$/.exec(gradient)[1]);
+    assert.equal(args.shift(), '180deg', 'layer ' + n + ': from the tip down');
+    const positions = args.map((a) => parseFloat(/(-?[\d.]+)%$/.exec(a)[1]));
+    const wanted = OLD_STOPS[n].map(([offset]) => 100 * (top + offset * (bottom - top)) / h);
+    positions.forEach((p, i) => assert.ok(Math.abs(p - wanted[i]) <= 0.01,
+      'layer ' + n + ', stop ' + i + ': ' + p + '% where the picture had ' + wanted[i].toFixed(3) + '%'));
+    written.push(positions);
+  });
+  assert.deepEqual(written, [[4.17, 43.43, 97.65], [4.17, 50.91, 97.65], [3.57, 54.75, 96.62], [3.57, 50.1, 96.62]]);
+});
+
+test('emberRestsAtItsQuietestFlicker', () => {
+  // where motion is reduced an animation stops and its element shows its own opacity: Ember's flames and flame edge rest
+  // at the flicker's quietest frame, never brighter than any frame they show while it runs
+  const frames = Colors.parseCss(Colors.panelCss()).filter((r) => r.type === 'keyframes' && r.name === 'emberFlameDecalFlicker');
+  assert.equal(frames.length, 1);
+  const opacities = frames[0].steps.flatMap((s) => s.decls.filter((d) => d.prop === 'opacity').map((d) => +d.value));
+  const quietest = Math.min(...opacities);
+  assert.equal(quietest, 0.42);
+  for (const [selector, piece] of [['html[data-theme="ember"] body::after', 'flames'], ['html[data-theme="ember"] .header::after', 'edge']]) {
+    const own = panelDeclarations().filter((d) => d.selector === selector && Colors.guardsOf(d.spaced).ids[0] === piece);
+    assert.ok(own.some((d) => d.decl.prop === 'animation' && /emberFlameDecalFlicker/.test(d.decl.value)), selector);
+    const opacity = own.filter((d) => d.decl.prop === 'opacity');
+    assert.equal(opacity.length, 1, selector);
+    assert.equal(+opacity[0].decl.value, quietest, selector + ' at rest');
+  }
+});
+
+test('groveHairlinesAreSlate', () => {
+  // the slate hairlines are the theme's quieter text colour (the same slate in built-in Grove), so they stay slate in a
+  // custom palette whatever its second accent
+  const css = Colors.panelCss();
+  const vars = Colors.themeVars(css, 'grove');
+  const hairlines = panelDeclarations().filter((d) => d.theme === 'grove' && Colors.guardsOf(d.spaced).ids[0] === 'hairlines' &&
+    !d.decl.prop.startsWith('--'));
+  const slate = [];
+  for (const d of hairlines) {
+    for (const expr of Colors.declarationColours(d.decl.prop, d.decl.value, vars)) {
+      const read = Colors.variablesRead(expr, vars);
+      if (read.has('--text-secondary')) slate.push(Colors.format(Colors.evaluate(expr, vars)).replace(/,[\d.]+\)$/, ')'));
+      assert.ok(![...read].some((name) => /^--accent2/.test(name)), d.spaced + ' { ' + d.decl.prop + ' }: ' + expr);
+    }
+  }
+  assert.ok(slate.length >= 3, 'the header\'s line, and the drag bars\' line and wash');
+  assert.deepEqual([...new Set(slate)], ['rgba(148,163,184)']);
 });
 
 test('sumiKanjiIsAMask', () => {
