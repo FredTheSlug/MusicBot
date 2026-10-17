@@ -1091,7 +1091,10 @@ test('the clipboard button sits in the bottom row after the Spotify logo, looks 
 
 test('one click asks the app to play the clipboard and shows its answer on the status line', () => {
   const mini = fs.readFileSync(path.join(__dirname, 'mini.js'), 'utf8');
-  assert.match(mini, /el\('pasteBtn'\)\.addEventListener\('click', function \(\) \{ runAction\('mini_play_clipboard'\); \}\);/);
+  assert.match(mini, /el\('pasteBtn'\)\.addEventListener\('click', function \(\) \{ runAction\('mini_play_clipboard', undefined, pasting\); \}\);/);
+  // The button is off while its paste is on its way, so a double click plays the link once.
+  assert.match(mini, /var pasting = MV\.oneAtATime\(function \(busy\) \{ el\('pasteBtn'\)\.disabled = busy; \}\);/);
+  assert.match(mini, /function runAction\(cmd, args, once\) \{/);
   // The page never reads the clipboard itself: the app does, so the window needs no clipboard permission.
   assert.doesNotMatch(mini, /navigator\.clipboard|clipboard-manager/);
   const granted = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'src-tauri', 'capabilities', 'mini-player.json'), 'utf8')).permissions;
@@ -1120,12 +1123,51 @@ test('the bottom row fits the 360 px window with every button, the sleep badge a
   assert.ok(buttons >= 7, 'every icon button: ' + buttons);
   const badge = 14; // ☾ at 0.8rem
   const gap = px(cssRule(MINI_CSS, '.bottom-row'), 'gap');
-  // The status line is one more item (and gap) in the row; it may shrink to nothing, never push a button out.
-  const needed = buttons * px(cssRule(MINI_CSS, '.icon-btn'), 'width') + badge + (buttons + 1) * gap;
+  // The buttons and the badge, with a gap between each; the status line is not in the row (it shows over the artist line).
+  const needed = buttons * px(cssRule(MINI_CSS, '.icon-btn'), 'width') + badge + buttons * gap;
   assert.ok(needed <= room, needed + ' px of buttons in ' + room + ' px');
-  const status = cssRule(MINI_CSS, '.bottom-row .status');
-  assert.match(status, /min-width:\s*0/, 'the status line can shrink to nothing');
-  assert.match(status, /flex:\s*1 1 0/, 'and takes only what is left');
+});
+
+test('in the full player a message takes the artist line\'s place, as it does in the compact bar', () => {
+  assert.match(cssRule(MINI_CSS, 'html:not(.compact) .info'), /position:\s*relative/, 'the message is placed within the song info');
+  // Only at full size: the compact bar's progress line runs along the card's bottom edge, placed by the card.
+  assert.doesNotMatch(cssRule(MINI_CSS, '.info'), /position:/);
+  assert.match(cssRule(MINI_CSS, '.meta'), /anchor-name:\s*--meta/);
+  const status = cssRule(MINI_CSS, 'html:not(.compact) .bottom-row .status');
+  assert.match(status, /position:\s*absolute/, 'out of the bottom row, so it needs no room there');
+  for (const side of ['top', 'left', 'right']) {
+    assert.match(status, new RegExp('\\b' + side + ':\\s*anchor\\(--meta ' + side + '\\)'), 'on the artist line: ' + side);
+    // Before the anchor: where the artist line sits, for a WebView without anchor positioning.
+    assert.ok(status.indexOf(side + ': ') < status.indexOf(side + ': anchor('), side + ' has a fallback first');
+  }
+  assert.match(MINI_CSS, /\nhtml:not\(\.compact\) \.info:has\(\.status:not\(:empty\)\) \.meta \{ visibility: hidden; \}/, 'the artist line steps aside');
+  assert.match(cssRule(MINI_CSS, 'html:not(.compact) .bottom-row #menuBtn'), /margin-left:\s*auto/, 'the menu stays at the right end');
+  // The compact bar keeps its own rules, as they were.
+  assert.match(MINI_CSS, /\nhtml\.compact \.status \{ grid-area: meta; display: none; \}\nhtml\.compact \.status:not\(:empty\) \{ display: block; \}\nhtml\.compact \.info:has\(\.status:not\(:empty\)\) \.meta \{ visibility: hidden; \}\n/);
+  // The whole message stays in the tooltip.
+  const mini = fs.readFileSync(path.join(__dirname, 'mini.js'), 'utf8');
+  assert.match(mini, /el\('status'\)\.title = message;/);
+});
+
+const { oneAtATime } = require('./view.js');
+
+test('oneAtATime runs one call at a time and says when it is busy', async () => {
+  const busy = [];
+  const once = oneAtATime((on) => busy.push(on));
+  let finish;
+  let calls = 0;
+  const first = once(() => { calls++; return new Promise((resolve) => { finish = resolve; }); });
+  assert.ok(first, 'the first click runs');
+  assert.equal(once(() => { calls++; return Promise.resolve('again'); }), null, 'a second click while it runs does nothing');
+  assert.deepEqual(busy, [true]);
+  finish('Playing the link');
+  assert.equal(await first, 'Playing the link');
+  assert.deepEqual(busy, [true, false], 'free again once it settles');
+  await assert.rejects(once(() => { calls++; return Promise.reject(new Error('no link')); }), /no link/);
+  assert.deepEqual(busy, [true, false, true, false], 'and after a refusal');
+  assert.throws(() => once(() => { calls++; throw new Error('broken'); }), /broken/);
+  assert.deepEqual(busy, [true, false, true, false, true, false], 'and after a call that could not start');
+  assert.equal(calls, 3);
 });
 
 test('every command the mini-player calls is granted to its window and registered with the app', () => {

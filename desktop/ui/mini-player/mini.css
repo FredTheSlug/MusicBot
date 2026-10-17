@@ -158,6 +158,8 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   min-height: 1em;
+  /* A message shows in its place (both sizes; see .status below). */
+  anchor-name: --meta;
 }
 
 .progress {
@@ -345,8 +347,8 @@ html.compact[data-theme="revival"] .art { inset: 12px; width: 24px; height: 24px
 html.compact[data-theme="revival"] .spindle { width: 4px; height: 4px; margin: -2px 0 0 -2px; }
 .close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
 
-/* Bottom row: Spotify logo, clipboard, lyrics, queue, +, ♥, sleep badge, status, menu. The window is always 360 px
-   wide: with every button showing (and Revival's wider record) the gaps are what keeps the menu button in the card. */
+/* Bottom row: Spotify logo, clipboard, lyrics, queue, +, ♥, sleep badge, menu. The window is always 360 px wide: with
+   every button showing (and Revival's wider record) the gaps are what keeps the menu button in the card. */
 .bottom-row {
   display: flex;
   align-items: center;
@@ -354,8 +356,22 @@ html.compact[data-theme="revival"] .spindle { width: 4px; height: 4px; margin: -
   min-width: 0;
 }
 
-/* The status line takes only what the buttons leave, down to nothing; the whole message is in its tooltip. */
-.bottom-row .status { flex: 1 1 0; min-width: 0; }
+/* Full size: the status line sits in the bottom row's markup but has no room there, so a message takes the artist
+   line's place for a moment, as in the compact bar (whose own rules above stay as they are). It is anchored to that
+   line; the first value of each side is where the line sits, for a WebView without anchor positioning. The whole
+   message is in its tooltip. */
+html:not(.compact) .info { position: relative; }
+html:not(.compact) .bottom-row .status {
+  position: absolute;
+  top: calc(1.02rem * 1.25 + 4px);
+  top: anchor(--meta top);
+  left: 0;
+  left: anchor(--meta left);
+  right: 18px;
+  right: anchor(--meta right);
+}
+html:not(.compact) .info:has(.status:not(:empty)) .meta { visibility: hidden; }
+html:not(.compact) .bottom-row #menuBtn { margin-left: auto; }
 
 .icon-btn {
   display: inline-flex;

@@ -322,7 +322,7 @@ fn main() {
             mini_player::create(app.handle())?;
             log::info!("start: panel {show_panel}, mini-player {show_mini} (with Windows: {hidden}, just updated: {updated})");
             if show_mini {
-                mini_player::show(app.handle());
+                mini_player::show_at_start(app.handle());
             }
             // After the mini-player, so the panel ends up in front.
             if show_panel {
@@ -399,6 +399,26 @@ fn main() {
         .expect("error while running the app");
 }
 
+/// Reading the app's own sources in tests, for wiring no unit test can reach (windows, the tray, startup).
+#[cfg(test)]
+pub(crate) mod source {
+    /// The code of a source file, without its tests.
+    pub fn code(source: &str) -> &str {
+        source.split("#[cfg(test)]").next().unwrap()
+    }
+
+    /// A top-level item, from where `start` is found to its closing brace at the start of a line (either line ending).
+    pub fn item<'a>(code: &'a str, start: &str) -> &'a str {
+        let from = &code[code.find(start).unwrap_or_else(|| panic!("{start} not found"))..];
+        &from[..from.find("\n}").unwrap_or(from.len())]
+    }
+
+    /// Every run of whitespace as one space, so a check doesn't depend on line breaks or indentation.
+    pub fn squash(code: &str) -> String {
+        code.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,36 +477,66 @@ mod tests {
         assert_eq!(remembered(last(true, false), ViewWindow::Panel, true), last(true, false));
     }
 
-    /// The code of a source file, without its tests.
-    fn code_of(source: &str) -> &str {
-        source.split("#[cfg(test)]").next().unwrap()
-    }
-
     #[test]
     fn fullscreen_and_sleep_hiding_is_never_remembered() {
         // The fullscreen hide is temporary: it goes straight to Windows and must not pass through the user's
         // show/hide paths, which remember the view. The sleep timer only pauses the music.
         let user_paths = ["remember_view", "mini_player::hide", "mini_player::toggle", "mini_player::show", "show_main", "settings::save"];
-        for (name, source) in [("fullscreen.rs", include_str!("fullscreen.rs")), ("sleep.rs", include_str!("sleep.rs"))] {
-            let code = code_of(source);
+        for (name, text) in [("fullscreen.rs", include_str!("fullscreen.rs")), ("sleep.rs", include_str!("sleep.rs"))] {
+            let code = source::code(text);
             assert!(code.len() > 1000, "{name} was read");
             for path in user_paths {
                 assert!(!code.contains(path), "{name} calls {path}");
             }
         }
         // ...and the user's paths do remember it.
-        let mini = code_of(include_str!("mini_player.rs"));
+        let mini = source::code(include_str!("mini_player.rs"));
         for path in ["pub fn show(", "pub fn hide("] {
-            let body = &mini[mini.find(path).unwrap_or_else(|| panic!("{path}"))..];
-            // To the closing brace at the start of a line (with either line ending).
-            let body = &body[..body.find("\n}").unwrap()];
-            assert!(body.contains("remember_view("), "{path} remembers the view");
+            assert!(source::item(mini, path).contains("remember_view("), "{path} remembers the view");
         }
-        let main = code_of(include_str!("main.rs"));
-        let show = &main[main.find("pub(crate) fn show_main(").unwrap()..];
-        assert!(show[..show.find("\n}").unwrap()].contains("remember_view("), "show_main remembers the view");
+        let main = source::code(include_str!("main.rs"));
+        assert!(source::item(main, "pub(crate) fn show_main(").contains("remember_view("), "show_main remembers the view");
         let close = &main[main.find("WindowEvent::CloseRequested").unwrap()..];
         assert!(close[..close.find("WindowEvent::Moved").unwrap()].contains("remember_view("), "closing the panel to the tray is remembered");
+    }
+
+    #[test]
+    fn the_panel_window_is_created_hidden_and_loads_in_the_background() {
+        let create = source::item(source::code(include_str!("main.rs")), "fn create_main_window(");
+        assert!(create.contains(".visible(false)"), "{create}");
+        assert_eq!(create.matches(".visible(").count(), 1, "{create}");
+    }
+
+    /// Everything the app does at start, squashed.
+    fn startup() -> String {
+        let main = source::code(include_str!("main.rs"));
+        source::squash(&main[main.find(".setup(|app|").unwrap()..main.find(".on_window_event(").unwrap()])
+    }
+
+    #[test]
+    fn startup_shows_the_restored_view_only() {
+        let setup = startup();
+        assert_eq!(setup.matches("show_main(").count(), 1, "{setup}");
+        assert!(setup.contains("if show_panel { show_main(app.handle()); }"), "{setup}");
+        assert!(setup.contains("if show_mini { mini_player::show_at_start(app.handle()); }"), "{setup}");
+        for user_path in ["mini_player::show(", "mini_player::toggle(", "set_focus"] {
+            assert!(!setup.contains(user_path), "{user_path}");
+        }
+    }
+
+    #[test]
+    fn an_update_never_pops_the_panel_up_when_it_isnt_in_the_restored_view() {
+        let setup = startup();
+        // The update decides the toast only; whether the panel shows is the restored view's call alone.
+        assert!(
+            setup.contains(
+                "if whats_new::after_launch(updated, show_panel) == whats_new::Announce::Toast { notify::show(app.handle(), &whats_new::update_toast(&version)); }"
+            ),
+            "{setup}"
+        );
+        for gate in ["if updated", "updated &&", "|| updated", "if show_whats_new"] {
+            assert!(!setup.contains(gate), "{gate}");
+        }
     }
 
     #[test]

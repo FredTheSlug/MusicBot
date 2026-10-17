@@ -268,6 +268,25 @@
     };
   }
 
+  /**
+   * One call at a time, for a button whose click must not run twice (a double click on the paste button plays one
+   * link). The result takes start, a function that returns a promise: it runs it and returns that promise, or returns
+   * null and does nothing while the last one is still out. busy(true) is told when a call starts, busy(false) once it
+   * settles, however it ends.
+   */
+  function oneAtATime(busy) {
+    var running = false;
+    function done() { running = false; busy(false); }
+    return function (start) {
+      if (running) return null;
+      running = true;
+      busy(true);
+      var asked;
+      try { asked = start(); } catch (e) { done(); throw e; }
+      return asked.then(function (value) { done(); return value; }, function (e) { done(); throw e; });
+    };
+  }
+
   /** Index of the lyric line being sung at positionMs (the last line that has started), or -1. */
   function currentLyricIndex(lines, positionMs) {
     var lo = 0, hi = (lines ? lines.length : 0) - 1, found = -1;
@@ -575,7 +594,7 @@
     customVars: customVars, onAccent: onAccent, fontStack: fontStack, themeMenu: themeMenu, themeLabel: themeLabel,
     pictureLayer: pictureLayer, themePicture: themePicture, CUSTOM_SLOTS: CUSTOM_SLOTS, FONT_STACKS: FONT_STACKS,
     LIGHT_LEGIBILITY_SHADOW: LIGHT_LEGIBILITY_SHADOW, themeSetArgs: themeSetArgs,
-    spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly,
+    spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly, oneAtATime: oneAtATime,
     currentLyricIndex: currentLyricIndex, trackKey: trackKey
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

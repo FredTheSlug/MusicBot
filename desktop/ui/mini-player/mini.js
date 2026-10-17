@@ -169,7 +169,7 @@
   }
 
   function showStatus(message) {
-    // The line is short (and shorter still with the + beside it); hovering shows the whole message.
+    // It shows over the artist line for a moment (mini.css); hovering shows the whole message.
     el('status').textContent = message;
     el('status').title = message;
     clearTimeout(statusTimer);
@@ -350,14 +350,19 @@
     btn.setAttribute('aria-label', sv.tooltip);
   }
 
-  /** Runs a command that answers with a message for the status line. */
-  function runAction(cmd, args) {
-    invoke(cmd, args).then(function (msg) { if (msg) showStatus(msg); }).catch(function (e) { showStatus(String(e)); });
+  /** Runs a command that answers with a message for the status line. once (MV.oneAtATime, optional) drops clicks while one is out. */
+  function runAction(cmd, args, once) {
+    function ask() { return invoke(cmd, args); }
+    var asked = once ? once(ask) : ask();
+    if (!asked) return;
+    asked.then(function (msg) { if (msg) showStatus(msg); }).catch(function (e) { showStatus(String(e)); });
   }
 
   el('spotifyBtn').addEventListener('click', function () { runAction('mini_send_spotify'); });
   // The app reads the clipboard and plays a link on it as the search box would; its answer goes on the status line.
-  el('pasteBtn').addEventListener('click', function () { runAction('mini_play_clipboard'); });
+  // The button is off until that answer is in, so a double click plays the link once.
+  var pasting = MV.oneAtATime(function (busy) { el('pasteBtn').disabled = busy; });
+  el('pasteBtn').addEventListener('click', function () { runAction('mini_play_clipboard', undefined, pasting); });
 
   var dragDepth = 0;
   window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; el('mini').classList.add('dropping'); });

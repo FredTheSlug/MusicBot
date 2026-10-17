@@ -94,9 +94,10 @@ fn fullscreen_now() -> bool {
 
 /// The app's own hide and show go straight to Windows, both of them, so tao's record of the
 /// window ("shown") stays true across the pair and later user hides/shows keep working. Showing
-/// this way doesn't take focus from whatever the user went back to.
+/// this way doesn't take focus from whatever the user went back to. The mini-player's own show at
+/// start uses it too (`show_at_start`), as does its hide when tao's record is behind.
 #[cfg(windows)]
-fn set_shown_quietly(app: &AppHandle, shown: bool) {
+pub(crate) fn set_shown_quietly(app: &AppHandle, shown: bool) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE};
     let Some(window) = app.get_webview_window(mini_player::LABEL) else { return };
@@ -108,7 +109,7 @@ fn set_shown_quietly(app: &AppHandle, shown: bool) {
 }
 
 #[cfg(not(windows))]
-fn set_shown_quietly(app: &AppHandle, shown: bool) {
+pub(crate) fn set_shown_quietly(app: &AppHandle, shown: bool) {
     if let Some(window) = app.get_webview_window(mini_player::LABEL) {
         let _ = if shown { window.show() } else { window.hide() };
     }

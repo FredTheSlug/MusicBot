@@ -180,12 +180,39 @@ pub fn toggle(app: &AppHandle) {
     }
 }
 
-/// Shows the mini-player on its saved spot, at the user's request (or at start, when it was open last time).
+/// Shows the mini-player on its saved spot at the user's request, in front and focused.
 pub fn show(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(LABEL) else { return };
+    let Some(window) = place(app) else { return };
+    let _ = window.show();
+    let _ = window.set_focus();
+    remember_view(app, ViewWindow::Mini, true);
+    after_show(app);
+}
+
+/// Shows the mini-player at start, bringing back the last view: on top, but without taking the focus (started with
+/// Windows, the keyboard stays with whatever the person opened first). Tao is not told, so it still has the window as
+/// hidden: `hide` copes with that, and `place` puts its record right before any later show.
+pub fn show_at_start(app: &AppHandle) {
+    if place(app).is_none() {
+        return;
+    }
+    crate::fullscreen::set_shown_quietly(app, true);
+    after_show(app);
+}
+
+/// Fresh state, themes and likes for a mini-player that just appeared.
+fn after_show(app: &AppHandle) {
+    emit_state(app);
+    refresh_themes_in_background(app);
+    refresh_likes_in_background(app);
+}
+
+/// Moves the hidden mini-player to its saved spot (or the default one), ready to be shown.
+fn place(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    let window = app.get_webview_window(LABEL)?;
     crate::fullscreen::forget_auto_hide();
     // The fullscreen hide bypasses tao, which then still thinks the window is shown; hiding first
-    // brings its record back in line so the show below actually happens.
+    // brings its record back in line so the caller's show actually happens.
     let _ = window.hide();
     let monitors: Vec<Rect> = window
         .available_monitors()
@@ -204,12 +231,7 @@ pub fn show(app: &AppHandle) {
     };
     let (x, y) = resolve_position(saved, &monitors, size);
     let _ = window.set_position(PhysicalPosition::new(x, y));
-    let _ = window.show();
-    let _ = window.set_focus();
-    remember_view(app, ViewWindow::Mini, true);
-    emit_state(app);
-    refresh_themes_in_background(app);
-    refresh_likes_in_background(app);
+    Some(window)
 }
 
 fn epoch_ms() -> u64 {
@@ -514,6 +536,10 @@ pub fn hide(app: &AppHandle) {
     collapse(app);
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();
+        // Shown at start (`show_at_start`), the window is one tao still has as hidden, so its hide did nothing.
+        if window.is_visible().unwrap_or(false) {
+            crate::fullscreen::set_shown_quietly(app, false);
+        }
     }
     remember_view(app, ViewWindow::Mini, false);
 }
@@ -869,42 +895,91 @@ pub async fn mini_play_link(app: AppHandle, text: String) -> Result<String, Stri
 
 // ---- Play link from clipboard (the bottom row's button and the tray) ----
 
-/// What a link on the clipboard plays: exactly what the search box sends for a pasted link.
-fn clipboard_command(text: &str) -> Result<BotCommand, String> {
-    lookup::link_command(text).map_err(|_| "The clipboard doesn't have a link to play".to_string())
+const NO_CLIPBOARD_LINK: &str = "The clipboard doesn't have a link to play";
+/// More text than this on the clipboard is not a link someone copied: it isn't even looked through.
+const CLIPBOARD_MAX_BYTES: usize = 64 * 1024;
+
+/// Where a link goes, for the reply and the log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkKind {
+    Spotify,
+    YouTube,
+    SoundCloud,
+    Other,
 }
 
-fn link_kind(text: &str) -> &'static str {
-    match lookup::link_command(text) {
-        Ok(BotCommand::PlaySpotifyLink(_)) => "spotify link",
-        Ok(BotCommand::PlayQuery(url)) => {
-            let host = url::Url::parse(&url).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)).unwrap_or_default();
-            let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
-            if on("youtube.com") || on("youtu.be") {
-                "youtube link"
-            } else if on("soundcloud.com") {
-                "soundcloud link"
-            } else {
-                "other link"
+impl LinkKind {
+    fn of(cmd: &BotCommand) -> LinkKind {
+        match cmd {
+            BotCommand::PlaySpotifyLink(_) => LinkKind::Spotify,
+            BotCommand::PlayQuery(url) => {
+                let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)).unwrap_or_default();
+                let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+                if on("youtube.com") || on("youtu.be") {
+                    LinkKind::YouTube
+                } else if on("soundcloud.com") {
+                    LinkKind::SoundCloud
+                } else {
+                    LinkKind::Other
+                }
             }
+            _ => LinkKind::Other,
         }
-        Ok(_) => "other link",
-        Err(_) => "not a link",
+    }
+
+    fn playing(self) -> &'static str {
+        match self {
+            LinkKind::Spotify => "Playing the Spotify link",
+            LinkKind::YouTube => "Playing the YouTube link",
+            LinkKind::SoundCloud => "Playing the SoundCloud link",
+            LinkKind::Other => PLAYING_THE_LINK,
+        }
+    }
+
+    fn log_name(self) -> &'static str {
+        match self {
+            LinkKind::Spotify => "spotify link",
+            LinkKind::YouTube => "youtube link",
+            LinkKind::SoundCloud => "soundcloud link",
+            LinkKind::Other => "other link",
+        }
+    }
+}
+
+/// What the clipboard's text plays, worked out once: exactly what the search box sends for a pasted link, and its kind.
+fn clipboard_link(text: &str) -> Result<(BotCommand, LinkKind), String> {
+    if text.len() > CLIPBOARD_MAX_BYTES {
+        return Err(NO_CLIPBOARD_LINK.to_string());
+    }
+    match lookup::link_command(text) {
+        Ok(cmd) => {
+            let kind = LinkKind::of(&cmd);
+            Ok((cmd, kind))
+        }
+        Err(e) if e == lookup::NOT_A_LINK => Err(NO_CLIPBOARD_LINK.to_string()),
+        Err(e) => Err(e),
     }
 }
 
 /// What gets logged about the clipboard: the kind of link and its length, never the text, which may be anything.
-fn clipboard_log(text: &str) -> String {
-    format!("play from clipboard: {} ({} chars)", link_kind(text), text.chars().count())
+fn clipboard_log(text: &str, link: &Result<(BotCommand, LinkKind), String>) -> String {
+    let what = match link {
+        Ok((_, kind)) => kind.log_name(),
+        Err(e) if e == lookup::LINK_TOO_LONG => "link too long",
+        Err(_) => "not a link",
+    };
+    format!("play from clipboard: {what} ({} chars)", text.chars().count())
 }
 
 /// Plays the link on the clipboard. Blocking: call off the main thread.
 pub fn play_clipboard(app: &AppHandle) -> Result<String, String> {
     // No text at all (an empty clipboard, a picture) is the same as text without a link.
     let text = app.clipboard().read_text().unwrap_or_default();
-    log::info!("{}", clipboard_log(&text));
-    bridge::send_command_await(app, clipboard_command(&text)?, COMMAND_TIMEOUT)?;
-    Ok(PLAYING_THE_LINK.to_string())
+    let link = clipboard_link(&text);
+    log::info!("{}", clipboard_log(&text, &link));
+    let (cmd, kind) = link?;
+    bridge::send_command_await(app, cmd, COMMAND_TIMEOUT)?;
+    Ok(kind.playing().to_string())
 }
 
 #[tauri::command]
@@ -1036,20 +1111,53 @@ mod tests {
             "watch https://example.com/live.m3u8 now",
         ];
         for text in links {
-            assert_eq!(clipboard_command(text), lookup::link_command(text), "{text:?}");
+            assert_eq!(clipboard_link(text).map(|(cmd, _)| cmd), lookup::link_command(text), "{text:?}");
         }
         assert_eq!(
-            clipboard_command("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x"),
-            Ok(BotCommand::PlaySpotifyLink("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M".into()))
+            clipboard_link("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x"),
+            Ok((BotCommand::PlaySpotifyLink("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M".into()), LinkKind::Spotify))
         );
-        assert_eq!(clipboard_command("  https://youtu.be/abc\r\n"), Ok(BotCommand::PlayQuery("https://youtu.be/abc".into())));
+        assert_eq!(clipboard_link("  https://youtu.be/abc\r\n"), Ok((BotCommand::PlayQuery("https://youtu.be/abc".into()), LinkKind::YouTube)));
     }
+
+    const NO_LINK: &str = "The clipboard doesn't have a link to play";
 
     #[test]
     fn a_clipboard_without_a_link_says_so() {
         for text in ["", "   \n", "daft punk", "httpx://nope", "spotify:user:x", "www.youtube.com/watch?v=x"] {
-            assert_eq!(clipboard_command(text), Err("The clipboard doesn't have a link to play".to_string()), "{text:?}");
+            assert_eq!(clipboard_link(text), Err(NO_LINK.to_string()), "{text:?}");
         }
+    }
+
+    #[test]
+    fn a_clipboard_over_64_kib_is_not_a_link_even_with_one_in_it() {
+        let head = "https://youtu.be/abc ";
+        let fits = format!("{head}{}", "x".repeat(64 * 1024 - head.len()));
+        assert_eq!(fits.len(), 64 * 1024);
+        assert!(clipboard_link(&fits).is_ok());
+        let big = format!("{fits}x");
+        assert_eq!(clipboard_link(&big), Err(NO_LINK.to_string()));
+        assert!(clipboard_log(&big, &clipboard_link(&big)).contains(&format!("not a link ({} chars)", big.len())));
+    }
+
+    #[test]
+    fn a_link_over_4_kib_on_the_clipboard_is_too_long() {
+        let long = format!("https://example.com/{}", "a".repeat(5000));
+        assert_eq!(clipboard_link(&long), Err("That link is too long".to_string()));
+        let line = clipboard_log(&long, &clipboard_link(&long));
+        assert!(line.contains("link too long") && !line.contains("example"), "{line}");
+    }
+
+    #[test]
+    fn the_reply_names_the_kind_of_link() {
+        let reply = |text: &str| clipboard_link(text).map(|(_, kind)| kind.playing());
+        assert_eq!(reply("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"), Ok("Playing the Spotify link"));
+        assert_eq!(reply("spotify:album:1ATL5GLyefJaxhQzSPVrLX"), Ok("Playing the Spotify link"));
+        assert_eq!(reply("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), Ok("Playing the YouTube link"));
+        assert_eq!(reply("https://youtu.be/dQw4w9WgXcQ"), Ok("Playing the YouTube link"));
+        assert_eq!(reply("https://on.soundcloud.com/AbCdE"), Ok("Playing the SoundCloud link"));
+        assert_eq!(reply("https://example.com/live.m3u8"), Ok("Playing the link"));
+        assert_eq!(reply("https://youtube.com.evil.io/watch"), Ok("Playing the link"));
     }
 
     #[test]
@@ -1069,12 +1177,38 @@ mod tests {
             ("", "not a link"),
         ];
         for (text, kind) in cases {
-            let line = clipboard_log(text);
+            let line = clipboard_log(text, &clipboard_link(text));
             assert!(line.contains(&format!("{kind} ({} chars)", text.chars().count())), "{text:?}: {line}");
             for secret in ["SECRET", "hunter2", "dQw4w9WgXcQ", "4uLU6hMCjMI75M1A2tKUQC", "1ATL5GLyefJaxhQzSPVrLX", "AbCdE", "example.com", "evil", "http"] {
                 assert!(!line.contains(secret), "{text:?}: {line}");
             }
         }
+    }
+
+    #[test]
+    fn the_clipboard_text_is_worked_out_once_and_logged_only_by_clipboard_log() {
+        use crate::source;
+        let code = source::code(include_str!("mini_player.rs"));
+        let play = source::squash(source::item(code, "pub fn play_clipboard("));
+        assert_eq!(play.matches("clipboard_link(").count(), 1, "{play}");
+        assert_eq!(play.matches("link_command(").count(), 0, "{play}");
+        assert_eq!(play.matches("log::").count(), 1, "{play}");
+        assert!(play.contains(r#"log::info!("{}", clipboard_log(&text, &link));"#), "{play}");
+        assert!(!source::item(code, "fn clipboard_log(").contains("link_command"));
+        // Spotify's code no longer reads the clipboard at all.
+        assert!(!source::code(include_str!("spotify.rs")).contains("clipboard()"));
+    }
+
+    #[test]
+    fn the_mini_player_shown_at_start_takes_no_focus_and_the_users_shows_do() {
+        use crate::source;
+        let code = source::code(include_str!("mini_player.rs"));
+        let at_start = source::item(code, "pub fn show_at_start(");
+        assert!(at_start.contains("set_shown_quietly(app, true)"), "{at_start}");
+        assert!(!at_start.contains("set_focus") && !at_start.contains(".show()"), "{at_start}");
+        assert!(source::item(code, "pub fn show(").contains("set_focus()"));
+        // Shown quietly, tao still has the window as hidden and its own hide does nothing: hiding mustn't depend on it.
+        assert!(source::item(code, "pub fn hide(").contains("set_shown_quietly(app, false)"));
     }
 
     const SIZE: (u32, u32) = (360, 140);

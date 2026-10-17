@@ -294,6 +294,18 @@ mod tests {
     }
 
     #[test]
+    fn the_tray_plays_any_link_from_the_clipboard_by_the_mini_players_path() {
+        use crate::source;
+        let code = source::code(include_str!("tray.rs"));
+        let squashed = source::squash(code);
+        assert!(squashed.contains(r#"MenuItem::with_id(app, PLAY_CLIPBOARD, "Play link from clipboard", true, None::<&str>)?"#));
+        assert!(squashed.contains("PLAY_CLIPBOARD => { run_action(app, mini_player::play_clipboard); None }"));
+        assert!(!squashed.contains("Spotify link from clipboard"));
+        // run_action only hands the answer on: what was on the clipboard is logged by clipboard_log alone.
+        assert!(!source::item(code, "pub(crate) fn run_action(").contains("log::"));
+    }
+
+    #[test]
     fn tooltip_truncates_on_char_boundary() {
         let result = tooltip_text(Some(&playing(&"🎵".repeat(100), "Artist")), false);
         assert!(result.encode_utf16().count() <= 127, "{} units", result.encode_utf16().count());

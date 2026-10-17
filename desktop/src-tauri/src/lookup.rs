@@ -287,15 +287,24 @@ pub fn lyrics_command(track: Option<&Track>) -> Result<BotCommand, String> {
     Ok(BotCommand::Lyrics { title: track.title.clone(), author: track.author.clone(), duration_ms: track.duration_ms })
 }
 
+pub const NOT_A_LINK: &str = "That's not a link";
+pub const LINK_TOO_LONG: &str = "That link is too long";
+/// No link the bot plays is anywhere near this long; one that is goes no further than here.
+const MAX_LINK_BYTES: usize = 4 * 1024;
+
 /// What to send for a pasted link: Spotify links in the form the bot resolves, else the first web link.
 pub fn link_command(text: &str) -> Result<BotCommand, String> {
+    let checked = |link: &str| if link.len() > MAX_LINK_BYTES { Err(LINK_TOO_LONG.to_string()) } else { Ok(()) };
     if let Some(link) = parse_spotify_link(text) {
+        checked(&link)?;
         return Ok(BotCommand::PlaySpotifyLink(link));
     }
-    text.split_whitespace()
+    let url = text
+        .split_whitespace()
         .find(|word| word.starts_with("http://") || word.starts_with("https://"))
-        .map(|url| BotCommand::PlayQuery(url.to_string()))
-        .ok_or_else(|| "That's not a link".to_string())
+        .ok_or_else(|| NOT_A_LINK.to_string())?;
+    checked(url)?;
+    Ok(BotCommand::PlayQuery(url.to_string()))
 }
 
 #[cfg(test)]
@@ -639,5 +648,18 @@ mod tests {
         );
         assert_eq!(link_command("watch https://youtu.be/abc now"), Ok(BotCommand::PlayQuery("https://youtu.be/abc".into())));
         assert_eq!(link_command("just words"), Err("That's not a link".to_string()));
+    }
+
+    #[test]
+    fn a_link_over_4_kib_is_too_long() {
+        let base = "https://example.com/";
+        let fits = format!("{base}{}", "a".repeat(4096 - base.len()));
+        assert_eq!(fits.len(), 4096);
+        assert_eq!(link_command(&fits), Ok(BotCommand::PlayQuery(fits.clone())));
+        let long = format!("{fits}a");
+        assert_eq!(link_command(&long), Err("That link is too long".to_string()));
+        assert_eq!(link_command(&format!("play {long} now")), Err("That link is too long".to_string()));
+        let spotify = format!("https://open.spotify.com/track/{}", "A".repeat(5000));
+        assert_eq!(link_command(&spotify), Err("That link is too long".to_string()));
     }
 }

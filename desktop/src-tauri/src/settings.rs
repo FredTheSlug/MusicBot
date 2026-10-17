@@ -5,8 +5,8 @@ use crate::hotkeys::Hotkeys;
 use crate::theme::PanelTheme;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io;
-use std::path::Path;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER_URL: &str = "https://cloutkings.duckdns.org";
 const PANEL_PATH: &str = "/web/index.html";
@@ -125,11 +125,27 @@ pub fn load(path: &Path) -> Settings {
     }
 }
 
+/// Writes the whole file beside the old one, then swaps it in (a rename replaces the old file, on Windows too): a crash
+/// or a full disk mid-write leaves the old settings as they were, never a half-written file `load` would reset.
 pub fn save(path: &Path, settings: &Settings) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    fs::write(path, serde_json::to_string_pretty(settings).map_err(io::Error::other)?)
+    let text = serde_json::to_string_pretty(settings).map_err(io::Error::other)?;
+    let mut temp = path.as_os_str().to_owned();
+    temp.push(".tmp");
+    let temp = PathBuf::from(temp);
+    let written = (|| {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(text.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&temp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    written
 }
 
 #[cfg(test)]
@@ -212,6 +228,34 @@ mod tests {
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains(r#""lastView": {"#) && text.contains(r#""panel": false"#) && text.contains(r#""mini": false"#), "{text}");
         assert_eq!(load(&path), both_closed);
+    }
+
+    #[test]
+    fn a_save_that_fails_leaves_the_old_file_as_it_was() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        let old = Settings { notify_up_next: false, last_view: LastView { panel: false, mini: true }, ..Settings::default() };
+        save(&path, &old).unwrap();
+        let before = fs::read(&path).unwrap();
+        // The save goes to a temporary file beside it first; a folder in that spot makes the write fail.
+        fs::create_dir(d.path().join("settings.json.tmp")).unwrap();
+        assert!(save(&path, &Settings::default()).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before, "untouched, not half written");
+        assert_eq!(load(&path), old);
+    }
+
+    #[test]
+    fn a_save_replaces_the_whole_file_and_leaves_nothing_beside_it() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        save(&path, &Settings { notify_now_playing: false, ..Settings::default() }).unwrap();
+        // What a crash mid-write left behind last time doesn't get in the way.
+        fs::write(d.path().join("settings.json.tmp"), "{half a fi").unwrap();
+        let new = Settings { mini_player_compact: true, ..Settings::default() };
+        save(&path, &new).unwrap();
+        assert_eq!(load(&path), new);
+        let names: Vec<_> = fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        assert_eq!(names, ["settings.json"]);
     }
 
     #[test]
