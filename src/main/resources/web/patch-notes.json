@@ -1,6 +1,23 @@
 {
   "notes": [
     {
+      "id": "2026-10-17",
+      "date": "2026-10-17",
+      "title": "More control over your themes",
+      "app": "0.7.0",
+      "items": [
+        { "area": "Panel", "text": "Your custom themes' decorations now follow your colors. Revival's spinning record, Ember's flames, Neon's rails and the rest used to keep their own theme's colors. Now they take yours." },
+        { "area": "Panel", "text": "Pick which decorations to keep. In the theme creator, \"Want to tweak more?\" on the Fine-tune step lists your starting theme's decorations with a switch each, so you can keep Revival's record and turn off its sunburst rays." },
+        { "area": "Panel", "text": "On the Colors step, \"Use colors from\" fills in all the colors of any built-in theme with one click. You can still change the main color afterwards." },
+        { "area": "Panel", "text": "Themes with decorations get an \"Extra decoration color\" in Fine-tune, for the parts that had a color of their own, like Rasta's red or Cipher's cyan." },
+        { "area": "Panel", "text": "Themes you've already made keep their decorations, now in their own colors. A theme saved with special effects off has its decorations switched off. With a background picture, the decorations that would cover it stay off." },
+        { "area": "Panel", "text": "The theme creator's mini-player preview now shows exactly what the app will show." },
+        { "area": "Mini-player", "text": "A custom theme's mini-player version now looks like its starting theme, decorations included, in your colors and with the same decorations switched off. You need the updated app (0.7.0) to see it." },
+        { "area": "Mini-player", "text": "New button on the bottom row: it plays the Spotify, SoundCloud or YouTube link on your clipboard. \"Play link from clipboard\" is in the tray menu too." },
+        { "area": "App", "text": "The app opens the way you left it. If you only use the mini-player, it starts as just the mini-player, also when it starts with Windows." }
+      ]
+    },
+    {
       "id": "2026-10-15-2",
       "date": "2026-10-15",
       "title": "SoundCloud plays again",
