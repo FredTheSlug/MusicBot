@@ -1235,6 +1235,14 @@ test('sumiKanjiIsAMask', () => {
   assertCarriesNoColour(svg, 'sumi-kanji-tile.svg');
   assert.ok(!/\b(opacity|fill-opacity|stroke-opacity)\s*=/.test(svg), 'its alpha is the stylesheet\'s 7%, not the tile\'s');
   assert.equal((svg.match(/<text\b/g) || []).length, 4, 'the tile\'s four glyphs');
+  // Each glyph is a kanji written as a character reference (墨 音 楽 和), never a replacement character.
+  assert.ok(!svg.includes('\uFFFD'), 'no U+FFFD placeholder glyphs');
+  const glyphs = [...svg.matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
+  assert.deepEqual(glyphs, ['&#x58A8;', '&#x97F3;', '&#x697D;', '&#x548C;']);
+  for (const g of glyphs) {
+    const code = parseInt(g.slice(3, -1), 16);
+    assert.ok(code >= 0x4E00 && code <= 0x9FFF, g + ' is a CJK ideograph');
+  }
 });
 
 test('everyThemeBlockDefinesItsDecoExtra', () => {
