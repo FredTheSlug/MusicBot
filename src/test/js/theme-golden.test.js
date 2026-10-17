@@ -14,6 +14,7 @@ const path = require('node:path');
 const Colors = require('./css-colors.js');
 const ThemeApply = require('../../main/resources/web/theme-apply.js');
 const ThemeCreator = require('../../main/resources/web/theme-creator.js');
+const ThemePalette = require('../../main/resources/web/theme-palette.js');
 
 const ROOT = path.join(__dirname, '../../..');
 
@@ -259,21 +260,53 @@ test('variablesSetBelowTheThemeBlockAreRefused', () => {
 
 test('aNewDecorationIsReportedUnlessListedAsNew', () => {
   const golden = Colors.snapshot(SAMPLE, 'x');
+  const key = 'html[data-theme="x"] .card::after|box-shadow|0';
   const added = SAMPLE + '\nhtml[data-theme="x"]:not([data-deco-off~="glows"]) .card::after { box-shadow: 0 0 40px #ff00ff; }';
   assert.deepEqual(Colors.compareToGolden(golden, added, 'x'),
     ['new: html[data-theme="x"] .card::after|box-shadow|0 (rgba(255,0,255,1))']);
-  assert.deepEqual(Colors.compareToGolden(golden, added, 'x',
-    { added: ['html[data-theme="x"] .card::after|box-shadow|0'] }), []);
+  // a key listed as new is listed with its colour, and stays pinned to it (within the golden tolerance)
+  assert.deepEqual(Colors.compareToGolden(golden, added, 'x', { added: { [key]: 'rgba(255,0,255,1)' } }), []);
+  assert.deepEqual(Colors.compareToGolden(golden, added.replace('#ff00ff', '#fe01fe'), 'x',
+    { added: { [key]: 'rgba(255,0,255,1)' } }), []);
+  assert.deepEqual(Colors.compareToGolden(golden, added.replace('#ff00ff', '#00ff00'), 'x',
+    { added: { [key]: 'rgba(255,0,255,1)' } }),
+  ['changed: ' + key + ': listed as new with rgba(255,0,255,1), now rgba(0,255,0,1) (#00ff00)']);
+  assert.throws(() => Colors.compareToGolden(golden, added, 'x', { added: { [key]: 'magenta' } }), /not a golden colour/);
+  assert.throws(() => Colors.compareToGolden(golden, added, 'x', { added: [key] }), /with its colour/);
   // a new variable is not a decoration until a rule paints with it
   assert.deepEqual(Colors.compareToGolden(golden,
     SAMPLE.replace('--accent-light: #f2a882;', '--accent-light: #f2a882; --deco-extra: #fde047;'), 'x'), []);
-  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x', { added: ['html[data-theme="x"] .nope|color|0'] }),
-    ['listed as new but not there: html[data-theme="x"] .nope|color|0']);
-  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x', { added: ['html[data-theme="x"] .card|background|0'] }),
-    ['listed as new but golden: html[data-theme="x"] .card|background|0']);
+  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x',
+    { added: { 'html[data-theme="x"] .nope|color|0': 'rgba(0,0,0,1)' } }),
+  ['listed as new but not there: html[data-theme="x"] .nope|color|0']);
+  assert.deepEqual(Colors.compareToGolden(golden, SAMPLE, 'x',
+    { added: { 'html[data-theme="x"] .card|background|0': 'rgba(242,179,94,0.2)' } }),
+  ['listed as new but golden: html[data-theme="x"] .card|background|0']);
   const unreadable = SAMPLE + '\nhtml[data-theme="x"] .card::after { color: color-mix(in oklab, #000, #fff); }';
-  assert.match(Colors.compareToGolden(golden, unreadable, 'x', { added: ['html[data-theme="x"] .card::after|color|0'] })
+  assert.match(Colors.compareToGolden(golden, unreadable, 'x',
+    { added: { 'html[data-theme="x"] .card::after|color|0': 'rgba(128,128,128,1)' } })
     .join('\n'), /can't evaluate: html\[data-theme="x"\] \.card::after\|color\|0/);
+});
+
+test('changedOnPurposeRefusesTheColourSlots', () => {
+  // only a theme's own variables may turn plain: a slot (what a custom theme sets) or an accent triple is the theme's
+  // colour itself, and listing one would let every rule painting with it change unseen
+  const golden = Colors.snapshot(SAMPLE, 'x');
+  const black = SAMPLE.replace('--accent-light: #f2a882;', '--accent-light: #000000;');
+  const light = 'html[data-theme="x"]|--accent-light|0';
+  assert.deepEqual(Colors.compareToGolden(golden, black, 'x', { changed: [light] }),
+    ['listed as changed but a colour slot (a custom theme sets it): ' + light]);
+  const triple = 'html[data-theme="x"]|--accent-rgb|0';
+  const blackTriple = SAMPLE.replace('--accent-r: 226; --accent-g: 130; --accent-b: 92;',
+    '--accent-r: 0; --accent-g: 0; --accent-b: 0;');
+  assert.deepEqual(Colors.compareToGolden(golden, blackTriple, 'x', { changed: [triple] }).filter((p) => p.includes(triple)),
+    ['listed as changed but a colour slot (a custom theme sets it): ' + triple]);
+  // every name ThemePalette.cssVars gives a custom theme is a slot
+  const slots = Object.keys(ThemePalette.cssVars(ThemePalette.generate('#3b82f6', '#0b1020', 'dark')));
+  for (const name of slots.concat(['--accent-rgb', '--accent2-rgb'])) {
+    assert.ok(Colors.isSlot(name), name);
+  }
+  assert.ok(!Colors.isSlot('--card-shadow') && !Colors.isSlot('--rv-glint'));
 });
 
 test('aThemeVariableMayTurnPlainOnPurpose', () => {
@@ -322,12 +355,19 @@ test('theAccentTriplesArePinned', () => {
 test('theAllowlistsAreOneReviewedFileTheScriptReadsToo', () => {
   const allow = readJson(ALLOWLIST_FILE);
   assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose', 'changedOnPurpose', 'flipsOnPurpose']);
-  for (const list of Object.values(allow)) {
+  for (const [name, list] of Object.entries(allow)) {
     assert.deepEqual(Object.keys(list), ['panel', 'mini']);
     for (const kind of ['panel', 'mini']) {
       for (const theme of Object.keys(list[kind])) {
         assert.ok(ThemeApply.BUILT_IN.includes(theme), kind + ': ' + theme);
-        for (const [key, why] of Object.entries(list[kind][theme])) {
+        for (const [key, entry] of Object.entries(list[kind][theme])) {
+          let why = entry;
+          if (name === 'newOnPurpose') {
+            // a new key is listed with the colour it has, so it stays pinned
+            assert.deepEqual(Object.keys(entry), ['why', 'is'], kind + ' ' + theme + ' ' + key);
+            assert.match(entry.is, /^rgba\(\d+,\d+,\d+,(0|1|0\.\d{1,3})\)$/, kind + ' ' + theme + ' ' + key);
+            why = entry.why;
+          }
           assert.ok(typeof why === 'string' && why.trim().length >= 10, kind + ' ' + theme + ' ' + key + ': say why');
         }
       }
@@ -436,8 +476,6 @@ test('goldenCoversEveryDecoratedTheme', () => {
 // ---- the rewritten themes: colours from the slots, every rule of a piece under its guard, shape left unguarded,
 // no cascade turned by a guard, motion that can stop (each theme joins these as its decorations are rewritten)
 
-const ThemePalette = require('../../main/resources/web/theme-palette.js');
-
 const PIECES = readJson(PIECES_FILE);
 
 const REWRITTEN = ['revival', 'neon', 'signal', 'victory', 'cipher'];
@@ -486,14 +524,9 @@ function decorates(d, vars) {
   return /^animation(-name)?$/.test(d.decl.prop) && !/^none$/i.test(d.decl.value.trim());
 }
 
-/* The allowlists of one theme, as compareToGolden takes them. */
+/* The allowlists of one theme, as compareToGolden takes them (the ones checkSheet uses). */
 function allowedFor(themeId) {
-  const allow = Colors.allowlist();
-  return {
-    gone: Object.keys(allow.goneOnPurpose.panel[themeId] || {}),
-    added: Object.keys(allow.newOnPurpose.panel[themeId] || {}),
-    changed: Object.keys(allow.changedOnPurpose.panel[themeId] || {})
-  };
+  return Colors.allowedFor('panel', themeId);
 }
 
 for (const themeId of REWRITTEN) {

@@ -27,12 +27,17 @@
  * - declarationColours(prop, value[, vars]): the colour expressions of one declaration, read the same way.
  * - snapshot(css, themeId) -> { key: "rgba(r,g,b,a)" }.
  * - compareToGolden(golden, css, themeId, { gone, added, changed }): changed, gone and new colours (a new key counts
- *   unless it is a custom property or listed in added; a key listed in changed may differ only as a variable of the
- *   theme block whose colour turned plain black, white or see-through: a decoration colour taken out of a variable a
+ *   unless it is a custom property or listed in added, { key: "rgba(r,g,b,a)" }, with the colour it is pinned to as a
+ *   golden one is; a key listed in changed may differ only as a variable of the theme block, not a colour slot
+ *   (isSlot), whose colour turned plain black, white or see-through: a decoration colour taken out of a variable a
  *   shared rule paints with, the colours of the theme's own rules still pinned by their keys).
+ * - isSlot(name): a variable a custom theme sets (the names ThemePalette.cssVars gives), or the synthetic accent
+ *   triples --accent-rgb / --accent2-rgb.
  * - checkSheet(kind[, css]): compareToGolden for every theme of the golden file of 'panel' or 'mini', with the reviewed
- *   allowlists of src/test/resources/theme-golden/allowlist.json: { "goneOnPurpose" | "newOnPurpose" |
- *   "changedOnPurpose" | "flipsOnPurpose": { "panel" | "mini": { "<theme>": { "<key>": "<why>" } } } }.
+ *   allowlists of src/test/resources/theme-golden/allowlist.json: { "goneOnPurpose" | "changedOnPurpose" |
+ *   "flipsOnPurpose": { "panel" | "mini": { "<theme>": { "<key>": "<why>" } } }, "newOnPurpose": { ... { "<key>":
+ *   { "why": "<why>", "is": "rgba(r,g,b,a)" } } } }; allowedFor(kind, themeId) gives one theme's, as compareToGolden
+ *   takes them.
  *
  * Pieces (selectors as written, guards and all):
  * - guardsOf(selector) -> { ids, mentions }: the ids of its :not([data-deco-off~="id"]) guards, and how often
@@ -55,6 +60,7 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const ThemePalette = require('../../main/resources/web/theme-palette.js');
 
 const ROOT = path.join(__dirname, '../../..');
 
@@ -960,6 +966,14 @@ function propertyOf(key) {
   return parts[parts.length - 2];
 }
 
+/* The variables a custom theme sets, and the synthetic keys of the accent triples: the theme's colours themselves. */
+const SLOT_VARS = new Set(Object.keys(ThemePalette.cssVars(ThemePalette.generate('#3b82f6', '#0b1020', 'dark')))
+  .concat(['--accent-rgb', '--accent2-rgb']));
+
+function isSlot(name) {
+  return SLOT_VARS.has(name);
+}
+
 /* Plain black, plain white, or nothing to see: no theme's colour. */
 function isPlain(colour) {
   const c = parseFormatted(format(colour));
@@ -973,7 +987,10 @@ function isPlain(colour) {
  */
 function compareToGolden(golden, css, themeId, allow) {
   const goneOk = new Set((allow && allow.gone) || []);
-  const newOk = new Set((allow && allow.added) || []);
+  const added = (allow && allow.added) || {};
+  if (Array.isArray(added)) throw new Error('a key listed as new is listed with its colour: { key: "rgba(r,g,b,a)" }');
+  Object.keys(added).forEach((key) => parseFormatted(added[key]));
+  const newOk = new Set(Object.keys(added));
   const changedOk = new Set((allow && allow.changed) || []);
   const current = new Map(decorationColours(css, themeId).map((e) => [e.key, e]));
   const isGolden = (key) => Object.prototype.hasOwnProperty.call(golden, key);
@@ -1002,6 +1019,8 @@ function compareToGolden(golden, css, themeId, allow) {
     } else if (changedOk.has(key)) {
       if (!key.startsWith(rootBlock(themeId) + '|--')) {
         problems.push('listed as changed but not a variable of the theme block: ' + key);
+      } else if (isSlot(propertyOf(key))) {
+        problems.push('listed as changed but a colour slot (a custom theme sets it): ' + key);
       } else if (sameColour(was, result.colour)) {
         problems.push('listed as changed but the same: ' + key);
       } else if (!isPlain(result.colour)) {
@@ -1017,6 +1036,10 @@ function compareToGolden(golden, css, themeId, allow) {
     const result = evaluated(e);
     if (newOk.has(key)) {
       if (result.error) problems.push(result.error);
+      else if (!sameColour(added[key], result.colour)) {
+        problems.push('changed: ' + key + ': listed as new with ' + added[key] + ', now ' + format(result.colour) +
+          ' (' + e.expr + ')');
+      }
     } else if (!propertyOf(key).startsWith('--')) {
       problems.push('new: ' + key + ' (' + (result.error || format(result.colour)) + ')');
     }
@@ -1287,6 +1310,20 @@ function allowlist() {
   return JSON.parse(read(GOLDEN_DIR + 'allowlist.json'));
 }
 
+/* One theme's reviewed allowlists of 'panel' or 'mini', as compareToGolden takes them. */
+function allowedFor(kind, themeId) {
+  const allow = allowlist();
+  const added = {};
+  Object.entries(allow.newOnPurpose[kind][themeId] || {}).forEach(([key, entry]) => {
+    added[key] = entry.is;
+  });
+  return {
+    gone: Object.keys(allow.goneOnPurpose[kind][themeId] || {}),
+    added: added,
+    changed: Object.keys(allow.changedOnPurpose[kind][themeId] || {})
+  };
+}
+
 /* Every difference between a golden file and a stylesheet (today's by default), each line led by its theme. */
 function checkSheet(kind, css) {
   const golden = goldenFile(kind);
@@ -1297,11 +1334,7 @@ function checkSheet(kind, css) {
   const sheet = css === undefined ? (kind === 'mini' ? miniCss() : panelCss()) : css;
   const problems = [];
   Object.keys(golden).forEach((theme) => {
-    compareToGolden(golden[theme], sheet, theme, {
-      gone: Object.keys(gone[theme] || {}),
-      added: Object.keys(added[theme] || {}),
-      changed: Object.keys(changed[theme] || {})
-    }).forEach((p) => problems.push(theme + ': ' + p));
+    compareToGolden(golden[theme], sheet, theme, allowedFor(kind, theme)).forEach((p) => problems.push(theme + ': ' + p));
   });
   Object.keys(gone).concat(Object.keys(added), Object.keys(changed)).forEach((theme) => {
     if (!golden[theme]) problems.push(theme + ': in the allowlist but has no golden colours');
@@ -1326,6 +1359,7 @@ module.exports = {
   inspect: inspect,
   snapshot: snapshot,
   compareToGolden: compareToGolden,
+  isSlot: isSlot,
   guardsOf: guardsOf,
   splitFirst: splitFirst,
   attributesMatch: attributesMatch,
@@ -1337,5 +1371,6 @@ module.exports = {
   miniCss: miniCss,
   goldenFile: goldenFile,
   allowlist: allowlist,
+  allowedFor: allowedFor,
   checkSheet: checkSheet
 };

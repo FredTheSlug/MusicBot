@@ -19,15 +19,36 @@
   "newOnPurpose": {
     "panel": {
       "revival": {
-        "html[data-theme=\"revival\"]::after|background-color|0": "Revival's film grain: its colour was drawn inside its picture (not in the golden file); the picture is a mask now and the grain shows the theme's text colour through it, on its own layer (html::after) because a mask covers a whole element",
-        "html[data-theme=\"revival\"] .ctrl-btn.repeat-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Revival's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
-        "html[data-theme=\"revival\"] .ctrl-btn.shuffle-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Revival's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
-        "html[data-theme=\"revival\"] .card|box-shadow|0": "not a new colour: the black shadow of --card-shadow (golden html[data-theme=\"revival\"]|--card-shadow|0), which the panel's own .card painted; Revival's glows .card rule paints it now, with the cream highlight after it",
-        "html[data-theme=\"revival\"] .card|box-shadow|1": "not a new colour: the cream top highlight that was inside --card-shadow (golden html[data-theme=\"revival\"]|--card-shadow|1, rgba(255,236,214,0.05)), now under the glows piece and mixed from --rv-glint so a custom theme reaches it"
+        "html[data-theme=\"revival\"]::after|background-color|0": {
+          "why": "Revival's film grain: its colour was drawn inside its picture (not in the golden file); the picture is a mask now and the grain shows the theme's text colour through it, on its own layer (html::after) because a mask covers a whole element",
+          "is": "rgba(246,239,229,0.07)"
+        },
+        "html[data-theme=\"revival\"] .ctrl-btn.repeat-active:hover|color|0": {
+          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Revival's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
+          "is": "rgba(242,168,130,1)"
+        },
+        "html[data-theme=\"revival\"] .ctrl-btn.shuffle-active:hover|color|0": {
+          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Revival's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
+          "is": "rgba(242,168,130,1)"
+        },
+        "html[data-theme=\"revival\"] .card|box-shadow|0": {
+          "why": "not a new colour: the black shadow of --card-shadow (golden html[data-theme=\"revival\"]|--card-shadow|0), which the panel's own .card painted; Revival's glows .card rule paints it now, with the cream highlight after it",
+          "is": "rgba(0,0,0,0.45)"
+        },
+        "html[data-theme=\"revival\"] .card|box-shadow|1": {
+          "why": "not a new colour: the cream top highlight that was inside --card-shadow (golden html[data-theme=\"revival\"]|--card-shadow|1, rgba(255,236,214,0.05)), now under the glows piece and mixed from --rv-glint so a custom theme reaches it",
+          "is": "rgba(255,236,214,0.05)"
+        }
       },
       "neon": {
-        "html[data-theme=\"neon\"] .ctrl-btn.repeat-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
-        "html[data-theme=\"neon\"] .ctrl-btn.shuffle-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light"
+        "html[data-theme=\"neon\"] .ctrl-btn.repeat-active:hover|color|0": {
+          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
+          "is": "rgba(217,249,157,1)"
+        },
+        "html[data-theme=\"neon\"] .ctrl-btn.shuffle-active:hover|color|0": {
+          "why": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
+          "is": "rgba(217,249,157,1)"
+        }
       }
     },
     "mini": {}
