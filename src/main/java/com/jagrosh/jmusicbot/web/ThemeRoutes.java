@@ -379,7 +379,7 @@ public class ThemeRoutes
                 .put("version", theme.getVersion())
                 .put("updatedAt", theme.getUpdatedAt() == null ? JSONObject.NULL : theme.getUpdatedAt().toString())
                 .put("base", theme.getBase())
-                .put("effects", theme.isEffects())
+                .put("decorationsOff", new JSONArray(theme.getDecorationsOff()))
                 .put("colors", new JSONObject(theme.getColors()))
                 .put("radiusScale", theme.getRadiusScale())
                 .put("font", theme.getFont())

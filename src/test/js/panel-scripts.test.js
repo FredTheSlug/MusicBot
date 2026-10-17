@@ -144,3 +144,139 @@ test('theReduceMotionSwitchSetsTheHookOnThePage', () => {
   assert.equal(root.hasAttribute('data-reduce-motion'), true, 'from what was saved');
   assert.match(panelFunction('initTheme'), /applyReduceMotionAttribute\(\)/, 'the page applies it as it starts');
 });
+
+/* <html> with attributes and an inline style, as far as the theme code uses them. */
+function fakeHtml() {
+  const root = fakeRoot();
+  const attrs = {};
+  const props = {};
+  root.setAttribute = (n, v) => { attrs[n] = String(v); };
+  root.removeAttribute = (n) => { delete attrs[n]; };
+  root.hasAttribute = (n) => Object.prototype.hasOwnProperty.call(attrs, n);
+  root.getAttribute = (n) => (root.hasAttribute(n) ? attrs[n] : null);
+  root.style = {
+    setProperty: (n, v) => { props[n] = String(v); },
+    removeProperty: (n) => { delete props[n]; },
+    getPropertyValue: (n) => props[n] || ''
+  };
+  root.attrs = attrs;
+  root.props = props;
+  return root;
+}
+
+const PIECES = JSON.parse(fs.readFileSync(path.join(__dirname, '../../main/resources/web/theme-pieces.json'), 'utf8'));
+const PICTURE = '/theme-images/' + '9f2c'.repeat(8) + '.webp';
+
+/* The panel's own theme functions, run against a fake page with the real ThemeApply and ThemePalette. */
+function themePage(pieces) {
+  const root = fakeHtml();
+  const backdrops = [];
+  const context = vm.createContext({
+    document: { documentElement: root },
+    window: { ThemePalette: require('../../main/resources/web/theme-palette.js') },
+    themeKit: require('../../main/resources/web/theme-apply.js'),
+    themePieces: pieces,
+    themeLocalPicture: null,
+    customApplied: [],
+    customThemes: { list: null, activeId: '', activeName: '', activeJson: '' },
+    themeShown: 'nebula',
+    themeBase: '',
+    getComputedStyle: () => ({ getPropertyValue: () => '12px' }),
+    setThemeBackdrop: (back) => backdrops.push(back)
+  });
+  ['setBaseThemeAttribute', 'setCustomProperty', 'clearCustomTheme', 'applyCustomTheme'].forEach((name) => {
+    vm.runInContext(panelFunction(name), context);
+  });
+  return {
+    root: root,
+    backdrops: backdrops,
+    apply: (theme) => { context.theme = theme; vm.runInContext('applyCustomTheme(theme)', context); },
+    clear: () => vm.runInContext('clearCustomTheme()', context)
+  };
+}
+
+function customTheme(extra) {
+  return Object.assign({
+    id: 'k3j9x0q2m7ab', name: 'Midnight Drive', owner: { id: '1', name: 'fred' }, visibility: 'public', hiddenByOwner: false,
+    mine: true, version: 2, base: 'revival', decorationsOff: ['rays', 'record'],
+    colors: {
+      bgPrimary: '#0b0d14', bgSecondary: '#10131c', bgCard: '#161a26', bgElevated: '#1c2131', bgHover: '#262c42',
+      accent: '#1e3a8a', accentLight: '#a08bff', accent2: '#22d3ee', textPrimary: '#eef0f8', textSecondary: '#9aa0b8',
+      textTertiary: '#646a82', border: '#ffffff12', borderLight: '#ffffff1f', success: '#34d399', glass: '#10131ce0',
+      decoExtra: '#dc2626'
+    },
+    radiusScale: 100, font: 'Outfit', background: null, mini: null
+  }, extra);
+}
+
+test('applyCustomThemeSetsDecoOff', () => {
+  const page = themePage(PIECES);
+  page.apply(customTheme());
+  assert.equal(page.root.getAttribute('data-theme'), 'revival');
+  assert.equal(page.root.getAttribute('data-custom-theme'), 'k3j9x0q2m7ab');
+  assert.equal(page.root.getAttribute('data-deco-off'), 'rays record');
+  assert.equal(page.root.hasAttribute('data-custom-picture'), false);
+  assert.equal(page.root.props['--deco-extra'], '#dc2626');
+  assert.equal(page.root.props['--on-accent'], '#ffffff', 'white on the dark blue accent');
+
+  // a picture: the background pieces go too, and the page knows there is a picture (the ambient glow goes)
+  page.apply(customTheme({ background: { url: PICTURE, dim: 40, blur: 0, fit: 'cover' } }));
+  assert.equal(page.root.getAttribute('data-deco-off'), 'rays record sunrise');
+  assert.equal(page.root.hasAttribute('data-custom-picture'), true);
+  assert.equal(page.backdrops[page.backdrops.length - 1].url, PICTURE);
+
+  // every piece on and no picture: no attribute at all, nothing left from the theme before
+  page.apply(customTheme({ base: 'ember', decorationsOff: [] }));
+  assert.equal(page.root.hasAttribute('data-deco-off'), false);
+  assert.equal(page.root.hasAttribute('data-custom-picture'), false);
+  assert.equal(page.root.getAttribute('data-theme'), 'ember');
+
+  // back to a built-in look: everything a custom theme set is taken back
+  page.apply(customTheme({ background: { url: PICTURE, dim: 40, blur: 0, fit: 'cover' } }));
+  page.clear();
+  for (const name of ['data-deco-off', 'data-custom-picture', 'data-custom-theme']) {
+    assert.equal(page.root.hasAttribute(name), false, name);
+  }
+  assert.deepEqual(Object.keys(page.root.props), []);
+
+  // the old plain switch is gone for good
+  assert.equal(PANEL.includes('data-custom-plain'), false);
+  assert.equal(PANEL.includes('theme.effects'), false);
+});
+
+test('withoutThePiecesListACustomThemeKeepsItsSavedPiecesOff', () => {
+  const page = themePage(null);
+  page.apply(customTheme({ background: { url: PICTURE, dim: 40, blur: 0, fit: 'cover' } }));
+  assert.equal(page.root.getAttribute('data-deco-off'), 'rays record');
+  assert.equal(page.root.hasAttribute('data-custom-picture'), true, 'the ambient glow still goes under the picture');
+});
+
+test('thePanelLoadsThePiecesListOnceAndAgainAfterAFailure', async () => {
+  const answers = [() => Promise.reject(new Error('offline')), () => Promise.resolve({ ok: false }),
+    () => Promise.resolve({ ok: true, json: () => Promise.resolve(PIECES) })];
+  const asked = [];
+  const context = vm.createContext({
+    themePieces: null,
+    themePiecesLoading: null,
+    Promise: Promise,
+    fetch: (url) => { asked.push(url); return answers.shift()(); }
+  });
+  vm.runInContext(panelFunction('loadThemePieces'), context);
+  assert.equal(await vm.runInContext('loadThemePieces()', context), null);
+  assert.equal(await vm.runInContext('loadThemePieces()', context), null);
+  const loaded = await vm.runInContext('loadThemePieces()', context);
+  assert.deepEqual(loaded, PIECES);
+  assert.deepEqual(context.themePieces, PIECES);
+  await vm.runInContext('loadThemePieces()', context);
+  assert.deepEqual(asked, ['/web/theme-pieces.json', '/web/theme-pieces.json', '/web/theme-pieces.json'], 'once it is here, no more asking');
+  // two at once share one request
+  const shared = vm.createContext({ themePieces: null, themePiecesLoading: null, Promise: Promise,
+    fetch: () => { asked.push('again'); return Promise.resolve({ ok: true, json: () => Promise.resolve(PIECES) }); } });
+  vm.runInContext(panelFunction('loadThemePieces'), shared);
+  await vm.runInContext('Promise.all([loadThemePieces(), loadThemePieces()])', shared);
+  assert.equal(asked.filter((u) => u === 'again').length, 1);
+  // the list of custom themes waits for it, so a theme is first applied with its pieces
+  const load = panelFunction('loadCustomThemes');
+  assert.match(load, /loadThemePieces\(\)/);
+  assert.ok(load.indexOf('await pieces') < load.indexOf('customThemes.list ='), 'pieces before the list is used');
+});

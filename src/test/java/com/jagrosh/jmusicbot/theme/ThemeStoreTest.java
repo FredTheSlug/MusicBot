@@ -47,6 +47,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Before;
@@ -358,7 +359,7 @@ public class ThemeStoreTest
     @Test
     public void createStoresTheEditableValuesAndIgnoresTheRest()
     {
-        JSONObject json = json("Full", "public").put("effects", true)
+        JSONObject json = json("Full", "public").put("decorationsOff", new JSONArray().put("fire").put("nope"))
                 .put("mini", new JSONObject().put("colors", miniColors()).put("useImage", false).put("dim", 30));
         ThemeFile given = ThemeFile.valuesFromClient(json);
         // an editor that is handed a full theme cannot choose who owns it, what version it is or whether the owner hid it
@@ -374,7 +375,8 @@ public class ThemeStoreTest
         assertEquals(1, made.getVersion());
         assertFalse(made.isHiddenByOwner());
         assertEquals("ember", made.getBase());
-        assertTrue(made.isEffects());
+        assertEquals(Arrays.asList("fire"), made.getDecorationsOff());
+        assertEquals("the starting theme's extra color, as none was sent", "#fde047", made.getColors().get("decoExtra"));
         assertEquals("Outfit", made.getFont());
         assertEquals(100, made.getRadiusScale());
         assertEquals(30, made.getMini().getDim());
@@ -922,7 +924,7 @@ public class ThemeStoreTest
         assertEquals(45, theme.getBackground().getDim());
         assertEquals(4, theme.getBackground().getBlur());
         assertEquals("cover", theme.getBackground().getFit());
-        assertFalse(theme.isEffects());
+        assertEquals("sent with effects off, as older panels do", Arrays.asList("flames", "edge", "fire"), theme.getDecorationsOff());
         assertEquals(name, imageOf(store.get(theme.getId(), BOB.getId()).get()));
         // pictures live in the images folder, themes next to it
         assertEquals(Arrays.asList(theme.getId() + ".json"), filesIn(themesDir));
@@ -1017,10 +1019,11 @@ public class ThemeStoreTest
         assertNull(bare.getBackground());
         assertEquals(new ArrayList<String>(), pictures());
 
-        // effects can come back once there's no picture
+        // the pieces are what was sent, picture or not
         ThemeFile fancy = store.update(theme.getId(), ALICE.getId(), 2,
-                ThemeFile.valuesFromClient(json("Pretty", "public").put("effects", true)), null, false);
-        assertTrue(fancy.isEffects());
+                ThemeFile.valuesFromClient(json("Pretty", "public").put("decorationsOff", new JSONArray().put("edge"))), null, false);
+        assertEquals(Arrays.asList("edge"), fancy.getDecorationsOff());
+        assertEquals(Arrays.asList("edge"), store.get(theme.getId(), ALICE.getId()).get().getDecorationsOff());
     }
 
     @Test

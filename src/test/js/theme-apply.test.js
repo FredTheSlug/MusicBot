@@ -29,7 +29,7 @@ const COLORS = {
 function theme(extra) {
   return Object.assign({
     id: 'k3j9x0q2m7ab', name: 'Midnight Drive', owner: { id: '1', name: 'fred' }, visibility: 'public',
-    hiddenByOwner: false, mine: false, version: 1, base: 'ember', effects: false, colors: Object.assign({}, COLORS),
+    hiddenByOwner: false, mine: false, version: 1, base: 'ember', decorationsOff: [], colors: Object.assign({}, COLORS),
     radiusScale: 100, font: 'Outfit', background: null, mini: null
   }, extra);
 }
@@ -358,4 +358,131 @@ test('aMissingCustomThemeFallsBackToItsBaseThenToNebula', () => {
 test('beforeTheListHasLoadedACustomChoiceWaitsOnItsBase', () => {
   assert.deepEqual(ThemeApply.resolveChoice('custom:k3j9x0q2m7ab', null, 'ember'), { kind: 'builtin', id: 'ember', pending: true });
   assert.deepEqual(ThemeApply.resolveChoice('custom:k3j9x0q2m7ab', null, ''), { kind: 'builtin', id: 'nebula', pending: true });
+});
+
+// ---- decoration pieces switched off (data-deco-off)
+
+const PIECES = JSON.parse(fs.readFileSync(path.join(__dirname, '../../main/resources/web/theme-pieces.json'), 'utf8'));
+const Colors = require('./css-colors.js');
+
+function idsOf(base, onlyBackground) {
+  return PIECES[base].pieces.filter((p) => !onlyBackground || p.background).map((p) => p.id);
+}
+
+function deepFreeze(value) {
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach(deepFreeze);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+test('decoOffForIsTheSavedListOfTheStartingThemesPieces', () => {
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'revival', decorationsOff: ['rays', 'record'] }), false, PIECES), 'rays record');
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'ember', decorationsOff: [] }), false, PIECES), '');
+  // what is not a piece of the starting theme, or not an id at all, never reaches the page
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'ember', decorationsOff: ['rays', 'fire', 'fire', 'a b', '"x"', 5, null, 'edge'] }),
+    false, PIECES), 'fire edge');
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'ember', decorationsOff: 'flames' }), false, PIECES), '');
+  for (const junk of [null, undefined, 'x', 7]) assert.equal(ThemeApply.decoOffFor(junk, true, PIECES), '');
+});
+
+test('aPictureTurnsBackgroundPiecesOff', () => {
+  for (const base of ThemeApply.BUILT_IN) {
+    assert.equal(ThemeApply.decoOffFor(theme({ base: base, decorationsOff: [] }), true, PIECES), idsOf(base, true).join(' '), base);
+    assert.equal(ThemeApply.decoOffFor(theme({ base: base, decorationsOff: [] }), false, PIECES), '', base);
+  }
+  // the saved ones first, then the background ones, each once; the others stay on
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'revival', decorationsOff: ['record', 'rays'] }), true, PIECES), 'record rays sunrise');
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'sumi', decorationsOff: ['seal'] }), true, PIECES), 'seal mist kanji');
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'ember', decorationsOff: [] }), true, PIECES), '', 'Ember paints no background');
+  // only a real yes counts
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'grove', decorationsOff: [] }), 'yes', PIECES), '');
+});
+
+test('aThemeInTheOldShapeGetsTheServersConversion', () => {
+  // the creator's preview still says "effects" until it has piece switches: off is every piece off, as the server reads it
+  const old = theme({ base: 'cipher', effects: false });
+  delete old.decorationsOff;
+  assert.equal(ThemeApply.decoOffFor(old, false, PIECES), idsOf('cipher').join(' '));
+  assert.equal(ThemeApply.decoOffFor(Object.assign({}, old, { effects: true }), true, PIECES), 'grid');
+  const neither = Object.assign({}, old);
+  delete neither.effects;
+  assert.equal(ThemeApply.decoOffFor(neither, false, PIECES), '');
+  // a list wins over the flag
+  assert.equal(ThemeApply.decoOffFor(Object.assign({}, old, { decorationsOff: ['grid'] }), false, PIECES), 'grid');
+});
+
+test('withoutThePiecesListOnlyTheSavedIdsThatLookLikeIdsGoThrough', () => {
+  // the list didn't load: the saved list as the server checked it, nothing added for a picture
+  for (const pieces of [null, undefined, {}, { revival: null }, { revival: { pieces: 'x' } }, 'x']) {
+    assert.equal(ThemeApply.decoOffFor(theme({ base: 'revival', decorationsOff: ['rays', 'rays', 'a b', 'X', 'dawn-dark'] }), true, pieces),
+      'rays dawn-dark', JSON.stringify(pieces));
+  }
+  // and a broken entry in the list is skipped
+  const odd = { ember: { decoExtra: '#fde047', pieces: [{ id: 'flames', background: true }, { id: 'a b', background: true }, null] } };
+  assert.equal(ThemeApply.decoOffFor(theme({ base: 'ember', decorationsOff: [] }), true, odd), 'flames');
+  // a theme of another base finds nothing of its own
+  assert.equal(ThemeApply.decoOffFor(theme({ base: '__proto__', decorationsOff: ['glow'] }), true, PIECES), '');
+});
+
+test('decoOffForIsPure', () => {
+  const t = deepFreeze(theme({ base: 'revival', decorationsOff: ['record', 'rays'] }));
+  const pieces = deepFreeze(JSON.parse(JSON.stringify(PIECES)));
+  const first = ThemeApply.decoOffFor(t, true, pieces);
+  assert.equal(ThemeApply.decoOffFor(t, true, pieces), first);
+  assert.deepEqual(t.decorationsOff, ['record', 'rays']);
+  assert.deepEqual(pieces, PIECES);
+  assert.equal(typeof first, 'string');
+  // nothing in the module reaches for the page
+  const source = fs.readFileSync(path.join(__dirname, '../../main/resources/web/theme-apply.js'), 'utf8');
+  assert.doesNotMatch(source, /\b(document|localStorage|fetch|XMLHttpRequest)\b/);
+});
+
+test('theExtraDecorationColorIsCheckedWhenItIsThere', () => {
+  assert.equal(ThemeApply.usable(theme()), true, 'a theme from an older server has none');
+  assert.equal(ThemeApply.usable(theme({ colors: Object.assign({}, COLORS, { decoExtra: '#dc2626' }) })), true);
+  for (const value of ['red', '#12345', 'url(//evil.example/x.gif)', '#112233; color: red', '', 5, null]) {
+    assert.equal(ThemeApply.usable(theme({ colors: Object.assign({}, COLORS, { decoExtra: value }) })), false, String(value));
+  }
+});
+
+test('aPictureHidesTheAmbientGlowOnEveryBase', () => {
+  // The panel's shared drifting glow (body::before) is no piece; over a custom theme's picture it would paint above
+  // #themeBackdrop, so a picture hides it. Steel, Sumi and Dawn Dark bring it back as their wash / mist piece, which is
+  // a background piece (off with a picture); the rule wins even if the pieces list never loaded.
+  const css = Colors.panelCss();
+  const decls = Colors.declarations(css).filter((d) => d.rule.at.length === 0 && /(^|\s)body::before$/.test(d.selector) &&
+    d.decl.prop === 'display');
+  assert.ok(decls.length >= 4, 'display rules of body::before found: ' + decls.length);
+  function shown(attrs) {
+    const live = decls.filter((d) => {
+      const head = Colors.splitFirst(d.spaced).head;
+      return !/^(html|:root)/.test(head) || Colors.htmlMatches(d.spaced, attrs);
+    });
+    live.sort((a, b) => {
+      const x = [a.decl.important ? 1 : 0].concat(a.spec, [a.order]), y = [b.decl.important ? 1 : 0].concat(b.spec, [b.order]);
+      for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
+      return 0;
+    });
+    return live.length ? live[live.length - 1].decl.value.trim() : 'block';
+  }
+  for (const base of ThemeApply.BUILT_IN) {
+    const own = base === 'nebula' ? {} : { 'data-theme': base };
+    const custom = Object.assign({ 'data-custom-theme': 'k3j9x0q2m7ab' }, own);
+    const withPicture = Object.assign({ 'data-custom-picture': '' }, custom);
+    const off = ThemeApply.decoOffFor(theme({ base: base, decorationsOff: [] }), true, PIECES);
+    if (off) withPicture['data-deco-off'] = off;
+    assert.equal(shown(withPicture), 'none', base + ' with a picture');
+    const noList = Object.assign({ 'data-custom-picture': '' }, custom);
+    assert.equal(shown(noList), 'none', base + ' with a picture, pieces list not loaded');
+    assert.equal(shown(own), shown(custom), base + ': without a picture a custom theme shows what its base shows');
+  }
+  assert.notEqual(shown({}), 'none', 'Nebula has its glow');
+  assert.notEqual(shown({ 'data-theme': 'steel' }), 'none', 'Steel has its wash');
+  // the bases that bring the glow back do it under a background piece
+  for (const [base, piece] of [['steel', 'wash'], ['sumi', 'mist'], ['dawn-dark', 'wash']]) {
+    assert.ok(PIECES[base].pieces.some((p) => p.id === piece && p.background === true), base + ' ' + piece);
+    assert.equal(shown({ 'data-theme': base, 'data-deco-off': piece }), 'none', base + ' without its ' + piece);
+  }
 });

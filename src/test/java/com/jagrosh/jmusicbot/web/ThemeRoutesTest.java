@@ -86,7 +86,7 @@ public class ThemeRoutesTest
     private static final String NOT_A_PICTURE = "That file isn't a picture we can use (JPG, PNG, WebP or GIF)";
     private static final String TOO_LARGE = "Pictures can be up to 8 MB";
     private static final Set<String> THEME_KEYS = keys("id", "name", "owner", "visibility", "hiddenByOwner", "mine", "version",
-            "updatedAt", "base", "effects", "colors", "radiusScale", "font", "background", "mini");
+            "updatedAt", "base", "decorationsOff", "colors", "radiusScale", "font", "background", "mini");
     private static final String[] QUIET = {"io.javalin", "org.eclipse.jetty", "com.jagrosh.jmusicbot.theme",
             "com.jagrosh.jmusicbot.web.ThemeRoutes"};
 
@@ -287,7 +287,14 @@ public class ThemeRoutesTest
         return new HashSet<>(Arrays.asList(names));
     }
 
+    /** All 16 slots (or the 15 of the mini-player version). */
     private static JSONObject colors(boolean withGlass)
+    {
+        return oldColors(withGlass).put("decoExtra", "#f0abfc");
+    }
+
+    /** The 15 slots (14 for the mini-player) a panel from before the extra decoration color sends. */
+    private static JSONObject oldColors(boolean withGlass)
     {
         JSONObject colors = new JSONObject();
         colors.put("bgPrimary", "#0b0d14");
@@ -316,7 +323,7 @@ public class ThemeRoutesTest
                 .put("name", name)
                 .put("visibility", visibility)
                 .put("base", "ember")
-                .put("effects", false)
+                .put("decorationsOff", new JSONArray().put("edge"))
                 .put("colors", colors(true))
                 .put("radiusScale", 100)
                 .put("font", "Outfit");
@@ -530,7 +537,7 @@ public class ThemeRoutesTest
         assertEquals(1, created.getLong("version"));
         assertEquals(T0.toString(), created.getString("updatedAt"));
         assertEquals("ember", created.getString("base"));
-        assertFalse(created.getBoolean("effects"));
+        assertTrue(created.getJSONArray("decorationsOff").similar(new JSONArray().put("edge")));
         assertTrue(created.getJSONObject("colors").similar(colors(true)));
         assertEquals(100, created.getInt("radiusScale"));
         assertEquals("Outfit", created.getString("font"));
@@ -575,6 +582,74 @@ public class ThemeRoutesTest
         assertEquals(Arrays.asList("Another", "Midnight Drive"), names(list(ALICE)));
         assertEquals(2, list(ALICE).getJSONObject("limit").getInt("used"));
         assertEquals(2, store.countOwnedBy(ALICE.getId()));
+    }
+
+    @Test
+    public void piecesAndTheExtraColourAreSavedAndServed() throws Exception
+    {
+        JSONObject sent = withMini(themeJson("Pieces", "public"), false).put("base", "revival")
+                .put("decorationsOff", new JSONArray().put("rays").put("flames").put("record").put("rays").put("x\"y"));
+        sent.getJSONObject("colors").put("decoExtra", "#ABCDEF");
+        sent.getJSONObject("mini").getJSONObject("colors").put("decoExtra", "#123456");
+        JSONObject created = ok(createTheme(sent, null));
+        // unknown ids dropped, each once, in the order sent
+        assertTrue(created.toString(), created.getJSONArray("decorationsOff").similar(new JSONArray().put("rays").put("record")));
+        assertEquals("#abcdef", created.getJSONObject("colors").getString("decoExtra"));
+        assertEquals("#123456", created.getJSONObject("mini").getJSONObject("colors").getString("decoExtra"));
+        assertTrue(created.similar(themeNamed(list(ALICE), "Pieces")));
+
+        // the file holds the same, in the new form
+        JSONObject file = new JSONObject(new String(Files.readAllBytes(themesDir.resolve(created.getString("id") + ".json")),
+                StandardCharsets.UTF_8));
+        assertFalse(file.has("effects"));
+        assertTrue(file.getJSONArray("decorationsOff").similar(new JSONArray().put("rays").put("record")));
+        assertEquals("#abcdef", file.getJSONObject("colors").getString("decoExtra"));
+
+        // an edit to another starting theme keeps only that theme's pieces
+        JSONObject moved = withMini(themeJson("Pieces", "public"), false).put("base", "neon")
+                .put("decorationsOff", new JSONArray().put("rays").put("glows").put("photo"));
+        JSONObject edited = ok(editTheme(created.getString("id"), moved, null, 1, false));
+        assertTrue(edited.toString(), edited.getJSONArray("decorationsOff").similar(new JSONArray().put("glows").put("photo")));
+    }
+
+    @Test
+    public void fifteenColourClientsStillWork() throws Exception
+    {
+        // a panel from before the pieces: 15 colors (14 for the mini-player) and the effects flag
+        JSONObject old = withMini(themeJson("Old panel", "public"), false).put("base", "rasta").put("effects", false);
+        old.remove("decorationsOff");
+        old.put("colors", oldColors(true));
+        old.getJSONObject("mini").put("colors", oldColors(false));
+        JSONObject created = ok(createTheme(old, null));
+        assertTrue(created.toString(), created.getJSONArray("decorationsOff")
+                .similar(new JSONArray().put("stripe").put("titles").put("bar").put("lyric")));
+        assertEquals("Rasta's own red", "#dc2626", created.getJSONObject("colors").getString("decoExtra"));
+        assertEquals("#dc2626", created.getJSONObject("mini").getJSONObject("colors").getString("decoExtra"));
+        assertEquals(16, created.getJSONObject("colors").length());
+        assertEquals(15, created.getJSONObject("mini").getJSONObject("colors").length());
+
+        // and with its effects on, nothing is off
+        old.put("effects", true).put("name", "Old panel 2");
+        assertEquals(0, ok(createTheme(old, null)).getJSONArray("decorationsOff").length());
+    }
+
+    @Test
+    public void anOldThemeFileIsServedInTheNewForm() throws Exception
+    {
+        // a file saved before the pieces: effects off, 15 colors
+        JSONObject made = ok(createTheme(themeJson("Saved long ago", "public").put("base", "cipher"), null));
+        Path path = themesDir.resolve(made.getString("id") + ".json");
+        JSONObject file = new JSONObject(new String(Files.readAllBytes(path), StandardCharsets.UTF_8));
+        file.remove("decorationsOff");
+        file.put("effects", false);
+        file.put("colors", oldColors(true));
+        Files.write(path, file.toString(2).getBytes(StandardCharsets.UTF_8));
+
+        JSONObject served = themeNamed(list(ALICE), "Saved long ago");
+        assertFalse(served.has("effects"));
+        assertTrue(served.toString(), served.getJSONArray("decorationsOff")
+                .similar(new JSONArray().put("grid").put("underline").put("glows").put("prompt")));
+        assertEquals("Cipher's own cyan", "#22d3ee", served.getJSONObject("colors").getString("decoExtra"));
     }
 
     @Test
@@ -870,6 +945,11 @@ public class ThemeRoutesTest
         assertBad("Background fit must be cover, contain or center", t -> t.getJSONObject("background").put("fit", "stretch"));
         assertBad("Mini-player main color must be a color like #7c5cff", t -> t.getJSONObject("mini").getJSONObject("colors").put("accent", "nope"));
         assertBad("Mini-player darken must be a whole number from 0 to 90", t -> t.getJSONObject("mini").put("dim", 100));
+        assertBad("Extra decoration color must be a color like #7c5cff", t -> t.getJSONObject("colors").put("decoExtra", "#f0abfc80"));
+        assertBad("Mini-player extra decoration color must be a color like #7c5cff",
+                t -> t.getJSONObject("mini").getJSONObject("colors").put("decoExtra", "pink"));
+        assertBad("Decorations must be a list of piece names", t -> t.put("decorationsOff", "edge"));
+        assertBad("Decorations must be a list of piece names", t -> t.put("decorationsOff", new JSONArray().put(7)));
         assertNothingStored();
 
         // background settings need a picture, and a picture needs settings

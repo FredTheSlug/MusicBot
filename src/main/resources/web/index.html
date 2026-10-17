@@ -5393,6 +5393,8 @@
             --rv-lyric: var(--text-primary);
             --rv-lyric-glow: color-mix(in srgb, var(--accent-light) 50%, var(--text-primary));
             --rv-glint: color-mix(in srgb, var(--accent-light) 25%, white);
+            /* the text on the accent buttons: black or white, whichever reads on the custom accent (ThemePalette.cssVars) */
+            --rv-ink: var(--on-accent);
         }
 
         html[data-theme="revival"]:not([data-deco-off~="glows"]) {
@@ -5402,6 +5404,12 @@
         html[data-theme="revival"]:not([data-deco-off~="glows"]) ::selection {
             background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.38);
             color: #ffffff;
+        }
+
+        /* Selected text of a custom theme sits on its accent at 38% over its page: its main text colour reads there
+           (white would vanish on a light page) */
+        html[data-custom-theme][data-theme="revival"]:not([data-deco-off~="glows"]) ::selection {
+            color: var(--text-primary);
         }
 
         /* Sunrise bloom; plays a short rise whenever the theme is applied */
@@ -5862,6 +5870,16 @@
          */
         html[data-custom-theme] body {
             background-color: var(--bg-primary);
+        }
+
+        /*
+         * A custom theme with a background picture (script sets data-custom-picture): the panel's drifting glow
+         * (body::before, not a piece) would paint over #themeBackdrop, so it goes. Steel, Sumi and Dawn Dark bring the
+         * glow back under their wash / mist piece, a background piece the script switches off with a picture too
+         * (data-deco-off); this rule weighs as much as those and comes after them, so it holds even without the list.
+         */
+        html[data-custom-theme][data-custom-picture] body::before {
+            display: none;
         }
         /*
          * The guided theme creator. It has colors of its own (the --tc-* ones) and not the theme's: the page behind it is
@@ -6657,8 +6675,9 @@
 
         // ---- Themes: the built-in ones, and the custom ones from /api/themes --------------------------------------
         // A custom theme is its base theme plus values given one CSS variable at a time to style.setProperty (never
-        // CSS text, never innerHTML), a fixed #themeBackdrop layer for its picture, and two attributes on <html>:
-        // data-custom-theme="<id>" while one is on, and data-custom-plain when it has no decorative layers. Names
+        // CSS text, never innerHTML), a fixed #themeBackdrop layer for its picture, and attributes on <html>:
+        // data-custom-theme="<id>" while one is on, data-deco-off="<ids>" for its base's decoration pieces that are off
+        // (ThemeApply.decoOffFor, from /web/theme-pieces.json), and data-custom-picture while it shows a picture. Names
         // only ever go in with textContent, isolated so they can't reorder the text around them. The checks live in
         // theme-apply.js and theme-palette.js (tested in Node); without them the panel offers the built-in themes only.
         var themeKit = window.ThemeApply && window.ThemePalette ? window.ThemeApply : null;
@@ -6675,6 +6694,8 @@
             activeJson: ''            // that theme as the server sent it, to see whether a refresh changed it
         };
         var customApplied = [];       // the custom properties set on <html> for the active custom theme
+        var themePieces = null;       // /web/theme-pieces.json: every built-in theme's decoration pieces; null until loaded
+        var themePiecesLoading = null; // the request for it while one is out
         var themeBackdropData = null; // ThemeApply.backdrop() of the active theme, or null
         var themeBackdropKey = '';
         var themeBackdropSeq = 0;
@@ -6731,7 +6752,8 @@
             customApplied.forEach(function (name) { root.style.removeProperty(name); });
             customApplied = [];
             root.removeAttribute('data-custom-theme');
-            root.removeAttribute('data-custom-plain');
+            root.removeAttribute('data-deco-off');
+            root.removeAttribute('data-custom-picture');
             customThemes.activeId = '';
             customThemes.activeName = '';
             customThemes.activeJson = '';
@@ -6745,7 +6767,10 @@
             setBaseThemeAttribute(theme.base);
             root.setAttribute('data-custom-theme', theme.id);
             var back = themeKit.backdrop(theme.background, themeLocalPicture);
-            if (!theme.effects || back) root.setAttribute('data-custom-plain', '');
+            // the pieces it has off, and with a picture every background piece too (nothing paints over the picture)
+            var off = themeKit.decoOffFor(theme, !!back, themePieces);
+            if (off) root.setAttribute('data-deco-off', off);
+            if (back) root.setAttribute('data-custom-picture', '');
             var vars = window.ThemePalette.cssVars(theme.colors);
             Object.keys(vars).forEach(function (name) { setCustomProperty(name, vars[name]); });
             if (typeof theme.radiusScale === 'number' && theme.radiusScale !== 100) {
@@ -8500,10 +8525,34 @@
 
         // ---- the list of custom themes ----
 
-        // Fetches /api/themes. A failed or unauthorized answer changes nothing; the newest request wins.
+        // /web/theme-pieces.json, asked for once (and again after a failure; two callers share one request). Resolves
+        // with the list, or null when it couldn't be had; never rejects. Without it a custom theme still shows, with
+        // only its saved pieces off.
+        function loadThemePieces() {
+            if (themePieces) return Promise.resolve(themePieces);
+            if (!themePiecesLoading) {
+                themePiecesLoading = Promise.resolve().then(function () {
+                    return fetch('/web/theme-pieces.json', { cache: 'no-cache' });
+                }).then(function (resp) {
+                    return resp && resp.ok ? resp.json() : null;
+                }).catch(function () {
+                    return null;
+                }).then(function (data) {
+                    if (data && typeof data === 'object' && !Array.isArray(data)) themePieces = data;
+                    themePiecesLoading = null;
+                    return themePieces;
+                });
+            }
+            return themePiecesLoading;
+        }
+
+        // Fetches /api/themes (and the pieces list alongside, so a theme is applied with its pieces). A failed or
+        // unauthorized answer changes nothing; the newest request wins.
         async function loadCustomThemes() {
             if (!themeKit) return;
             var seq = ++themeLoadSeq;
+            var hadPieces = !!themePieces;
+            var pieces = loadThemePieces();
             var data = null;
             try {
                 var resp = await authFetch('/api/themes');
@@ -8512,7 +8561,10 @@
             } catch (e) {
                 return;
             }
+            await pieces;
             if (seq !== themeLoadSeq || !data || !Array.isArray(data.themes)) return;
+            // a theme applied while the pieces list was missing is applied again with it
+            if (!hadPieces && themePieces) customThemes.activeJson = '';
             customThemes.list = data.themes.filter(themeKit.usable);
             customThemes.me = data.me && typeof data.me === 'object' ? { id: data.me.id, isOwner: data.me.isOwner === true } : null;
             customThemes.limit = data.limit && typeof data.limit === 'object' ? { max: data.limit.max, used: data.limit.used } : null;

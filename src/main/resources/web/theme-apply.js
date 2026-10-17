@@ -1,7 +1,8 @@
 /*
  * The checks and small calculations behind showing custom themes in the panel: which themes may be used at
  * all, how their names are shown, which picture links are accepted, how a radius is scaled, how a choice falls
- * back to its base theme, and the values of the background layer. Pure functions, no DOM.
+ * back to its base theme, the values of the background layer, and which decoration pieces are off. Pure functions,
+ * no DOM.
  * Loaded by the panel as a classic script (window.ThemeApply, after theme-palette.js) and by Node for tests.
  *
  * Nothing here builds CSS text: callers get single values to give to element.style.setProperty.
@@ -41,6 +42,10 @@
 
     var THEME_ID = /^[a-z0-9]{12}$/;
     var COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
+    /* The extra decoration color is never see-through (the server's rule too). */
+    var OPAQUE_COLOR = /^#[0-9a-f]{6}$/i;
+    /* What a piece id looks like (theme-pieces.json): it goes into data-deco-off, a space-separated list. */
+    var PIECE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
     /* The secret link of a theme's picture, exactly as the server makes it. Anything else is not used. */
     var PICTURE_URL = /^\/theme-images\/[0-9a-f]{32}\.(?:jpg|png|webp|gif)$/;
     /* Any type but JPEG may move: GIF, animated WebP, and an animated PNG (APNG), which the server stores as .png. */
@@ -189,7 +194,9 @@
 
     /*
      * May this theme from the server be shown and applied? It needs a proper id, a known base theme, a name and
-     * all 15 colors as #rrggbb(aa). Values the page puts into CSS are checked here as well as on the server.
+     * all 15 colors as #rrggbb(aa), and the extra decoration color as #rrggbb when it has one (a server from before
+     * it sends none; ThemePalette.cssVars then uses the accent-light). Values the page puts into CSS are checked here
+     * as well as on the server.
      */
     function usable(theme) {
         if (!isObject(theme) || typeof theme.id !== 'string' || !THEME_ID.test(theme.id) || typeof theme.name !== 'string') return false;
@@ -198,7 +205,51 @@
             var color = theme.colors[palette.SLOTS[i]];
             if (typeof color !== 'string' || !COLOR.test(color)) return false;
         }
+        if (Object.prototype.hasOwnProperty.call(theme.colors, 'decoExtra')) {
+            var extra = theme.colors.decoExtra;
+            if (typeof extra !== 'string' || !OPAQUE_COLOR.test(extra)) return false;
+        }
         return true;
+    }
+
+    /* ---- decoration pieces ---- */
+
+    /* The base's pieces from the pieces list (theme-pieces.json, parsed), the well-formed ones only; null when the list has no entry for it. */
+    function piecesOf(pieces, base) {
+        if (!isObject(pieces) || !Object.prototype.hasOwnProperty.call(pieces, base)) return null;
+        var entry = pieces[base];
+        if (!isObject(entry) || !Array.isArray(entry.pieces)) return null;
+        return entry.pieces.filter(function (piece) {
+            return isObject(piece) && typeof piece.id === 'string' && PIECE_ID.test(piece.id);
+        });
+    }
+
+    /*
+     * The value of <html data-deco-off> for a custom theme: the ids of its starting theme's pieces that are off, space
+     * separated, each once ('' for none). That is the saved list (theme.decorationsOff, in its order) and, when the
+     * theme shows a background picture, every background piece of the base after it, so nothing paints over the
+     * picture. `pieces` is theme-pieces.json as parsed; without an entry for the base (the list didn't load) only the
+     * saved ids that look like ids go in, as the server checked them, and nothing is added for a picture.
+     * A theme in the old shape (no list; the creator's preview still sends one) gets the server's conversion:
+     * effects false is every piece off, anything else none.
+     */
+    function decoOffFor(theme, hasPicture, pieces) {
+        if (!isObject(theme) || !isBuiltIn(theme.base)) return '';
+        var own = piecesOf(pieces, theme.base);
+        var ids = own ? own.map(function (piece) { return piece.id; }) : null;
+        var saved = Array.isArray(theme.decorationsOff) ? theme.decorationsOff
+            : (theme.decorationsOff === undefined && theme.effects === false && ids ? ids : []);
+        var off = [];
+        function add(id) {
+            if (typeof id === 'string' && PIECE_ID.test(id) && (!ids || ids.indexOf(id) >= 0) && off.indexOf(id) < 0) off.push(id);
+        }
+        saved.forEach(add);
+        if (hasPicture === true && own) {
+            own.forEach(function (piece) {
+                if (piece.background === true) add(piece.id);
+            });
+        }
+        return off.join(' ');
     }
 
     function byName(a, b) {
@@ -258,6 +309,7 @@
         mineLabel: mineLabel,
         customId: customId,
         usable: usable,
+        decoOffFor: decoOffFor,
         groupThemes: groupThemes,
         resolveChoice: resolveChoice
     };

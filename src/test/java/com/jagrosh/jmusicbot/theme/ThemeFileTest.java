@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -40,8 +41,14 @@ public class ThemeFileTest
         return sb.toString();
     }
 
-    /** All 15 slots (or the 14 mini ones) with a valid color each. */
+    /** All 16 slots (or the 15 mini ones) with a valid color each. */
     private static JSONObject colors(boolean withGlass)
+    {
+        return oldColors(withGlass).put("decoExtra", "#f0abfc");
+    }
+
+    /** The 15 slots (or 14 mini ones) a theme had before the extra decoration color, as older panels still send them. */
+    private static JSONObject oldColors(boolean withGlass)
     {
         JSONObject colors = new JSONObject();
         colors.put("bgPrimary", "#0b0d14");
@@ -80,10 +87,27 @@ public class ThemeFileTest
                 .put("name", "Midnight Drive")
                 .put("visibility", "public")
                 .put("base", "ember")
-                .put("effects", false)
+                .put("decorationsOff", new JSONArray().put("edge"))
                 .put("colors", colors(true))
                 .put("radiusScale", 100)
                 .put("font", "Outfit");
+    }
+
+    /** What a panel from before the pieces sends, and what a theme file from then holds: an effects flag and 15 colors. */
+    private static JSONObject oldShape(JSONObject json, Boolean effects)
+    {
+        json.remove("decorationsOff");
+        if(effects != null)
+            json.put("effects", effects);
+        json.put("colors", oldColors(true));
+        if(json.has("mini"))
+            json.getJSONObject("mini").put("colors", oldColors(false));
+        return json;
+    }
+
+    private static List<String> ids(String... ids)
+    {
+        return Arrays.asList(ids);
     }
 
     /** A complete stored theme file without the optional blocks. */
@@ -145,7 +169,7 @@ public class ThemeFileTest
         file.setCreatedAt(Instant.parse("2026-10-14T18:00:00Z"));
         file.setUpdatedAt(Instant.parse("2026-10-14T18:05:00Z"));
         file.setBase("ember");
-        file.setEffects(false);
+        file.setDecorationsOff(ids("fire", "flames"));
         Map<String, String> palette = new LinkedHashMap<>();
         JSONObject colors = colors(true);
         for(String slot : ThemeFile.COLOR_SLOTS)
@@ -172,8 +196,9 @@ public class ThemeFileTest
         assertEquals(Instant.parse("2026-10-14T18:00:00Z"), back.getCreatedAt());
         assertEquals(Instant.parse("2026-10-14T18:05:00Z"), back.getUpdatedAt());
         assertEquals("ember", back.getBase());
-        assertFalse(back.isEffects());
+        assertEquals(ids("fire", "flames"), back.getDecorationsOff());
         assertEquals(palette, back.getColors());
+        assertEquals("#f0abfc", back.getColors().get("decoExtra"));
         assertEquals(ThemeFile.COLOR_SLOTS, Arrays.asList(back.getColors().keySet().toArray()));
         assertEquals(150, back.getRadiusScale());
         assertEquals("Fraunces", back.getFont());
@@ -182,22 +207,77 @@ public class ThemeFileTest
         assertEquals(4, back.getBackground().getBlur());
         assertEquals("contain", back.getBackground().getFit());
         assertEquals(miniPalette, back.getMini().getColors());
+        assertEquals(ThemeFile.MINI_SLOTS, Arrays.asList(back.getMini().getColors().keySet().toArray()));
         assertTrue(back.getMini().isUseImage());
         assertEquals(55, back.getMini().getDim());
         assertTrue(new JSONObject(text).similar(new JSONObject(back.toJson())));
     }
 
     @Test
-    public void roundTripWithoutOptionalBlocksAndWithEffects()
+    public void roundTripWithoutOptionalBlocksAndWithEveryPieceOn()
     {
-        ThemeFile file = ThemeFile.fromJson(fileJson().put("effects", true).toString());
-        assertTrue(file.isEffects());
+        ThemeFile file = ThemeFile.fromJson(fileJson().put("decorationsOff", new JSONArray()).toString());
+        assertEquals(ids(), file.getDecorationsOff());
         assertNull(file.getBackground());
         assertNull(file.getMini());
         ThemeFile back = ThemeFile.fromJson(file.toJson());
-        assertTrue(back.isEffects());
+        assertEquals(ids(), back.getDecorationsOff());
         assertNull(back.getBackground());
         assertNull(back.getMini());
+    }
+
+    @Test
+    public void roundTripKeepsEverything()
+    {
+        // a theme in the new shape, with every optional block: written, read, written again, nothing lost or changed
+        JSONObject full = fileJson().put("base", "revival").put("decorationsOff", new JSONArray().put("rays").put("record"))
+                .put("background", background()).put("mini", mini());
+        full.getJSONObject("colors").put("decoExtra", "#123456");
+        full.getJSONObject("mini").getJSONObject("colors").put("decoExtra", "#abcdef");
+        ThemeFile first = ThemeFile.fromJson(full.toString());
+        String text = first.toJson();
+        ThemeFile again = ThemeFile.fromJson(text);
+        assertEquals(text, again.toJson());
+        assertEquals(ids("rays", "record"), again.getDecorationsOff());
+        assertEquals("#123456", again.getColors().get("decoExtra"));
+        assertEquals("#abcdef", again.getMini().getColors().get("decoExtra"));
+        JSONObject written = new JSONObject(text);
+        for(String key : new String[]{"name", "visibility", "base", "radiusScale", "font", "decorationsOff", "colors"})
+            assertTrue(key, new JSONObject().put(key, full.get(key)).similar(new JSONObject().put(key, written.get(key))));
+
+        // an old file (effects off, 15 colors, no extra color in the mini-player version) reads, writes in the new
+        // shape and reads back the same: its pieces stay off, its colors stay, the extra colors are its base's
+        JSONObject old = oldShape(fileJson().put("base", "rasta").put("background", background()).put("mini", mini()), false);
+        ThemeFile converted = ThemeFile.fromJson(old.toString());
+        ThemeFile resaved = ThemeFile.fromJson(converted.toJson());
+        assertEquals(converted.toJson(), resaved.toJson());
+        assertEquals(ids("stripe", "titles", "bar", "lyric"), resaved.getDecorationsOff());
+        for(String slot : ThemeFile.MINI_SLOTS)
+        {
+            if(!slot.equals("decoExtra"))
+                assertEquals(slot, old.getJSONObject("colors").getString(slot), resaved.getColors().get(slot));
+        }
+        assertEquals(old.getJSONObject("colors").getString("glass"), resaved.getColors().get("glass"));
+        assertEquals("#dc2626", resaved.getColors().get("decoExtra"));
+        assertEquals("#dc2626", resaved.getMini().getColors().get("decoExtra"));
+        assertEquals(IMAGE, resaved.getBackground().getImage());
+        assertEquals(55, resaved.getMini().getDim());
+        assertEquals("Midnight Drive", resaved.getName());
+    }
+
+    @Test
+    public void effectsIsNoLongerWritten()
+    {
+        for(Boolean effects : new Boolean[]{true, false, null})
+        {
+            JSONObject written = new JSONObject(ThemeFile.fromJson(oldShape(fileJson(), effects).toString()).toJson());
+            assertFalse(written.toString(), written.has("effects"));
+            assertTrue(written.has("decorationsOff"));
+            assertEquals(effects != null && !effects ? 3 : 0, written.getJSONArray("decorationsOff").length());
+        }
+        // and a theme whose pieces are all on still writes its (empty) list
+        JSONObject allOn = new JSONObject(ThemeFile.fromJson(fileJson().put("decorationsOff", new JSONArray()).toString()).toJson());
+        assertEquals(0, allOn.getJSONArray("decorationsOff").length());
     }
 
     @Test
@@ -205,7 +285,10 @@ public class ThemeFileTest
     {
         JSONObject minimal = new JSONObject(ThemeFile.fromJson(fileJson().toString()).toJson());
         assertEquals(new HashSet<>(Arrays.asList("format", "id", "name", "owner", "visibility", "hiddenByOwner", "version",
-                "createdAt", "updatedAt", "base", "effects", "colors", "radiusScale", "font")), minimal.keySet());
+                "createdAt", "updatedAt", "base", "decorationsOff", "colors", "radiusScale", "font")), minimal.keySet());
+        assertEquals(1, minimal.getJSONArray("decorationsOff").length());
+        assertEquals("edge", minimal.getJSONArray("decorationsOff").getString(0));
+        assertEquals("#f0abfc", minimal.getJSONObject("colors").getString("decoExtra"));
         assertEquals(1, minimal.getInt("format"));
         assertEquals("k3j9x0q2m7ab", minimal.getString("id"));
         assertEquals("2026-10-14T18:05:00Z", minimal.getString("updatedAt"));
@@ -227,11 +310,12 @@ public class ThemeFileTest
         assertEquals(Arrays.asList("Inter", "DM Sans", "Outfit", "Syne", "Fraunces", "IBM Plex Mono", "Noto Sans JP",
                 "Shippori Mincho"), ThemeFile.FONTS);
         assertEquals(Arrays.asList("bgPrimary", "bgSecondary", "bgCard", "bgElevated", "bgHover", "accent", "accentLight",
-                "accent2", "textPrimary", "textSecondary", "textTertiary", "border", "borderLight", "success", "glass"),
-                ThemeFile.COLOR_SLOTS);
-        assertEquals(15, ThemeFile.COLOR_SLOTS.size());
-        assertEquals(14, ThemeFile.MINI_SLOTS.size());
-        assertEquals(ThemeFile.COLOR_SLOTS.subList(0, 14), ThemeFile.MINI_SLOTS);
+                "accent2", "textPrimary", "textSecondary", "textTertiary", "border", "borderLight", "success", "glass",
+                "decoExtra"), ThemeFile.COLOR_SLOTS);
+        assertEquals(16, ThemeFile.COLOR_SLOTS.size());
+        assertEquals(15, ThemeFile.MINI_SLOTS.size());
+        assertEquals(ThemeFile.COLOR_SLOTS.subList(0, 14), ThemeFile.MINI_SLOTS.subList(0, 14));
+        assertEquals("decoExtra", ThemeFile.MINI_SLOTS.get(14));
         assertFalse(ThemeFile.MINI_SLOTS.contains("glass"));
         assertEquals(40, ThemeFile.MAX_NAME);
     }
@@ -397,7 +481,10 @@ public class ThemeFileTest
     public void missingOrExtraColorSlotsRejected()
     {
         for(String slot : ThemeFile.COLOR_SLOTS)
-            assertRejected(json -> json.getJSONObject("colors").remove(slot));
+        {
+            if(!slot.equals("decoExtra")) // the one a theme may leave out (decoExtraIsOptionalOnRead)
+                assertRejected(json -> json.getJSONObject("colors").remove(slot));
+        }
         assertRejected(json -> json.getJSONObject("colors").put("shadow", "#000000"));
         assertRejected(json -> json.getJSONObject("colors").put("BgPrimary", "#000000"));
         assertRejected(json -> without(json.getJSONObject("colors"), "bgPrimary").put("bgprimary", "#0b0d14"));
@@ -415,7 +502,12 @@ public class ThemeFileTest
         assertThrows(IllegalArgumentException.class, () -> theme.setColors(null));
         missing.put("glass", "#000000");
         theme.setColors(missing);
-        assertEquals(15, theme.getColors().size());
+        assertEquals(16, theme.getColors().size());
+        assertEquals(ThemeFile.COLOR_SLOTS, Arrays.asList(theme.getColors().keySet().toArray()));
+        // the setter takes complete colors only: filling in the extra color is for reading a theme, which knows its base
+        Map<String, String> noExtra = new LinkedHashMap<>(missing);
+        noExtra.remove("decoExtra");
+        assertThrows(IllegalArgumentException.class, () -> theme.setColors(noExtra));
         missing.put("extra", "#000000");
         assertThrows(IllegalArgumentException.class, () -> theme.setColors(missing));
     }
@@ -448,7 +540,10 @@ public class ThemeFileTest
         for(String slot : ThemeFile.MINI_SLOTS)
             assertRejected(json -> json.put("mini", mini().put("colors", colors(false).put(slot, "#000"))));
         for(String slot : ThemeFile.MINI_SLOTS)
-            assertRejected(json -> json.put("mini", mini().put("colors", without(colors(false), slot))));
+        {
+            if(!slot.equals("decoExtra")) // the one a theme may leave out
+                assertRejected(json -> json.put("mini", mini().put("colors", without(colors(false), slot))));
+        }
         assertRejected(json -> json.put("mini", mini().put("colors", colors(false).put("accent", "red"))));
         assertRejected(json -> json.put("mini", mini().put("colors", colors(false).put("accent", "url(x)"))));
         assertRejected(json -> json.put("mini", mini().put("colors", colors(false).put("extra", "#000000"))));
@@ -487,46 +582,210 @@ public class ThemeFileTest
     }
 
     @Test
-    public void effectsForcedOffWithBackground()
+    public void aPictureLeavesTheSavedPiecesAlone()
     {
-        // a stored file that holds both is read with the effects off
-        ThemeFile read = ThemeFile.fromJson(fileJson().put("effects", true).put("background", background()).toString());
-        assertNotNull(read.getBackground());
-        assertFalse(read.isEffects());
-        assertTrue(new JSONObject(read.toJson()).has("background"));
-        assertFalse(new JSONObject(read.toJson()).getBoolean("effects"));
-
-        // so does a request from a browser
-        ThemeFile client = ThemeFile.valuesFromClient(clientJson().put("effects", true).put("background", background()));
-        assertNotNull(client.getBackground());
-        assertFalse(client.isEffects());
-
-        // without a background the effects stay as they are
-        assertTrue(ThemeFile.valuesFromClient(clientJson().put("effects", true)).isEffects());
-        assertFalse(ThemeFile.valuesFromClient(clientJson().put("effects", false)).isEffects());
-        assertFalse(ThemeFile.valuesFromClient(clientJson()).isEffects());
-
-        // the setters keep the rule in either order
-        ThemeFile theme = new ThemeFile();
-        theme.setEffects(true);
-        assertTrue(theme.isEffects());
+        // the panel switches a picture theme's background pieces off when it shows it; what is saved is the person's choice
+        assertAccepted(json -> json.put("background", background()).put("decorationsOff", new JSONArray().put("edge")),
+                theme -> assertEquals(ids("edge"), theme.getDecorationsOff()));
+        assertAccepted(json -> json.put("background", background()).put("decorationsOff", new JSONArray()),
+                theme -> assertEquals(ids(), theme.getDecorationsOff()));
+        ThemeFile theme = ThemeFile.fromJson(fileJson().toString());
         theme.setBackground(new ThemeFile.Background(IMAGE, 0, 0, "cover"));
-        assertFalse(theme.isEffects());
-        theme.setEffects(true);
-        assertFalse(theme.isEffects());
+        assertEquals(ids("edge"), theme.getDecorationsOff());
         theme.setBackground(null);
-        assertFalse("removing the picture does not switch effects back on", theme.isEffects());
-        theme.setEffects(true);
-        assertTrue(theme.isEffects());
+        assertEquals(ids("edge"), theme.getDecorationsOff());
     }
 
     @Test
-    public void effectsMustBeABoolean()
+    public void unknownPieceIdsAreDropped()
+    {
+        assertAccepted(json -> json.put("decorationsOff", new JSONArray().put("flames").put("rays").put("nope").put("")
+                .put("FLAMES").put(" fire").put("edge ").put("glow")),
+                theme -> assertEquals(ids("flames"), theme.getDecorationsOff()));
+        // ids are the starting theme's own: Revival's rays are no Ember piece, Ember's flames no Revival one
+        assertAccepted(json -> json.put("base", "revival").put("decorationsOff", new JSONArray().put("flames").put("rays")),
+                theme -> assertEquals(ids("rays"), theme.getDecorationsOff()));
+        assertAccepted(json -> json.put("base", "nebula").put("decorationsOff", new JSONArray().put("glow").put("rays")),
+                theme -> assertEquals(ids("glow"), theme.getDecorationsOff()));
+        assertAccepted(json -> json.put("decorationsOff", new JSONArray().put("../x").put("a\"b").put(repeat("x", 5000))),
+                theme -> assertEquals(ids(), theme.getDecorationsOff()));
+
+        ThemeFile theme = new ThemeFile();
+        theme.setBase("ember");
+        theme.setDecorationsOff(ids("nope", "fire"));
+        assertEquals(ids("fire"), theme.getDecorationsOff());
+        theme.setDecorationsOff(null);
+        assertEquals(ids(), theme.getDecorationsOff());
+    }
+
+    @Test
+    public void duplicatesRemovedOrderKept()
+    {
+        assertAccepted(json -> json.put("decorationsOff", new JSONArray().put("fire").put("flames").put("fire").put("edge")
+                .put("flames")), theme -> assertEquals(ids("fire", "flames", "edge"), theme.getDecorationsOff()));
+        ThemeFile theme = new ThemeFile();
+        theme.setBase("revival");
+        theme.setDecorationsOff(ids("record", "rays", "record", "logo", "rays"));
+        assertEquals(ids("record", "rays", "logo"), theme.getDecorationsOff());
+        assertThrows(UnsupportedOperationException.class, () -> theme.getDecorationsOff().add("glows"));
+    }
+
+    @Test
+    public void decorationsOffMustBeAListOfNames()
+    {
+        assertRejected(json -> json.put("decorationsOff", "flames"));
+        assertRejected(json -> json.put("decorationsOff", new JSONObject().put("flames", true)));
+        assertRejected(json -> json.put("decorationsOff", true));
+        assertRejected(json -> json.put("decorationsOff", new JSONArray().put("flames").put(1)));
+        assertRejected(json -> json.put("decorationsOff", new JSONArray().put(JSONObject.NULL)));
+        assertRejected(json -> json.put("decorationsOff", new JSONArray().put(new JSONArray().put("flames"))));
+        assertTrue(messageFor(json -> json.put("decorationsOff", "flames")).startsWith("Decorations"));
+        // null is no list: the theme reads as one without (none off, unless it has the old effects flag)
+        assertAccepted(json -> json.put("decorationsOff", JSONObject.NULL), theme -> assertEquals(ids(), theme.getDecorationsOff()));
+    }
+
+    @Test
+    public void aNewStartingThemeKeepsOnlyItsOwnPieces()
+    {
+        ThemeFile theme = new ThemeFile();
+        assertThrows("the pieces are the starting theme's, so it comes first", IllegalStateException.class,
+                () -> theme.setDecorationsOff(ids("flames")));
+        theme.setBase("cipher");
+        theme.setDecorationsOff(ids("glows", "grid", "prompt"));
+        theme.setBase("neon"); // Neon has glows too, but no grid or prompt
+        assertEquals(ids("glows"), theme.getDecorationsOff());
+        theme.setBase("ember");
+        assertEquals(ids(), theme.getDecorationsOff());
+    }
+
+    @Test
+    public void decoExtraMustBeAColour()
+    {
+        for(String bad : new String[]{"#fff", "red", "#12345g", "#dc2626ff", "#dc262680", "url(x)", "var(--accent)", "",
+                " #dc2626", "#dc2626 ", "#dc2626;x", "dc2626"})
+        {
+            assertRejected(json -> json.getJSONObject("colors").put("decoExtra", bad));
+            assertRejected(json -> json.put("mini", mini().put("colors", colors(false).put("decoExtra", bad))));
+        }
+        for(Object bad : new Object[]{123456, true, JSONObject.NULL, new JSONObject(), new JSONArray().put("#dc2626")})
+        {
+            assertRejected(json -> json.getJSONObject("colors").put("decoExtra", bad));
+            assertRejected(json -> json.put("mini", mini().put("colors", colors(false).put("decoExtra", bad))));
+        }
+        assertEquals("Extra decoration color must be a color like #7c5cff",
+                messageFor(json -> json.getJSONObject("colors").put("decoExtra", "red")));
+        assertEquals("Mini-player extra decoration color must be a color like #7c5cff",
+                messageFor(json -> json.put("mini", mini().put("colors", colors(false).put("decoExtra", "#dc2626ff")))));
+        assertAccepted(json -> json.put("mini", mini().put("colors", colors(false).put("decoExtra", "#ABCDEF")))
+                .getJSONObject("colors").put("decoExtra", "#DC2626"), theme ->
+        {
+            assertEquals("#dc2626", theme.getColors().get("decoExtra"));
+            assertEquals("#abcdef", theme.getMini().getColors().get("decoExtra"));
+        });
+    }
+
+    @Test
+    public void decoExtraIsOptionalOnRead()
+    {
+        // left out, it is the starting theme's own (theme-pieces.json)
+        for(String base : ThemeFile.BASES)
+        {
+            assertAccepted(json -> json.put("base", base).put("mini", mini()).put("decorationsOff", new JSONArray()).getJSONObject("colors")
+                    .remove("decoExtra"), theme ->
+            {
+                assertEquals(base, ThemePieces.decoExtra(base), theme.getColors().get("decoExtra"));
+                assertEquals(ThemeFile.COLOR_SLOTS, Arrays.asList(theme.getColors().keySet().toArray()));
+                assertEquals("the mini-player version keeps its own", "#f0abfc", theme.getMini().getColors().get("decoExtra"));
+            });
+        }
+        assertAccepted(json -> json.put("base", "rasta").getJSONObject("colors").remove("decoExtra"),
+                theme -> assertEquals("#dc2626", theme.getColors().get("decoExtra")));
+        assertAccepted(json -> json.put("base", "nebula").getJSONObject("colors").remove("decoExtra"),
+                theme -> assertEquals("#9b82fc", theme.getColors().get("decoExtra")));
+    }
+
+    @Test
+    public void miniColoursWithAndWithoutDecoExtra()
+    {
+        assertAccepted(json -> json.put("mini", mini()), theme ->
+        {
+            assertEquals(ThemeFile.MINI_SLOTS, Arrays.asList(theme.getMini().getColors().keySet().toArray()));
+            assertEquals("#f0abfc", theme.getMini().getColors().get("decoExtra"));
+        });
+        assertAccepted(json -> json.put("base", "cipher").put("mini", mini().put("colors", oldColors(false))), theme ->
+        {
+            assertEquals(ThemeFile.MINI_SLOTS, Arrays.asList(theme.getMini().getColors().keySet().toArray()));
+            assertEquals("the starting theme's", "#22d3ee", theme.getMini().getColors().get("decoExtra"));
+            assertEquals("#f0abfc", theme.getColors().get("decoExtra"));
+        });
+        assertRejected(json -> json.put("mini", mini().put("colors", colors(false).put("glass", "#000000"))));
+
+        // the constructor takes complete colors only
+        Map<String, String> fourteen = new LinkedHashMap<>();
+        for(String slot : ThemeFile.MINI_SLOTS.subList(0, 14))
+            fourteen.put(slot, "#000000");
+        assertThrows(IllegalArgumentException.class, () -> new ThemeFile.Mini(fourteen, false, 0));
+        fourteen.put("decoExtra", "#ffffff");
+        assertEquals(15, new ThemeFile.Mini(fourteen, false, 0).getColors().size());
+    }
+
+    @Test
+    public void oldThemesConvertOnRead()
+    {
+        // effects off: every piece of the starting theme off; on, or not there: none off
+        for(String base : ThemeFile.BASES)
+        {
+            JSONObject off = oldShape(fileJson().put("base", base), false);
+            assertEquals(base, ThemePieces.ids(base), ThemeFile.fromJson(off.toString()).getDecorationsOff());
+            assertEquals(base, ThemePieces.ids(base), ThemeFile.valuesFromClient(oldShape(clientJson().put("base", base), false))
+                    .getDecorationsOff());
+            assertEquals(base, ids(), ThemeFile.fromJson(oldShape(fileJson().put("base", base), true).toString()).getDecorationsOff());
+            assertEquals(base, ids(), ThemeFile.fromJson(oldShape(fileJson().put("base", base), null).toString()).getDecorationsOff());
+            // the extra decoration color is the starting theme's own, so a Rasta theme's red stays red
+            assertEquals(base, ThemePieces.decoExtra(base), ThemeFile.fromJson(off.toString()).getColors().get("decoExtra"));
+        }
+        assertEquals(ids("flames", "edge", "fire"), ThemeFile.fromJson(oldShape(fileJson(), false).toString()).getDecorationsOff());
+        assertEquals("#dc2626", ThemeFile.fromJson(oldShape(fileJson().put("base", "rasta"), true).toString()).getColors().get("decoExtra"));
+        assertEquals("#22d3ee", ThemeFile.fromJson(oldShape(fileJson().put("base", "cipher"), true).toString()).getColors().get("decoExtra"));
+
+        // an old file with a picture was saved with effects off (a picture forced them off): all off, as it looked
+        ThemeFile pictured = ThemeFile.fromJson(oldShape(fileJson().put("base", "grove").put("background", background()), false).toString());
+        assertEquals(ids("photo", "hairlines", "glows"), pictured.getDecorationsOff());
+        assertEquals(IMAGE, pictured.getBackground().getImage());
+
+        // a theme that has both keeps its list; the old flag is only for themes without one
+        assertEquals(ids("edge"), ThemeFile.fromJson(fileJson().put("effects", false).toString()).getDecorationsOff());
+        assertEquals(ids(), ThemeFile.fromJson(fileJson().put("effects", false).put("decorationsOff", new JSONArray()).toString())
+                .getDecorationsOff());
+        // a null list counts as none
+        assertEquals(ids("flames", "edge", "fire"), ThemeFile.fromJson(fileJson().put("effects", false)
+                .put("decorationsOff", JSONObject.NULL).toString()).getDecorationsOff());
+    }
+
+    @Test
+    public void fifteenColourClientsStillWork()
+    {
+        // a panel from before the pieces (or one that loaded before the bot was updated) sends 15 colors, 14 for the
+        // mini-player, and the effects flag
+        ThemeFile values = ThemeFile.valuesFromClient(oldShape(clientJson().put("base", "rasta").put("mini", mini()), false));
+        assertEquals(16, values.getColors().size());
+        assertEquals("#dc2626", values.getColors().get("decoExtra"));
+        assertEquals("#7c5cff", values.getColors().get("accent"));
+        assertEquals(15, values.getMini().getColors().size());
+        assertEquals("#dc2626", values.getMini().getColors().get("decoExtra"));
+        assertEquals(ids("stripe", "titles", "bar", "lyric"), values.getDecorationsOff());
+        ThemeFile kept = ThemeFile.valuesFromClient(oldShape(clientJson(), true));
+        assertEquals(ids(), kept.getDecorationsOff());
+        assertEquals("#fde047", kept.getColors().get("decoExtra"));
+    }
+
+    @Test
+    public void effectsMustBeABooleanWhenSent()
     {
         assertRejected(json -> json.put("effects", "true"));
         assertRejected(json -> json.put("effects", 1));
         assertRejected(json -> json.put("effects", JSONObject.NULL));
-        assertAccepted(json -> json.remove("effects"), theme -> assertFalse(theme.isEffects()));
+        assertAccepted(json -> json.remove("effects"), theme -> assertEquals(ids("edge"), theme.getDecorationsOff()));
     }
 
     @Test
@@ -569,17 +828,18 @@ public class ThemeFileTest
     public void valuesFromClientReadsEveryEditableValue()
     {
         ThemeFile values = ThemeFile.valuesFromClient(clientJson()
-                .put("visibility", "private").put("base", "dawn-dark").put("effects", true).put("radiusScale", 0)
-                .put("font", "IBM Plex Mono").put("mini", mini()));
+                .put("visibility", "private").put("base", "dawn-dark").put("decorationsOff", new JSONArray().put("wash").put("edge"))
+                .put("radiusScale", 0).put("font", "IBM Plex Mono").put("mini", mini()));
         assertEquals("private", values.getVisibility());
         assertEquals("dawn-dark", values.getBase());
-        assertTrue(values.isEffects());
+        assertEquals(ids("wash", "edge"), values.getDecorationsOff());
         assertEquals(0, values.getRadiusScale());
         assertEquals("IBM Plex Mono", values.getFont());
-        assertEquals(15, values.getColors().size());
+        assertEquals(16, values.getColors().size());
         assertEquals("#10131ce0", values.getColors().get("glass"));
+        assertEquals("#f0abfc", values.getColors().get("decoExtra"));
         assertNull(values.getBackground());
-        assertEquals(14, values.getMini().getColors().size());
+        assertEquals(15, values.getMini().getColors().size());
         assertThrows(IllegalArgumentException.class, () -> ThemeFile.valuesFromClient(null));
     }
 
@@ -643,14 +903,16 @@ public class ThemeFileTest
         assertRejectedFile(json -> json.put("updatedAt", 12345));
 
         JSONObject lean = fileJson();
-        for(String key : new String[]{"hiddenByOwner", "version", "createdAt", "updatedAt", "effects"})
+        for(String key : new String[]{"hiddenByOwner", "version", "createdAt", "updatedAt", "decorationsOff"})
             lean.remove(key);
+        lean.getJSONObject("colors").remove("decoExtra");
         ThemeFile defaults = ThemeFile.fromJson(lean.toString());
         assertFalse(defaults.isHiddenByOwner());
         assertEquals(0L, defaults.getVersion());
         assertNull(defaults.getCreatedAt());
         assertNull(defaults.getUpdatedAt());
-        assertFalse(defaults.isEffects());
+        assertEquals("no list and no effects flag: every piece on", ids(), defaults.getDecorationsOff());
+        assertEquals("#fde047", defaults.getColors().get("decoExtra"));
         assertEquals("fred", defaults.getOwner().getName());
         assertEquals("233362518045753345", defaults.getOwner().getId());
         assertEquals("k3j9x0q2m7ab", defaults.getId());

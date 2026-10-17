@@ -412,10 +412,20 @@ test('cssVarsHasExactlyThePanelVariables', () => {
     '--accent', '--accent-b', '--accent-g', '--accent-glow', '--accent-gradient', '--accent-light', '--accent-r',
     '--accent2-b', '--accent2-g', '--accent2-r',
     '--bg-card', '--bg-elevated', '--bg-hover', '--bg-primary', '--bg-secondary',
-    '--border', '--border-light', '--deco-extra', '--glass', '--success',
+    '--border', '--border-light', '--deco-extra', '--glass', '--on-accent', '--success',
     '--text-primary', '--text-secondary', '--text-tertiary'
   ]);
   for (const value of Object.values(cssVars(AURORA))) assert.equal(typeof value, 'string');
+});
+
+test('cssVarsHasOnAccent', () => {
+  // the text on the accent (Revival's accent buttons in a custom theme): black or white, whichever reads better
+  assert.equal(cssVars(AURORA)['--on-accent'], onAccent(AURORA.accent));
+  for (const [accent, expected] of [['#1e3a8a', '#ffffff'], ['#fde047', '#000000'], ['#7c3aed', '#ffffff'], ['#a3e635', '#000000']]) {
+    const v = cssVars(Object.assign({}, AURORA, { accent: accent }));
+    assert.equal(v['--on-accent'], expected, accent);
+    assert.ok(contrast(v['--on-accent'], accent) >= 4.5, accent + ': ' + contrast(v['--on-accent'], accent).toFixed(2));
+  }
 });
 
 test('cssVarsHasDecoExtra', () => {

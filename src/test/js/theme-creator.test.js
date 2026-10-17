@@ -143,7 +143,9 @@ test('theCreatorKnowsTheSameBasesFontsFitsAndSlotsAsTheServer', () => {
   assert.deepEqual([...ThemeApply.BUILT_IN], javaList('BASES'));
   assert.deepEqual(C.FONTS, javaList('FONTS'));
   assert.deepEqual(C.FITS, javaList('FITS'));
-  assert.deepEqual([...P.SLOTS], javaList('COLOR_SLOTS'));
+  // the server's 16th, the extra decoration color, it fills in from the starting theme when it isn't sent
+  assert.deepEqual([...P.SLOTS], javaList('COLOR_SLOTS').filter((slot) => slot !== 'decoExtra'));
+  assert.deepEqual(javaList('COLOR_SLOTS').slice(-1), ['decoExtra']);
   assert.equal(C.MAX_NAME, 40);
   assert.equal(C.MAX_PICTURE_BYTES, 8 * 1024 * 1024);
   const nameLimit = /MAX_NAME = (\d+)/.exec(THEME_FILE);
@@ -273,6 +275,24 @@ test('aThemeSavedWithoutAPictureAndWithEffectsOffKeepsThemOff', () => {
   const s = C.fromTheme(savedTheme({ background: null, mini: null, base: 'neon', effects: false }));
   assert.equal(s.effects, false);
   assert.equal(C.buildValues(s).effects, false);
+});
+
+test('aThemeServedWithItsPiecesReopensWithTheEffectsSwitchToMatch', () => {
+  // the server sends the pieces that are off (decorationsOff) and no effects flag any more; until the creator has a
+  // switch per piece, none off reads as effects on and any off as effects off, so a theme saved with effects off
+  // (every piece off) opens and saves again as it was
+  const served = (extra) => {
+    const t = savedTheme(Object.assign({ background: null, mini: null }, extra));
+    delete t.effects;
+    return t;
+  };
+  const allOff = served({ base: 'ember', decorationsOff: ['flames', 'edge', 'fire'] });
+  assert.equal(C.fromTheme(allOff).effects, false);
+  assert.equal(C.buildValues(C.fromTheme(allOff)).effects, false);
+  assert.equal(C.startFromTheme(allOff).effects, false);
+  assert.equal(C.fromTheme(served({ decorationsOff: [] })).effects, true);
+  // a picture still says nothing about the switch
+  assert.equal(C.fromTheme(Object.assign(served({ decorationsOff: ['flames'] }), { background: savedTheme().background })).effects, true);
 });
 
 test('editingAThemeWithoutAPictureOrMini', () => {
@@ -610,7 +630,7 @@ test('theValuesAreExactlyWhatTheServerTakes', () => {
   assert.equal(v.name, 'Neon Nights');
   assert.equal(v.visibility, 'public');
   assert.equal(v.base, 'nebula');
-  assert.deepEqual(Object.keys(v.colors), javaList('COLOR_SLOTS'));
+  assert.deepEqual(Object.keys(v.colors), javaList('COLOR_SLOTS').filter((slot) => slot !== 'decoExtra'));
   assert.equal(v.radiusScale, 100);
   assert.equal(v.font, 'Inter');
   assert.equal(JSON.stringify(v).includes('"id"'), false);

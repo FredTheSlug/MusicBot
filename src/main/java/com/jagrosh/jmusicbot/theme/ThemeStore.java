@@ -424,7 +424,7 @@ public class ThemeStore
         to.setVisibility(from.getVisibility());
         to.setBase(from.getBase());
         to.setBackground(background);
-        to.setEffects(from.isEffects());
+        to.setDecorationsOff(from.getDecorationsOff());
         to.setColors(from.getColors());
         to.setRadiusScale(from.getRadiusScale());
         to.setFont(from.getFont());

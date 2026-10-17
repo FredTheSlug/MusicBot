@@ -1194,6 +1194,56 @@ test('rastaTitlesStayReadableInCustomPalettes', () => {
   assert.deepEqual(low, []);
 });
 
+test('revivalTextOnTheAccentStaysReadableInCustomPalettes', () => {
+  // Revival's accent buttons (.btn, the play button) draw their text in --rv-ink, a dark ink of its own; a custom theme
+  // takes --on-accent instead (ThemePalette.cssVars: black or white by contrast with the accent). Selected text sits on
+  // the accent at 38% over the page, so it takes the theme's main text colour.
+  const css = Colors.panelCss();
+  const customRules = {};
+  panelDeclarations().filter((d) => d.rule.at.length === 0 &&
+    d.selector === 'html[data-custom-theme][data-theme="revival"]').forEach((d) => {
+    customRules[d.decl.prop] = d.decl.value;
+  });
+  assert.equal(customRules['--rv-ink'], 'var(--on-accent)');
+  const hex = (c) => '#' + c.slice(0, 3).map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0'))
+    .join('');
+  const attrs = { 'data-theme': 'revival', 'data-custom-theme': 'x' };
+  function winner(subject, prop) {
+    const live = panelDeclarations().filter((d) => d.rule.at.length === 0 && d.decl.prop === prop &&
+      d.selector.endsWith(subject) && Colors.htmlMatches(d.spaced, attrs) === true);
+    live.sort((a, b) => {
+      const x = a.spec.concat([a.order]), y = b.spec.concat([b.order]);
+      for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
+      return 0;
+    });
+    assert.ok(live.length, subject + ' ' + prop);
+    return live[live.length - 1].decl.value;
+  }
+  const buttonText = winner(' .btn', 'color');
+  const playText = winner(' .ctrl-btn-primary', 'color');
+  const selectionText = winner(' ::selection', 'color');
+  const selectionBack = winner(' ::selection', 'background');
+  const low = [];
+  for (const [accent, background, mode] of [['#1e3a8a', '#020617', 'dark'], ['#1e3a8a', '#f8fafc', 'light'],
+    ['#fde047', '#0b1020', 'dark'], ['#fde047', '#fffbeb', 'light'], ['#3b82f6', '#0b1020', 'dark'], ['#dc2626', '#fff1f2', 'light']]) {
+    const vars = Object.assign({}, Colors.themeVars(css, 'revival'), customRules,
+      ThemePalette.cssVars(ThemePalette.generate(accent, background, mode)));
+    const on = hex(Colors.evaluate(vars['--accent'], vars));
+    for (const [what, value] of [['button', buttonText], ['play button', playText]]) {
+      const ratio = ThemePalette.contrast(hex(Colors.evaluate(value, vars)), on);
+      if (ratio < 4.5) low.push(what + ' on ' + accent + ' (' + mode + '): ' + ratio.toFixed(2));
+    }
+    const page = Colors.evaluate('var(--bg-primary)', vars);
+    const tint = Colors.evaluate(selectionBack, vars);
+    const back = hex([0, 1, 2].map((k) => tint[k] * tint[3] + page[k] * (1 - tint[3])));
+    const ratio = ThemePalette.contrast(hex(Colors.evaluate(selectionText, vars)), back);
+    if (ratio < 4.5) low.push('selected text with ' + accent + ' (' + mode + '): ' + ratio.toFixed(2));
+  }
+  assert.deepEqual(low, []);
+  // built-in Revival keeps its own ink and white selected text
+  assert.equal(Colors.themeVars(css, 'revival')['--rv-ink'].startsWith('color-mix('), true);
+});
+
 test('reducedMotionStopsEveryAnimatedPiece', () => {
   const found = motionProblems(REWRITTEN);
   const names = new Set(found.animated.flatMap((d) => d.decl.value.match(/[A-Za-z][\w-]*/g)

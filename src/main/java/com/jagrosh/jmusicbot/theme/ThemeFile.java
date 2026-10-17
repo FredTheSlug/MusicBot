@@ -18,14 +18,18 @@ package com.jagrosh.jmusicbot.theme;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -50,12 +54,15 @@ public class ThemeFile
     /** The fonts the panel loads. */
     public static final List<String> FONTS = list("Inter", "DM Sans", "Outfit", "Syne", "Fraunces", "IBM Plex Mono",
             "Noto Sans JP", "Shippori Mincho");
-    /** The 15 color slots every theme has, in the order of the file. */
+    /**
+     * The 16 color slots every theme has, in the order of the file. The last, {@code decoExtra} (the extra decoration
+     * color, {@code #rrggbb} only), came later: a theme read without it gets its starting theme's own ({@link ThemePieces}).
+     */
     public static final List<String> COLOR_SLOTS = list("bgPrimary", "bgSecondary", "bgCard", "bgElevated", "bgHover",
             "accent", "accentLight", "accent2", "textPrimary", "textSecondary", "textTertiary", "border", "borderLight",
-            "success", "glass");
-    /** The 14 color slots of the mini-player version: all of them except {@code glass}. */
-    public static final List<String> MINI_SLOTS = Collections.unmodifiableList(COLOR_SLOTS.subList(0, 14));
+            "success", "glass", "decoExtra");
+    /** The 15 color slots of the mini-player version: all of them except {@code glass}. */
+    public static final List<String> MINI_SLOTS = without(COLOR_SLOTS, "glass");
     /** How a background picture fills the screen. */
     public static final List<String> FITS = list("cover", "contain", "center");
 
@@ -68,6 +75,9 @@ public class ThemeFile
     /** What a theme id looks like; the store only builds a file path from an id that matches it. */
     static final Pattern ID_PATTERN = Pattern.compile("[a-z0-9]{12}");
     private static final Pattern COLOR_PATTERN = Pattern.compile("#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?");
+    /** The extra decoration color is never see-through. */
+    private static final String DECO_EXTRA = "decoExtra";
+    private static final Pattern OPAQUE_COLOR_PATTERN = Pattern.compile("#[0-9a-fA-F]{6}");
     /** What a stored picture's name looks like: 32 lowercase hex characters, a dot and the extension. {@link ThemeImages} uses it too. */
     static final Pattern IMAGE_PATTERN = Pattern.compile("[0-9a-f]{32}\\.(jpg|png|webp|gif)");
     private static final Map<String, String> SLOT_LABELS = slotLabels();
@@ -78,6 +88,7 @@ public class ThemeFile
     private static final String BASE = "Starting theme must be one of the built-in themes";
     private static final String FONT = "Font must be one of the fonts offered";
     private static final String DARKEN = "Background darken";
+    private static final String PIECES = "Decorations must be a list of piece names";
 
     private String id;
     private String name;
@@ -88,7 +99,7 @@ public class ThemeFile
     private Instant createdAt;
     private Instant updatedAt;
     private String base;
-    private boolean effects;
+    private List<String> decorationsOff = Collections.emptyList();
     private Map<String, String> colors;
     private int radiusScale = 100;
     private String font;
@@ -186,31 +197,44 @@ public class ThemeFile
         return base;
     }
 
-    /** One of {@link #BASES}. */
+    /** One of {@link #BASES}. Pieces switched off that the new base doesn't have are dropped. */
     public void setBase(String base)
     {
         this.base = choice(base, BASES, BASE);
+        decorationsOff = ownPieces(decorationsOff, this.base);
     }
 
-    /** True when the base theme's decorative layers and picture are kept; always false while there is a background. */
-    public boolean isEffects()
+    /**
+     * The ids of the starting theme's decoration pieces that are switched off ({@link ThemePieces}): each one once, in
+     * the order they were given; read-only. Empty when every piece is on.
+     */
+    public List<String> getDecorationsOff()
     {
-        return effects;
+        return decorationsOff;
     }
 
-    /** Switching effects on is ignored while a background picture is set. */
-    public void setEffects(boolean effects)
+    /**
+     * Keeps only ids the starting theme has (others are dropped), each once, in the order given; null is none. The
+     * starting theme must be set first ({@link IllegalStateException}). A background picture doesn't change the list:
+     * the panel switches a picture theme's background pieces off when it shows it.
+     */
+    public void setDecorationsOff(List<String> ids)
     {
-        this.effects = effects && background == null;
+        if(base == null)
+            throw new IllegalStateException("The starting theme comes before its pieces");
+        decorationsOff = ownPieces(ids, base);
     }
 
-    /** The 15 colors by slot, in {@link #COLOR_SLOTS} order, lower-cased; a read-only view. */
+    /** The 16 colors by slot, in {@link #COLOR_SLOTS} order, lower-cased; a read-only view. */
     public Map<String, String> getColors()
     {
         return colors;
     }
 
-    /** Needs exactly the {@link #COLOR_SLOTS}, each {@code #rrggbb} or {@code #rrggbbaa}; stored lower-cased. */
+    /**
+     * Needs exactly the {@link #COLOR_SLOTS}, each {@code #rrggbb} or {@code #rrggbbaa} ({@code decoExtra}
+     * {@code #rrggbb} only); stored lower-cased.
+     */
     public void setColors(Map<String, String> colors)
     {
         this.colors = checkColors(colors, COLOR_SLOTS, "");
@@ -244,12 +268,9 @@ public class ThemeFile
         return background;
     }
 
-    /** A non-null background switches {@link #isEffects() effects} off. */
     public void setBackground(Background background)
     {
         this.background = background;
-        if(background != null)
-            effects = false;
     }
 
     /** The mini-player version, or null when the theme isn't offered in the mini-player. */
@@ -265,8 +286,10 @@ public class ThemeFile
 
     /**
      * Parses file text; throws {@link IllegalArgumentException} when it is not a format 1 theme or any
-     * value is not allowed. Optional: {@code hiddenByOwner}, {@code effects}, {@code version},
-     * {@code createdAt}, {@code updatedAt}, {@code background}, {@code mini} (flags default to false).
+     * value is not allowed. Optional: {@code hiddenByOwner}, {@code decorationsOff}, {@code effects},
+     * {@code colors.decoExtra}, {@code version}, {@code createdAt}, {@code updatedAt}, {@code background},
+     * {@code mini} and its {@code colors.decoExtra} (flags default to false). A theme saved before the pieces is
+     * converted as it is read (see {@link #valuesFromClient}); {@link #toJson} writes the new form.
      */
     public static ThemeFile fromJson(String text)
     {
@@ -304,10 +327,14 @@ public class ThemeFile
     }
 
     /**
-     * Reads only the values a browser may set: name, visibility, base, effects, colors, radiusScale, font,
+     * Reads only the values a browser may set: name, visibility, base, decorationsOff, colors, radiusScale, font,
      * background (dim, blur, fit, but never the picture) and mini. Id, owner, version, timestamps,
      * hiddenByOwner and any picture name in the input are ignored. Throws {@link IllegalArgumentException}
      * with a message for the user that names the field.
+     * <p>
+     * Older panels and files still read: without {@code decorationsOff} the {@code effects} flag says which pieces
+     * are off ({@code false}: all of the starting theme's; {@code true} or absent: none), and colors (main or
+     * mini-player) without {@code decoExtra} get the starting theme's own.
      */
     public static ThemeFile valuesFromClient(JSONObject json)
     {
@@ -324,12 +351,15 @@ public class ThemeFile
         setName(textOf(json.opt("name")));
         setVisibility(textOf(json.opt("visibility")));
         setBase(textOf(json.opt("base")));
-        setEffects(flag(json.opt("effects"), "Special effects"));
-        setColors(colorsFrom(json.opt("colors"), COLOR_SLOTS, ""));
+        Object effects = json.opt("effects");
+        boolean effectsOn = effects == null || flag(effects, "Special effects");
+        List<String> off = readPieceIds(json.opt("decorationsOff"));
+        setDecorationsOff(off != null ? off : (effectsOn ? null : ThemePieces.ids(base)));
+        setColors(colorsFrom(json.opt("colors"), COLOR_SLOTS, "", base));
         setRadiusScale(checkRange(json.opt("radiusScale"), 0, 200, "Corners"));
         setFont(textOf(json.opt("font")));
         setBackground(readBackground(json.opt("background"), withImage));
-        setMini(readMini(json.opt("mini")));
+        setMini(readMini(json.opt("mini"), base));
     }
 
     /** The file text: pretty printed with 2-space indent. Throws {@link IllegalStateException} for an unfinished theme. */
@@ -352,7 +382,7 @@ public class ThemeFile
         if(updatedAt != null)
             root.put("updatedAt", updatedAt.toString());
         root.put("base", base);
-        root.put("effects", effects);
+        root.put("decorationsOff", new JSONArray(decorationsOff));
         root.put("colors", new JSONObject(colors));
         root.put("radiusScale", radiusScale);
         root.put("font", font);
@@ -397,15 +427,47 @@ public class ThemeFile
                 textOf(json.opt("fit")));
     }
 
-    private static Mini readMini(Object raw)
+    private static Mini readMini(Object raw, String base)
     {
         if(raw == null || JSONObject.NULL.equals(raw))
             return null;
         if(!(raw instanceof JSONObject))
             throw new IllegalArgumentException("Mini-player settings are not valid");
         JSONObject json = (JSONObject) raw;
-        return new Mini(colorsFrom(json.opt("colors"), MINI_SLOTS, "Mini-player "), flag(json.opt("useImage"), "Mini-player picture setting"),
-                checkRange(json.opt("dim"), 0, 90, "Mini-player darken"));
+        return new Mini(colorsFrom(json.opt("colors"), MINI_SLOTS, "Mini-player ", base),
+                flag(json.opt("useImage"), "Mini-player picture setting"), checkRange(json.opt("dim"), 0, 90, "Mini-player darken"));
+    }
+
+    /** The ids in a {@code decorationsOff} list (as given: {@link #ownPieces} sorts them out), or null when there is no list. */
+    private static List<String> readPieceIds(Object raw)
+    {
+        if(raw == null || JSONObject.NULL.equals(raw))
+            return null;
+        if(!(raw instanceof JSONArray))
+            throw new IllegalArgumentException(PIECES);
+        List<String> ids = new ArrayList<>();
+        for(Object id : (JSONArray) raw)
+        {
+            if(!(id instanceof String))
+                throw new IllegalArgumentException(PIECES);
+            ids.add((String) id);
+        }
+        return ids;
+    }
+
+    /** The ids that are pieces of {@code base}, each once, in the order given; read-only. */
+    private static List<String> ownPieces(Collection<String> ids, String base)
+    {
+        if(ids == null || ids.isEmpty())
+            return Collections.emptyList();
+        List<String> own = ThemePieces.ids(base);
+        LinkedHashSet<String> kept = new LinkedHashSet<>();
+        for(String id : ids)
+        {
+            if(own.contains(id))
+                kept.add(id);
+        }
+        return Collections.unmodifiableList(new ArrayList<>(kept));
     }
 
     private static Person readPerson(Object raw)
@@ -494,7 +556,8 @@ public class ThemeFile
         throw new IllegalArgumentException(label + " must be a date and time");
     }
 
-    private static Map<String, String> colorsFrom(Object raw, List<String> slots, String prefix)
+    /** Colors as read: without {@code decoExtra} they get the starting theme's own. */
+    private static Map<String, String> colorsFrom(Object raw, List<String> slots, String prefix, String base)
     {
         if(!(raw instanceof JSONObject))
             return checkColors(null, slots, prefix);
@@ -502,10 +565,15 @@ public class ThemeFile
         Map<String, Object> given = new LinkedHashMap<>();
         for(String key : json.keySet())
             given.put(key, json.get(key));
+        if(!given.containsKey(DECO_EXTRA))
+            given.put(DECO_EXTRA, ThemePieces.decoExtra(base));
         return checkColors(given, slots, prefix);
     }
 
-    /** A read-only, ordered, lower-cased copy of {@code given}, which must have exactly {@code slots} with valid colors. */
+    /**
+     * A read-only, ordered, lower-cased copy of {@code given}, which must have exactly {@code slots} with valid colors
+     * ({@code decoExtra} without alpha).
+     */
     private static Map<String, String> checkColors(Map<String, ?> given, List<String> slots, String prefix)
     {
         if(given == null)
@@ -522,7 +590,8 @@ public class ThemeFile
             if(!given.containsKey(slot))
                 throw new IllegalArgumentException(label + " is missing");
             Object color = given.get(slot);
-            if(!(color instanceof String) || !COLOR_PATTERN.matcher((String) color).matches())
+            Pattern allowed = DECO_EXTRA.equals(slot) ? OPAQUE_COLOR_PATTERN : COLOR_PATTERN;
+            if(!(color instanceof String) || !allowed.matcher((String) color).matches())
                 throw new IllegalArgumentException(label + " must be a color like #7c5cff");
             checked.put(slot, ((String) color).toLowerCase(Locale.ROOT));
         }
@@ -547,6 +616,13 @@ public class ThemeFile
         return Collections.unmodifiableList(Arrays.asList(values));
     }
 
+    private static List<String> without(List<String> values, String left)
+    {
+        List<String> kept = new ArrayList<>(values);
+        kept.remove(left);
+        return Collections.unmodifiableList(kept);
+    }
+
     private static Map<String, String> slotLabels()
     {
         Map<String, String> labels = new LinkedHashMap<>();
@@ -565,6 +641,7 @@ public class ThemeFile
         labels.put("borderLight", "Light borders");
         labels.put("success", "Success color");
         labels.put("glass", "Glass");
+        labels.put(DECO_EXTRA, "Extra decoration color");
         return Collections.unmodifiableMap(labels);
     }
 
@@ -654,7 +731,7 @@ public class ThemeFile
         }
     }
 
-    /** The optional mini-player version: the 14 {@link #MINI_SLOTS} colors, whether it shows the picture, and how dark. Immutable. */
+    /** The optional mini-player version: the 15 {@link #MINI_SLOTS} colors, whether it shows the picture, and how dark. Immutable. */
     public static final class Mini
     {
         private final Map<String, String> colors;
@@ -668,7 +745,7 @@ public class ThemeFile
             this.dim = checkRange(dim, 0, 90, "Mini-player darken");
         }
 
-        /** The 14 colors by slot, in {@link #MINI_SLOTS} order, lower-cased; a read-only view. */
+        /** The 15 colors by slot, in {@link #MINI_SLOTS} order, lower-cased; a read-only view. */
         public Map<String, String> getColors()
         {
             return colors;

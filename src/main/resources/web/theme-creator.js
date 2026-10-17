@@ -369,10 +369,13 @@
         return lookFields(base, BASE_PALETTES[base].colors, BASE_PALETTES[base].font, true, 100);
     }
 
-    /* Effects default to on. The server stores false for any theme with a picture (a picture forces them off), so
-       that false says nothing about what the person wants once the picture is gone. */
+    /* Effects default to on. The server stores false for any theme with a picture (a picture forced them off), so
+       that false says nothing about what the person wants once the picture is gone. The server now sends the pieces
+       that are off instead (decorationsOff): none off is effects on, any off is effects off. */
     function effectsOf(theme) {
-        return theme.background ? true : theme.effects !== false;
+        if (theme.background) return true;
+        if (Array.isArray(theme.decorationsOff)) return theme.decorationsOff.length === 0;
+        return theme.effects !== false;
     }
 
     function themeLook(theme) {
