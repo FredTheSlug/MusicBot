@@ -160,6 +160,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
+        .maximizable(false)
         .transparent(true)
         .shadow(false)
         .visible(false)
@@ -1183,6 +1184,15 @@ mod tests {
                 assert!(!line.contains(secret), "{text:?}: {line}");
             }
         }
+    }
+
+    #[test]
+    fn the_mini_player_cannot_be_maximized() {
+        // Win+Up or dragging it to the top edge would otherwise let Windows maximize it; when it is made small again it
+        // can land in a corner of another monitor.
+        use crate::source;
+        let create = source::squash(source::item(source::code(include_str!("mini_player.rs")), "pub fn create("));
+        assert!(create.contains(".resizable(false) .maximizable(false)"), "{create}");
     }
 
     #[test]
