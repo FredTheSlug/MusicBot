@@ -1,0 +1,134 @@
+{
+  "nebula": {
+    "decoExtra": "#9b82fc",
+    "pieces": [
+      { "id": "glow", "label": "Glow", "background": false }
+    ]
+  },
+  "aurora": {
+    "decoExtra": "#5eead4",
+    "pieces": [
+      { "id": "glow", "label": "Glow", "background": false }
+    ]
+  },
+  "ember": {
+    "decoExtra": "#fde047",
+    "pieces": [
+      { "id": "flames", "label": "Corner flames", "background": false },
+      { "id": "edge", "label": "Header flame edge", "background": false },
+      { "id": "fire", "label": "Fire glow", "background": false }
+    ]
+  },
+  "crimson": {
+    "decoExtra": "#fca5a5",
+    "pieces": [
+      { "id": "glow", "label": "Glow", "background": false }
+    ]
+  },
+  "dawn": {
+    "decoExtra": "#7c3aed",
+    "pieces": [
+      { "id": "glow", "label": "Glow", "background": false }
+    ]
+  },
+  "dawn-dark": {
+    "decoExtra": "#c4b5fd",
+    "pieces": [
+      { "id": "wash", "label": "Ambient wash", "background": true },
+      { "id": "edge", "label": "Gradient edge", "background": false }
+    ]
+  },
+  "steel": {
+    "decoExtra": "#7dd3fc",
+    "pieces": [
+      { "id": "wash", "label": "Accent wash", "background": true },
+      { "id": "sheen", "label": "Top sheen and brushed lines", "background": false }
+    ]
+  },
+  "verdant": {
+    "decoExtra": "#6ee7b7",
+    "pieces": [
+      { "id": "glow", "label": "Glow", "background": false }
+    ]
+  },
+  "grove": {
+    "decoExtra": "#6ee7b7",
+    "pieces": [
+      { "id": "photo", "label": "Forest photo", "background": true },
+      { "id": "hairlines", "label": "Slate hairlines", "background": false },
+      { "id": "glows", "label": "Corner glows", "background": false }
+    ]
+  },
+  "grapevine": {
+    "decoExtra": "#c4b5fd",
+    "pieces": [
+      { "id": "glow", "label": "Glow", "background": false }
+    ]
+  },
+  "sumi": {
+    "decoExtra": "#e85d52",
+    "pieces": [
+      { "id": "mist", "label": "Ink mist", "background": true },
+      { "id": "kanji", "label": "Kanji watermark", "background": true },
+      { "id": "lines", "label": "Vermilion header lines", "background": false },
+      { "id": "hanko", "label": "Hanko card edge", "background": false },
+      { "id": "seal", "label": "Seal and brush stroke", "background": false }
+    ]
+  },
+  "rasta": {
+    "decoExtra": "#dc2626",
+    "pieces": [
+      { "id": "stripe", "label": "Flag stripe", "background": false },
+      { "id": "titles", "label": "Flag-coloured titles", "background": false },
+      { "id": "bar", "label": "Flag drag bar", "background": false },
+      { "id": "lyric", "label": "Lyric glow", "background": false }
+    ]
+  },
+  "cipher": {
+    "decoExtra": "#22d3ee",
+    "pieces": [
+      { "id": "grid", "label": "Terminal grid", "background": true },
+      { "id": "underline", "label": "Neon underline", "background": false },
+      { "id": "glows", "label": "Glows and outlines", "background": false },
+      { "id": "prompt", "label": "Prompt and blinking caret", "background": false }
+    ]
+  },
+  "signal": {
+    "decoExtra": "#67e8f9",
+    "pieces": [
+      { "id": "scanlines", "label": "CRT scanlines", "background": true },
+      { "id": "caption", "label": "\"LINK ESTABLISHED\" caption", "background": false },
+      { "id": "line", "label": "Header glow line", "background": false },
+      { "id": "hud", "label": "HUD frames and outlines", "background": false }
+    ]
+  },
+  "victory": {
+    "decoExtra": "#fde047",
+    "pieces": [
+      { "id": "glows", "label": "Gold glows", "background": true },
+      { "id": "rule", "label": "Header gold rule", "background": false },
+      { "id": "gilded", "label": "Gilded cards and glows", "background": false }
+    ]
+  },
+  "neon": {
+    "decoExtra": "#d9f99d",
+    "pieces": [
+      { "id": "photo", "label": "Backdrop photo", "background": true },
+      { "id": "rails", "label": "Lime rails", "background": false },
+      { "id": "glows", "label": "Glows and outlines", "background": false },
+      { "id": "title", "label": "Glowing title and progress bar", "background": false }
+    ]
+  },
+  "revival": {
+    "decoExtra": "#f2a882",
+    "pieces": [
+      { "id": "sunrise", "label": "Sunrise glow", "background": true },
+      { "id": "rays", "label": "Sunburst rays", "background": true },
+      { "id": "logo", "label": "Turning logo", "background": false },
+      { "id": "badge", "label": "\"revived\" badge", "background": false },
+      { "id": "sparkles", "label": "✦ titles", "background": false },
+      { "id": "record", "label": "Spinning record", "background": false },
+      { "id": "glows", "label": "Warm glows", "background": false }
+    ]
+  }
+}
