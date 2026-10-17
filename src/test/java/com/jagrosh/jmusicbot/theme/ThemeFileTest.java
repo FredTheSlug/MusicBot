@@ -780,12 +780,27 @@ public class ThemeFileTest
     }
 
     @Test
-    public void effectsMustBeABooleanWhenSent()
+    public void effectsMustBeABooleanWhenItCounts()
     {
-        assertRejected(json -> json.put("effects", "true"));
-        assertRejected(json -> json.put("effects", 1));
-        assertRejected(json -> json.put("effects", JSONObject.NULL));
+        // without a list (none, or null) the old flag says which pieces are off, so it must be true or false
+        for(Object bad : new Object[]{"true", 1, JSONObject.NULL, new JSONObject()})
+        {
+            assertRejected(json ->
+            {
+                json.remove("decorationsOff");
+                json.put("effects", bad);
+            });
+            assertRejected(json -> json.put("decorationsOff", JSONObject.NULL).put("effects", bad));
+        }
         assertAccepted(json -> json.remove("effects"), theme -> assertEquals(ids("edge"), theme.getDecorationsOff()));
+    }
+
+    @Test
+    public void effectsIsNotReadBesideAList()
+    {
+        // a theme with a list keeps it, and the old flag means nothing there: whatever it holds is not looked at
+        for(Object ignored : new Object[]{"true", 1, JSONObject.NULL, new JSONObject(), false, true})
+            assertAccepted(json -> json.put("effects", ignored), theme -> assertEquals(ids("edge"), theme.getDecorationsOff()));
     }
 
     @Test

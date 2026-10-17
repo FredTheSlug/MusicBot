@@ -333,7 +333,7 @@ public class ThemeFile
      * with a message for the user that names the field.
      * <p>
      * Older panels and files still read: without {@code decorationsOff} the {@code effects} flag says which pieces
-     * are off ({@code false}: all of the starting theme's; {@code true} or absent: none), and colors (main or
+     * are off ({@code false}: all of the starting theme's; {@code true} or absent: none; beside a list it isn't read), and colors (main or
      * mini-player) without {@code decoExtra} get the starting theme's own.
      */
     public static ThemeFile valuesFromClient(JSONObject json)
@@ -351,10 +351,15 @@ public class ThemeFile
         setName(textOf(json.opt("name")));
         setVisibility(textOf(json.opt("visibility")));
         setBase(textOf(json.opt("base")));
-        Object effects = json.opt("effects");
-        boolean effectsOn = effects == null || flag(effects, "Special effects");
         List<String> off = readPieceIds(json.opt("decorationsOff"));
-        setDecorationsOff(off != null ? off : (effectsOn ? null : ThemePieces.ids(base)));
+        if(off == null)
+        {
+            // the old flag, for a theme without a list only (beside a list it means nothing, so it isn't read)
+            Object effects = json.opt("effects");
+            boolean effectsOn = effects == null || flag(effects, "Special effects");
+            off = effectsOn ? null : ThemePieces.ids(base);
+        }
+        setDecorationsOff(off);
         setColors(colorsFrom(json.opt("colors"), COLOR_SLOTS, "", base));
         setRadiusScale(checkRange(json.opt("radiusScale"), 0, 200, "Corners"));
         setFont(textOf(json.opt("font")));
