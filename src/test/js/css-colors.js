@@ -40,11 +40,11 @@
  *   attributesMatch(text, attrs) does the same for a string of [attribute] selectors and :not()s.
  * - cascadeFlips(css, themeIds) -> [{ theme, piece, key, restored }]: a guard weighs one attribute, so a guarded theme
  *   declaration T can beat a rule S that beat it before. S is any unguarded rule that applies while the theme is on
- *   (shared, or the theme's own), styling the same element (the class and id names of one's last compound include the
- *   other's; same tag, same pseudo-element) in the same property family (propertyFamily). It flips when S beats T
- *   without its guard and T with it beats S. The theme restores S with a rule under T's piece that has S's selector
- *   behind the theme's html part (in S's @media), S's property and value, and beats T. key: "<T> <- <S>", each
- *   where|property (where = [@media ] normalized selector).
+ *   (shared, or the theme's own), styling what can be the same element (their last compounds share a class or id name,
+ *   or one is named by a tag alone that the other has; same pseudo-element) in the same property family
+ *   (propertyFamily). It flips when S beats T without its guard and T with it beats S. The theme restores S with a
+ *   rule under T's piece that has S's selector behind the theme's html part (in S's @media), S's property and value,
+ *   and beats T. key: "<T> <- <S>", each where|property (where = [@media ] normalized selector).
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -1078,18 +1078,18 @@ function subjectOf(selector) {
 }
 
 /*
- * Could two subjects be the same element? Same pseudo-element; one's class and id names include all of the other's; and
- * the same tag, where one is named only by its tag (a "button" is not taken for a ".card"; "*" is anything).
+ * Could two subjects be the same element? Same pseudo-element, no two different tags, and they share a class or id
+ * name; one named by its tag alone is only that tag (a "button" is not taken for a ".card"; "*" is anything).
  */
 function sameSubject(a, b) {
   if (a.pseudo !== b.pseudo) return false;
   const any = (x) => x.tag === '' || x.tag === '*';
   if (!any(a) && !any(b) && a.tag !== b.tag) return false;
-  if ((a.names.size === 0 && !any(a) && a.tag !== b.tag) || (b.names.size === 0 && !any(b) && a.tag !== b.tag)) {
-    return false;
+  if (a.names.size === 0 || b.names.size === 0) {
+    const bare = a.names.size === 0 ? a : b;
+    return any(bare) || bare.tag === (bare === a ? b : a).tag;
   }
-  const within = (x, y) => [...x.names].every((n) => y.names.has(n));
-  return within(a, b) || within(b, a);
+  return [...a.names].some((n) => b.names.has(n));
 }
 
 /* Properties that set each other (a shorthand and its longhands) share a family: border, background, margin, ... */

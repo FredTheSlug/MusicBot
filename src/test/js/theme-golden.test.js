@@ -414,7 +414,7 @@ const ThemePalette = require('../../main/resources/web/theme-palette.js');
 
 const PIECES = readJson(PIECES_FILE);
 
-const REWRITTEN = ['revival'];
+const REWRITTEN = ['revival', 'neon', 'signal', 'victory', 'cipher'];
 
 function pieceIds(themeId) {
   return PIECES[themeId].pieces.map((p) => p.id);
@@ -502,9 +502,10 @@ for (const themeId of REWRITTEN) {
 }
 
 /*
- * Pieces the panel doesn't have: they are the mini-player's only (the panel's version of the theme never had them).
+ * Pieces the panel doesn't have: they are the mini-player's only (the panel's version of the theme never had them):
+ * Cipher's "> " prompt and blinking caret, Neon's glowing title and progress bar.
  */
-const MINI_ONLY = {};
+const MINI_ONLY = { cipher: ['prompt'], neon: ['title'] };
 
 /* Where a theme's decorations aren't each under exactly one of its pieces, right after html[data-theme="x"]. */
 function pieceGuardProblems(themeId) {
@@ -568,9 +569,15 @@ function isShape(d, themeId) {
 
 /*
  * Layout effects of a piece that the shape rule alone would let pass (they are shape properties), pinned to their
- * piece: [piece, normalized selector, properties].
+ * piece: [piece, normalized selector, properties]. Signal's caption sits in a gutter under the header's content: with
+ * the caption off the header is the panel's own, no empty gap. Victory's gold rule takes the header border's place:
+ * with the rule off the border is back.
  */
-const LAYOUT_EFFECTS = {};
+const LAYOUT_EFFECTS = {
+  signal: [['caption', 'html[data-theme="signal"] .header',
+    ['min-height', 'padding-bottom', 'align-items', 'padding-top']]],
+  victory: [['rule', 'html[data-theme="victory"] .header', ['border-bottom']]]
+};
 
 /*
  * What keeps a theme's pieces from switching off cleanly: a declaration under a guard that isn't one piece's, doesn't
@@ -691,13 +698,17 @@ test('theFlipCheckReadsSubjectsAndFamilies', () => {
     '.card .ctrl-btn:hover { border-color: blue; }',
     '.ctrl-btn::after { color: green; }',
     'html[data-theme="x"]:not([data-deco-off~="a"]) .ctrl-btn { color: #111111; border: 1px solid #222222; }',
-    'html[data-theme="x"] .ctrl-btn.repeat-active:hover { color: #333333; }'
+    'html[data-theme="x"] .ctrl-btn.repeat-active:hover { color: #333333; }',
+    '.lyrics-line.tappable:hover:focus { background: blue; }',
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .lyrics-line.active { background: #444444; }'
   ].join('\n');
   const keys = Colors.cascadeFlips(sheet, ['x']).map((f) => f.key + (f.restored ? ' (restored)' : ''));
   assert.deepEqual(keys, [
     'html[data-theme="x"] .ctrl-btn|color <- .ctrl-btn.repeat-active:hover|color',
-    'html[data-theme="x"] .ctrl-btn|border <- .card .ctrl-btn:hover|border-color'
-  ], 'a tag alone is another element, ::after another layer; an unguarded theme rule of (0,4,1) still wins');
+    'html[data-theme="x"] .ctrl-btn|border <- .card .ctrl-btn:hover|border-color',
+    'html[data-theme="x"] .lyrics-line.active|background <- .lyrics-line.tappable:hover:focus|background'
+  ], 'a tag alone is another element, ::after another layer; an unguarded theme rule of (0,4,1) still wins; an ' +
+    'active line can be a tappable one');
   assert.equal(Colors.propertyFamily('border-bottom-color'), 'border');
   assert.equal(Colors.propertyFamily('border-top-left-radius'), 'border-radius');
   assert.equal(Colors.propertyFamily('background-image'), 'background');
@@ -743,6 +754,34 @@ function motionProblems(themeIds) {
   }
   return { animated: animated, problems: problems };
 }
+
+test('neonTextUsesTheTextSlot', () => {
+  // Neon forced its text to #ffffff in 8 rules, over a custom theme's own text colour (white text on a light page);
+  // it is the text slot now, and the only other colours of text are the panel's own hover colours given back
+  const text = ['.card-title', '.pane-header-row .card-title', '.pane-header-with-actions .card-title',
+    '.playlist-header .card-title', '.logo', '.lyrics-line', '.lyrics-line.active', '.track-title', '.now-playing',
+    '.queue-item', '.history-item', '.search-result-item', '.ctrl-btn', '.guild-selector label', '.login-box h2'];
+  const given = ['.ctrl-btn.repeat-active:hover', '.ctrl-btn.shuffle-active:hover'];
+  const neon = panelDeclarations().filter((d) => d.theme === 'neon');
+  const colours = neon.filter((d) => d.decl.prop === 'color');
+  const subject = (d) => d.norm.replace(/^html\[data-theme="neon"\] /, '');
+  assert.deepEqual(colours.map(subject).sort(), text.concat(given).sort());
+  const light = ThemePalette.generate('#3b82f6', '#f8fafc', 'light');
+  const vars = Object.assign({}, Colors.themeVars(Colors.panelCss(), 'neon'), ThemePalette.cssVars(light));
+  for (const d of colours) {
+    if (given.includes(subject(d))) {
+      assert.equal(d.decl.value, 'var(--accent-light)', subject(d) + ': the panel\'s own hover colour');
+      continue;
+    }
+    assert.equal(d.decl.value, 'var(--text-primary)', subject(d));
+    assert.equal(Colors.format(Colors.evaluate(d.decl.value, vars)), Colors.format(Colors.evaluate(light.textPrimary)),
+      subject(d) + ': a custom theme\'s own text colour');
+  }
+  assert.equal(new Set(colours.filter((d) => text.includes(subject(d))).map((d) => d.rule)).size, 8, 'the 8 rules');
+  const white = /#fff(fff)?\b|(^|[^-\w])white\b|rgba?\(\s*255\s*,\s*255\s*,\s*255\b/i;
+  assert.deepEqual(neon.filter((d) => !d.decl.prop.startsWith('--') && white.test(d.decl.value))
+    .map((d) => d.raw + ' { ' + d.decl.prop + ' }'), [], 'no white of its own but its text slot');
+});
 
 test('reducedMotionStopsEveryAnimatedPiece', () => {
   const found = motionProblems(REWRITTEN);

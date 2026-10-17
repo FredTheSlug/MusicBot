@@ -4108,7 +4108,9 @@
             box-shadow: 0 0 0 2px var(--border-light);
         }
 
-        /* Cipher — unlocked stream; indigo → violet (remote cipher win) */
+        /* Cipher — unlocked stream; indigo → violet (remote cipher win)
+           Its decorations are pieces (theme-pieces.json): grid, underline, glows (prompt is the mini-player's).
+           html[data-deco-off~="<id>"] drops a piece's rules; every decoration colour comes from the slots below. */
         html[data-theme="cipher"] {
             --bg-primary: #09070f;
             --bg-secondary: #100c1a;
@@ -4145,6 +4147,7 @@
             --lyrics-line-radius: 2px;
             --header-min-height: 56px;
             --header-padding-x: 20px;
+            --header-blur: 10px;
             --logo-icon-radius: 4px;
             --logo-font-size: 0.95rem;
             --card-title-spacing: 0.28em;
@@ -4159,34 +4162,40 @@
             --radius-login-box: 8px;
             --col-radius: 4px;
             --col-resize-radius: 2px;
-            --card-shadow: 0 0 0 1px rgba(139, 92, 246, 0.14), 0 12px 40px rgba(0, 0, 0, 0.35);
+            --card-shadow: 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14), 0 12px 40px rgba(0, 0, 0, 0.35);
             --bg-shift-duration: 16s;
+            /* The current lyric line: a violet-white no mix of the slots gives; a custom theme uses its text colour */
+            --cipher-lyric: #f5e1ff;
         }
 
-        html[data-theme="cipher"] body::before {
+        html[data-custom-theme][data-theme="cipher"] {
+            --cipher-lyric: var(--text-primary);
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="grid"]) body::before {
             opacity: 0.55;
             background-image:
-                linear-gradient(rgba(139, 92, 246, 0.04) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(139, 92, 246, 0.04) 1px, transparent 1px),
-                radial-gradient(ellipse 70% 50% at 20% 10%, rgba(139, 92, 246, 0.18), transparent 55%),
-                radial-gradient(ellipse 50% 40% at 85% 80%, rgba(217, 70, 239, 0.12), transparent 50%);
+                linear-gradient(rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.04) 1px, transparent 1px),
+                radial-gradient(ellipse 70% 50% at 20% 10%, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.18), transparent 55%),
+                radial-gradient(ellipse 50% 40% at 85% 80%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12), transparent 50%);
             background-size: 28px 28px, 28px 28px, 100% 100%, 100% 100%;
             animation: none;
         }
 
-        html[data-theme="cipher"] .header {
-            border-bottom: 1px solid rgba(217, 70, 239, 0.18);
-            backdrop-filter: blur(10px);
+        /* The neon underline: the header's border and the violet-to-cyan line on it */
+        html[data-theme="cipher"]:not([data-deco-off~="underline"]) .header {
+            border-bottom: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.18);
         }
 
-        html[data-theme="cipher"] .header::after {
+        html[data-theme="cipher"]:not([data-deco-off~="underline"]) .header::after {
             content: '';
             position: absolute;
             left: 0;
             right: 0;
             bottom: 0;
             height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.7), rgba(34, 211, 238, 0.5), transparent);
+            background: linear-gradient(90deg, transparent, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.7), color-mix(in srgb, var(--deco-extra) 50%, transparent), transparent);
             pointer-events: none;
         }
 
@@ -4199,13 +4208,16 @@
 
         html[data-theme="cipher"] .logo-icon {
             border-radius: 4px;
-            box-shadow: 0 0 16px rgba(139, 92, 246, 0.35);
         }
 
-        html[data-theme="cipher"] .card {
-            border: 1px solid rgba(139, 92, 246, 0.16);
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .logo-icon {
+            box-shadow: 0 0 16px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .card {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.16);
             box-shadow: var(--card-shadow);
-            background-image: linear-gradient(180deg, rgba(139, 92, 246, 0.05) 0%, transparent 42%);
+            background-image: linear-gradient(180deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05) 0%, transparent 42%);
         }
 
         html[data-theme="cipher"] .card-title,
@@ -4217,18 +4229,27 @@
             letter-spacing: 0.28em;
             font-size: 0.62rem;
             font-weight: 500;
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .card-title,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .pane-header-row .card-title,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .pane-header-with-actions .card-title,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .playlist-header .card-title {
             color: var(--accent-light);
         }
 
         html[data-theme="cipher"] .layout-pane.card > .pane-drag-bar {
             border-radius: 0;
             min-height: 12px;
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .layout-pane.card > .pane-drag-bar {
             background: repeating-linear-gradient(
                 90deg,
-                rgba(139, 92, 246, 0.18) 0 2px,
+                rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.18) 0 2px,
                 transparent 2px 6px
             );
-            border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+            border-bottom: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.2);
         }
 
         html[data-theme="cipher"] .lyrics-scroll,
@@ -4237,22 +4258,25 @@
             text-align: left;
         }
 
-        html[data-theme="cipher"] .lyrics-scroll {
-            border: 1px solid rgba(139, 92, 246, 0.14);
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .lyrics-scroll {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14);
             background: rgba(0, 0, 0, 0.25);
         }
 
         html[data-theme="cipher"] .lyrics-line {
-            border-left: 2px solid transparent;
             border-radius: 0;
             font-size: 0.84rem;
         }
 
-        html[data-theme="cipher"] .lyrics-line.active {
-            border-left-color: #d946ef;
-            background: linear-gradient(90deg, rgba(217, 70, 239, 0.18), rgba(139, 92, 246, 0.06) 55%, transparent);
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .lyrics-line {
+            border-left: 2px solid transparent;
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .lyrics-line.active {
+            border-left-color: rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b));
+            background: linear-gradient(90deg, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.18), rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06) 55%, transparent);
             box-shadow: none;
-            color: #f5e1ff;
+            color: var(--cipher-lyric);
         }
 
         html[data-theme="cipher"] .progress-times,
@@ -4263,13 +4287,24 @@
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.04em;
             font-size: 0.72rem;
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .progress-times,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .volume-value,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .queue-duration,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .history-duration,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .search-result-duration {
             color: var(--accent-light);
         }
 
         html[data-theme="cipher"] .ctrl-btn,
         html[data-theme="cipher"] .ctrl-btn-primary {
             border-radius: 4px;
-            border: 1px solid rgba(139, 92, 246, 0.22);
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .ctrl-btn,
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .ctrl-btn-primary {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.22);
         }
 
         html[data-theme="cipher"] .guild-selector label {
@@ -4281,29 +4316,37 @@
 
         html[data-theme="cipher"] .col-resize-handle {
             border-radius: 0;
-            border-color: rgba(139, 92, 246, 0.25);
         }
 
-        html[data-theme="cipher"] .layout-col.layout-col-over {
-            box-shadow: inset 0 0 0 1px rgba(217, 70, 239, 0.35);
-            background: rgba(139, 92, 246, 0.06);
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .col-resize-handle {
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
         }
 
-        html[data-theme="cipher"] .layout-pane.pane-drop-target {
-            box-shadow: 0 0 0 1px #d946ef, 0 0 24px rgba(217, 70, 239, 0.25);
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .layout-col.layout-col-over {
+            box-shadow: inset 0 0 0 1px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.35);
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06);
         }
 
-        html[data-theme="cipher"] .login-overlay {
-            background: rgba(9, 7, 15, 0.82);
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 1px rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)), 0 0 24px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.25);
+        }
+
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .login-overlay {
+            background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
         }
 
         html[data-theme="cipher"] .login-box {
-            border: 1px solid rgba(139, 92, 246, 0.28);
             border-radius: 8px;
             font-family: 'IBM Plex Mono', ui-monospace, monospace;
         }
 
-        /* Signal — link established; teal / cyan HUD */
+        html[data-theme="cipher"]:not([data-deco-off~="glows"]) .login-box {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.28);
+        }
+
+        /* Signal — link established; teal / cyan HUD
+           Its decorations are pieces (theme-pieces.json): scanlines, caption, line, hud.
+           html[data-deco-off~="<id>"] drops a piece's rules; every decoration colour comes from the slots below. */
         html[data-theme="signal"] {
             --bg-primary: #050a0c;
             --bg-secondary: #0a1215;
@@ -4359,31 +4402,42 @@
             --col-resize-radius: 0;
             --card-shadow: none;
             --bg-shift-duration: 10s;
+            /* The current lyric line: a cyan-white no mix of the slots gives; a custom theme uses its text colour */
+            --signal-lyric: #ecfeff;
         }
 
-        html[data-theme="signal"] body::before {
+        html[data-custom-theme][data-theme="signal"] {
+            --signal-lyric: var(--text-primary);
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="scanlines"]) body::before {
             opacity: 0.65;
             background-image:
                 repeating-linear-gradient(
                     0deg,
                     transparent,
                     transparent 2px,
-                    rgba(34, 211, 238, 0.015) 2px,
-                    rgba(34, 211, 238, 0.015) 3px
+                    rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.015) 2px,
+                    rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.015) 3px
                 ),
-                radial-gradient(ellipse 60% 40% at 50% 0%, rgba(34, 211, 238, 0.16), transparent 55%);
+                radial-gradient(ellipse 60% 40% at 50% 0%, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.16), transparent 55%);
             animation: none;
         }
 
-        html[data-theme="signal"] .header {
-            border-bottom: 1px solid rgba(34, 211, 238, 0.28);
+        /* The header glow line: the header's border and the glowing line on it */
+        html[data-theme="signal"]:not([data-deco-off~="line"]) .header {
+            border-bottom: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.28);
+        }
+
+        /* The caption sits in a gutter under the header's content; without it the header is the panel's own */
+        html[data-theme="signal"]:not([data-deco-off~="caption"]) .header {
             min-height: 48px;
             padding-bottom: 18px;
             align-items: flex-start;
             padding-top: max(10px, env(safe-area-inset-top, 0));
         }
 
-        html[data-theme="signal"] .header::before {
+        html[data-theme="signal"]:not([data-deco-off~="caption"]) .header::before {
             content: 'LINK ESTABLISHED';
             position: absolute;
             left: 50%;
@@ -4392,19 +4446,19 @@
             font-family: 'IBM Plex Mono', ui-monospace, monospace;
             font-size: 0.55rem;
             letter-spacing: 0.35em;
-            color: rgba(74, 222, 128, 0.75);
+            color: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.75);
             pointer-events: none;
             white-space: nowrap;
         }
 
-        html[data-theme="signal"] .header::after {
+        html[data-theme="signal"]:not([data-deco-off~="line"]) .header::after {
             content: '';
             position: absolute;
             left: 0;
             right: 0;
             bottom: 0;
             height: 2px;
-            background: linear-gradient(90deg, transparent 0%, #22d3ee 35%, #4ade80 50%, #22d3ee 65%, transparent 100%);
+            background: linear-gradient(90deg, transparent 0%, var(--accent) 35%, rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)) 50%, var(--accent) 65%, transparent 100%);
             opacity: 0.85;
             pointer-events: none;
         }
@@ -4417,9 +4471,12 @@
         }
 
         html[data-theme="signal"] .card {
-            border: 1px solid rgba(34, 211, 238, 0.2);
-            box-shadow: inset 0 1px 0 rgba(103, 232, 249, 0.06);
             border-radius: 2px;
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .card {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.2);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent-light) 6%, transparent);
         }
 
         html[data-theme="signal"] .card-title,
@@ -4431,12 +4488,19 @@
             letter-spacing: 0.32em;
             font-size: 0.56rem;
             font-weight: 500;
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .card-title,
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .pane-header-row .card-title,
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .pane-header-with-actions .card-title,
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .playlist-header .card-title {
             color: var(--accent);
         }
 
-        html[data-theme="signal"] .pane-header-row,
-        html[data-theme="signal"] .pane-header-with-actions {
-            border-bottom: 1px solid rgba(34, 211, 238, 0.12);
+        /* A HUD rule under each pane's header, with the room around it */
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .pane-header-row,
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .pane-header-with-actions {
+            border-bottom: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12);
             padding-bottom: 8px;
             margin-bottom: 10px;
         }
@@ -4444,8 +4508,11 @@
         html[data-theme="signal"] .layout-pane.card > .pane-drag-bar {
             border-radius: 0;
             min-height: 10px;
-            background: rgba(34, 211, 238, 0.08);
-            border-bottom: 1px solid rgba(34, 211, 238, 0.22);
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .layout-pane.card > .pane-drag-bar {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
+            border-bottom: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.22);
         }
 
         html[data-theme="signal"] .lyrics-scroll,
@@ -4454,23 +4521,26 @@
             text-align: left;
         }
 
-        html[data-theme="signal"] .lyrics-scroll {
-            border: 1px solid rgba(34, 211, 238, 0.16);
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .lyrics-scroll {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.16);
             background: rgba(0, 0, 0, 0.28);
         }
 
         html[data-theme="signal"] .lyrics-line {
-            border-left: 3px solid transparent;
             border-radius: 0;
             margin: 0;
             padding-left: 12px;
         }
 
-        html[data-theme="signal"] .lyrics-line.active {
-            border-left-color: #4ade80;
-            background: rgba(34, 211, 238, 0.1);
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .lyrics-line {
+            border-left: 3px solid transparent;
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .lyrics-line.active {
+            border-left-color: rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b));
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
             box-shadow: none;
-            color: #ecfeff;
+            color: var(--signal-lyric);
         }
 
         html[data-theme="signal"] .progress-times,
@@ -4486,11 +4556,15 @@
         html[data-theme="signal"] .ctrl-btn,
         html[data-theme="signal"] .ctrl-btn-primary {
             border-radius: 2px;
-            border: 1px solid rgba(34, 211, 238, 0.25);
         }
 
-        html[data-theme="signal"] .ctrl-btn-primary {
-            box-shadow: 0 0 16px rgba(34, 211, 238, 0.25);
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .ctrl-btn,
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .ctrl-btn-primary {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .ctrl-btn-primary {
+            box-shadow: 0 0 16px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
         }
 
         html[data-theme="signal"] .guild-selector label {
@@ -4498,45 +4572,58 @@
             text-transform: uppercase;
             letter-spacing: 0.24em;
             font-size: 0.58rem;
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .guild-selector label {
             color: var(--accent);
         }
 
         html[data-theme="signal"] .col-resize-handle {
             border-radius: 0;
             width: 4px;
-            background: rgba(34, 211, 238, 0.12);
-            border-color: rgba(34, 211, 238, 0.3);
         }
 
-        html[data-theme="signal"] .col-resize-handle:hover,
-        html[data-theme="signal"] .col-resize-handle:focus-visible {
-            background: rgba(34, 211, 238, 0.28);
-            box-shadow: 0 0 12px rgba(34, 211, 238, 0.35);
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .col-resize-handle {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12);
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.3);
         }
 
-        html[data-theme="signal"] .layout-col.layout-col-over {
-            background: rgba(34, 211, 238, 0.05);
-            box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.45);
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .col-resize-handle:hover,
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .col-resize-handle:focus-visible {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.28);
+            box-shadow: 0 0 12px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
         }
 
-        html[data-theme="signal"] .layout-pane.pane-drop-target {
-            box-shadow: 0 0 0 1px #4ade80, 0 0 20px rgba(74, 222, 128, 0.2);
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .layout-col.layout-col-over {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05);
+            box-shadow: inset 0 0 0 1px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.45);
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 1px rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b)), 0 0 20px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.2);
         }
 
         html[data-theme="signal"] .upload-zone {
-            border-style: dashed;
-            border-width: 1px;
             border-radius: 2px;
         }
 
-        html[data-theme="signal"] .login-overlay {
-            background: rgba(5, 10, 12, 0.84);
+        /* A thin dashed frame */
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .upload-zone {
+            border-style: dashed;
+            border-width: 1px;
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .login-overlay {
+            background: color-mix(in srgb, var(--bg-primary) 84%, transparent);
         }
 
         html[data-theme="signal"] .login-box {
-            border: 1px solid rgba(34, 211, 238, 0.35);
             border-radius: 4px;
-            box-shadow: 0 0 40px rgba(34, 211, 238, 0.12);
+        }
+
+        html[data-theme="signal"]:not([data-deco-off~="hud"]) .login-box {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
+            box-shadow: 0 0 40px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12);
         }
 
         html[data-theme="signal"] .login-box h2 {
@@ -4546,7 +4633,9 @@
             font-size: 1rem;
         }
 
-        /* Victory — champagne gold celebration lounge */
+        /* Victory — champagne gold celebration lounge
+           Its decorations are pieces (theme-pieces.json): glows, rule, gilded.
+           html[data-deco-off~="<id>"] drops a piece's rules; every decoration colour comes from the slots below. */
         html[data-theme="victory"] {
             --bg-primary: #0e0c08;
             --bg-secondary: #16130c;
@@ -4599,15 +4688,15 @@
             --radius-login-box: 20px;
             --col-radius: 18px;
             --col-resize-radius: 12px;
-            --card-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(234, 179, 8, 0.08);
+            --card-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
             --bg-shift-duration: 20s;
         }
 
-        html[data-theme="victory"] body::before {
+        html[data-theme="victory"]:not([data-deco-off~="glows"]) body::before {
             opacity: 0.7;
             background-image:
-                radial-gradient(ellipse 55% 40% at 15% 20%, rgba(234, 179, 8, 0.16), transparent 55%),
-                radial-gradient(ellipse 45% 35% at 90% 70%, rgba(245, 158, 11, 0.1), transparent 50%);
+                radial-gradient(ellipse 55% 40% at 15% 20%, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.16), transparent 55%),
+                radial-gradient(ellipse 45% 35% at 90% 70%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.1), transparent 50%);
         }
 
         html[data-theme="victory"] .header {
@@ -4616,11 +4705,15 @@
             align-content: center;
             padding-top: max(16px, env(safe-area-inset-top, 0));
             padding-bottom: 16px;
-            border-bottom: none;
             overflow: visible;
         }
 
-        html[data-theme="victory"] .header::after {
+        /* The gold rule takes the header's border's place; without it the border is back */
+        html[data-theme="victory"]:not([data-deco-off~="rule"]) .header {
+            border-bottom: none;
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="rule"]) .header::after {
             content: '';
             position: absolute;
             left: 8%;
@@ -4628,7 +4721,7 @@
             bottom: 0;
             height: 2px;
             border-radius: 2px;
-            background: linear-gradient(90deg, transparent, rgba(234, 179, 8, 0.15), rgba(253, 224, 71, 0.75), rgba(234, 179, 8, 0.15), transparent);
+            background: linear-gradient(90deg, transparent, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.15), color-mix(in srgb, var(--accent-light) 75%, transparent), rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.15), transparent);
             pointer-events: none;
         }
 
@@ -4643,14 +4736,17 @@
             letter-spacing: -0.03em;
         }
 
-        html[data-theme="victory"] .logo-icon {
-            box-shadow: 0 0 24px rgba(234, 179, 8, 0.35);
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .logo-icon {
+            box-shadow: 0 0 24px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
         }
 
         html[data-theme="victory"] .card {
             border: none;
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .card {
             box-shadow: var(--card-shadow);
-            background-image: linear-gradient(165deg, rgba(234, 179, 8, 0.06) 0%, transparent 38%);
+            background-image: linear-gradient(165deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06) 0%, transparent 38%);
         }
 
         html[data-theme="victory"] .card-title,
@@ -4662,20 +4758,29 @@
             letter-spacing: 0.04em;
             font-size: 0.95rem;
             font-weight: 700;
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .card-title,
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .pane-header-row .card-title,
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .pane-header-with-actions .card-title,
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .playlist-header .card-title {
             color: var(--accent-light);
         }
 
         html[data-theme="victory"] .layout-pane.card > .pane-drag-bar {
             margin: calc(-1 * var(--card-padding) + 12px) calc(-1 * var(--card-padding) + 24px) var(--pane-drag-margin-bottom, 12px) calc(-1 * var(--card-padding) + 24px);
             border-radius: 999px;
-            border: 1px solid rgba(234, 179, 8, 0.22);
-            background: linear-gradient(90deg, rgba(234, 179, 8, 0.08), rgba(245, 158, 11, 0.14), rgba(234, 179, 8, 0.08));
             min-height: 14px;
         }
 
-        html[data-theme="victory"] .lyrics-scroll {
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .layout-pane.card > .pane-drag-bar {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.22);
+            background: linear-gradient(90deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08), rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.14), rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08));
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .lyrics-scroll {
             background: rgba(0, 0, 0, 0.18);
-            border: 1px solid rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
         }
 
         html[data-theme="victory"] .lyrics-line {
@@ -4687,10 +4792,13 @@
         html[data-theme="victory"] .lyrics-line.active {
             padding-left: 24px;
             padding-right: 24px;
-            background: linear-gradient(90deg, rgba(234, 179, 8, 0.12), rgba(245, 158, 11, 0.22), rgba(234, 179, 8, 0.12));
-            box-shadow: 0 0 28px rgba(234, 179, 8, 0.2);
-            color: #fffbeb;
             font-weight: 600;
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .lyrics-line.active {
+            background: linear-gradient(90deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12), rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.22), rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12));
+            box-shadow: 0 0 28px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.2);
+            color: var(--text-primary);
         }
 
         html[data-theme="victory"] .track-title {
@@ -4703,8 +4811,8 @@
             border-radius: 999px;
         }
 
-        html[data-theme="victory"] .ctrl-btn-primary {
-            box-shadow: 0 0 28px rgba(234, 179, 8, 0.35);
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .ctrl-btn-primary {
+            box-shadow: 0 0 28px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
         }
 
         html[data-theme="victory"] .guild-selector label {
@@ -4712,33 +4820,45 @@
             letter-spacing: 0.06em;
             font-size: 0.78rem;
             font-weight: 600;
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .guild-selector label {
             color: var(--accent-light);
         }
 
         html[data-theme="victory"] .upload-zone {
-            border-width: 2px;
             border-radius: 18px;
-            border-color: rgba(234, 179, 8, 0.28);
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .upload-zone {
+            border-width: 2px;
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.28);
         }
 
         html[data-theme="victory"] .layout-col.layout-col-over {
-            background: rgba(234, 179, 8, 0.06);
-            box-shadow: inset 0 0 0 2px rgba(253, 224, 71, 0.35);
             border-radius: 18px;
         }
 
-        html[data-theme="victory"] .layout-pane.pane-drop-target {
-            box-shadow: 0 0 0 2px rgba(253, 224, 71, 0.55), 0 0 32px rgba(234, 179, 8, 0.2);
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .layout-col.layout-col-over {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06);
+            box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent-light) 35%, transparent);
         }
 
-        html[data-theme="victory"] .login-overlay {
-            background: rgba(14, 12, 8, 0.78);
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-light) 55%, transparent), 0 0 32px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.2);
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .login-overlay {
+            background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
         }
 
         html[data-theme="victory"] .login-box {
             border-radius: 20px;
-            border: 1px solid rgba(234, 179, 8, 0.28);
-            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 40px rgba(234, 179, 8, 0.1);
+        }
+
+        html[data-theme="victory"]:not([data-deco-off~="gilded"]) .login-box {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.28);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 40px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
         }
 
         html[data-theme="victory"] .login-box h2 {
@@ -4747,7 +4867,9 @@
             letter-spacing: -0.02em;
         }
 
-        /* Neon — lime on deep purple void; white text */
+        /* Neon — lime on deep purple void; the text in its brightest colour
+           Its decorations are pieces (theme-pieces.json): photo, rails, glows (title is the mini-player's).
+           html[data-deco-off~="<id>"] drops a piece's rules; every decoration colour comes from the slots below. */
         html[data-theme="neon"] {
             --bg-primary: #12081c;
             --bg-secondary: #1a0f28;
@@ -4798,11 +4920,21 @@
             --radius-login-box: 18px;
             --col-radius: 14px;
             --col-resize-radius: 10px;
-            --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(163, 230, 53, 0.1);
+            --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
             --bg-shift-duration: 16s;
+            /* Tones no mix of the slots gives: the violet at the foot of a card, and the brighter lime of a rail under
+               the pointer; a custom theme gets them from its colours (next rule) */
+            --neon-violet: #a855f7;
+            --neon-hover: #bef264;
         }
 
-        html[data-theme="neon"] body::before {
+        html[data-custom-theme][data-theme="neon"] {
+            --neon-violet: rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b));
+            --neon-hover: color-mix(in srgb, var(--accent) 50%, var(--accent-light));
+        }
+
+        /* The backdrop photo (it stays a photo, whatever the colours) ... */
+        html[data-theme="neon"]:not([data-deco-off~="photo"]) body::before {
             top: 0;
             left: 0;
             width: 100%;
@@ -4817,8 +4949,8 @@
             contain: paint;
         }
 
-        /* Soft veil on the left so panels stay readable over the art */
-        html[data-theme="neon"] body::after {
+        /* ... and the soft veil on its left so panels stay readable over the art, in the page colour */
+        html[data-theme="neon"]:not([data-deco-off~="photo"]) body::after {
             content: '';
             position: fixed;
             inset: 0;
@@ -4826,19 +4958,23 @@
             pointer-events: none;
             background: linear-gradient(
                 90deg,
-                rgba(18, 8, 28, 0.72) 0%,
-                rgba(18, 8, 28, 0.35) 42%,
-                rgba(18, 8, 28, 0.12) 68%,
+                color-mix(in srgb, var(--bg-primary) 72%, transparent) 0%,
+                color-mix(in srgb, var(--bg-primary) 35%, transparent) 42%,
+                color-mix(in srgb, var(--bg-primary) 12%, transparent) 68%,
                 transparent 100%
             );
             contain: paint;
         }
 
-        html[data-theme="neon"] .card {
-            border: 1px solid rgba(192, 132, 252, 0.16);
-            border-top: 2px solid #a3e635;
-            box-shadow: var(--card-shadow), 0 0 48px rgba(163, 230, 53, 0.05);
-            background-image: linear-gradient(160deg, rgba(163, 230, 53, 0.05) 0%, transparent 36%, rgba(168, 85, 247, 0.06) 100%);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .card {
+            border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.16);
+            box-shadow: var(--card-shadow), 0 0 48px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05);
+            background-image: linear-gradient(160deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05) 0%, transparent 36%, color-mix(in srgb, var(--neon-violet) 6%, transparent) 100%);
+        }
+
+        /* The lime rails: on top of every card and of the header, and the drag bars and the lyrics' scrollbar */
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .card {
+            border-top: 2px solid var(--accent);
         }
 
         html[data-theme="neon"] .card-title,
@@ -4849,91 +4985,121 @@
             letter-spacing: 0.16em;
             font-size: 0.7rem;
             font-weight: 700;
-            color: #ffffff;
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .card-title,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .pane-header-row .card-title,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .pane-header-with-actions .card-title,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .playlist-header .card-title {
+            color: var(--text-primary);
         }
 
         html[data-theme="neon"] .layout-pane.card > .pane-drag-bar {
-            background: #a3e635;
             border-bottom: none;
             min-height: 4px;
             padding-top: 0;
             padding-bottom: 0;
-            box-shadow: 0 0 12px rgba(163, 230, 53, 0.45);
         }
 
-        html[data-theme="neon"] .layout-pane.card > .pane-drag-bar:hover {
-            background: #bef264;
-            box-shadow: 0 0 16px rgba(163, 230, 53, 0.6);
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .layout-pane.card > .pane-drag-bar {
+            background: var(--accent);
+            box-shadow: 0 0 12px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
         }
 
-        html[data-theme="neon"] .header {
-            border-top: 2px solid #a3e635;
-            border-bottom: 1px solid rgba(163, 230, 53, 0.18);
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .layout-pane.card > .pane-drag-bar:hover {
+            background: var(--neon-hover);
+            box-shadow: 0 0 16px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.6);
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .header {
+            border-top: 2px solid var(--accent);
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .header {
+            border-bottom: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.18);
         }
 
         html[data-theme="neon"] .logo {
-            color: #ffffff;
             font-weight: 700;
         }
 
-        html[data-theme="neon"] .logo-icon {
-            box-shadow: 0 0 22px rgba(163, 230, 53, 0.4);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .logo {
+            color: var(--text-primary);
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .logo-icon {
+            box-shadow: 0 0 22px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.4);
         }
 
         html[data-theme="neon"] .lyrics-scroll {
-            background: rgba(8, 4, 14, 0.45);
-            border: 1px solid rgba(192, 132, 252, 0.14);
             scrollbar-width: thin;
-            scrollbar-color: #a3e635 transparent;
         }
 
-        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar {
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .lyrics-scroll {
+            background: color-mix(in srgb, color-mix(in srgb, var(--bg-primary) 48.5%, black) 45%, transparent);
+            border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.14);
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .lyrics-scroll {
+            scrollbar-color: var(--accent) transparent;
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .lyrics-scroll::-webkit-scrollbar {
             width: 8px;
         }
 
-        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar-track {
-            background: rgba(163, 230, 53, 0.06);
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .lyrics-scroll::-webkit-scrollbar-track {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06);
             border-radius: 4px;
         }
 
-        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar-thumb {
-            background: #a3e635;
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .lyrics-scroll::-webkit-scrollbar-thumb {
+            background: var(--accent);
             border-radius: 4px;
-            box-shadow: 0 0 8px rgba(163, 230, 53, 0.45);
+            box-shadow: 0 0 8px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
         }
 
-        html[data-theme="neon"] .lyrics-scroll::-webkit-scrollbar-thumb:hover {
-            background: #bef264;
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .lyrics-scroll::-webkit-scrollbar-thumb:hover {
+            background: var(--neon-hover);
         }
 
-        html[data-theme="neon"] .lyrics-line {
-            color: #ffffff;
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .lyrics-line {
+            color: var(--text-primary);
         }
 
         html[data-theme="neon"] .lyrics-line.active {
             border-radius: 10px;
-            background: linear-gradient(90deg, rgba(163, 230, 53, 0.2), rgba(192, 132, 252, 0.14));
-            box-shadow: 0 0 24px rgba(163, 230, 53, 0.18);
-            color: #ffffff;
             font-weight: 600;
         }
 
-        html[data-theme="neon"] .track-title,
-        html[data-theme="neon"] .now-playing,
-        html[data-theme="neon"] .queue-item,
-        html[data-theme="neon"] .history-item,
-        html[data-theme="neon"] .search-result-item {
-            color: #ffffff;
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .lyrics-line.active {
+            background: linear-gradient(90deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.2), rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.14));
+            box-shadow: 0 0 24px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.18);
+            color: var(--text-primary);
         }
 
-        html[data-theme="neon"] .ctrl-btn {
-            border: 1px solid rgba(192, 132, 252, 0.22);
-            color: #ffffff;
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .track-title,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .now-playing,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .queue-item,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .history-item,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .search-result-item {
+            color: var(--text-primary);
         }
 
-        html[data-theme="neon"] .ctrl-btn-primary {
-            box-shadow: 0 0 24px rgba(163, 230, 53, 0.35);
-            border-color: rgba(163, 230, 53, 0.4);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .ctrl-btn {
+            border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.22);
+            color: var(--text-primary);
+        }
+
+        /* The panel's own hover colour of a switched-on repeat or shuffle button (the guard above weighs more than it) */
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .ctrl-btn.repeat-active:hover,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .ctrl-btn.shuffle-active:hover {
+            color: var(--accent-light);
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .ctrl-btn-primary {
+            box-shadow: 0 0 24px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35);
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.4);
         }
 
         html[data-theme="neon"] .guild-selector label {
@@ -4941,42 +5107,51 @@
             letter-spacing: 0.14em;
             font-size: 0.68rem;
             font-weight: 600;
-            color: #ffffff;
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .guild-selector label {
+            color: var(--text-primary);
         }
 
         html[data-theme="neon"] .upload-zone {
-            border-color: rgba(163, 230, 53, 0.28);
             border-radius: 16px;
         }
 
-        html[data-theme="neon"] .layout-col.layout-col-over {
-            background: rgba(163, 230, 53, 0.06);
-            box-shadow: inset 0 0 0 2px rgba(163, 230, 53, 0.4);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .upload-zone {
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.28);
         }
 
-        html[data-theme="neon"] .layout-pane.pane-drop-target {
-            box-shadow: 0 0 0 2px rgba(163, 230, 53, 0.55), 0 0 28px rgba(192, 132, 252, 0.25);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .layout-col.layout-col-over {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06);
+            box-shadow: inset 0 0 0 2px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.4);
         }
 
-        html[data-theme="neon"] .col-resize-handle:hover,
-        html[data-theme="neon"] .col-resize-handle:focus-visible {
-            background: rgba(163, 230, 53, 0.25);
-            border-color: rgba(163, 230, 53, 0.45);
-            box-shadow: 0 0 12px rgba(163, 230, 53, 0.3);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 2px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.55), 0 0 28px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.25);
         }
 
-        html[data-theme="neon"] .login-overlay {
-            background: rgba(18, 8, 28, 0.82);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .col-resize-handle:hover,
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .col-resize-handle:focus-visible {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
+            box-shadow: 0 0 12px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.3);
         }
 
-        html[data-theme="neon"] .login-box {
-            border: 1px solid rgba(163, 230, 53, 0.28);
-            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 40px rgba(192, 132, 252, 0.15);
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .login-overlay {
+            background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .login-box {
+            border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.28);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 40px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.15);
         }
 
         html[data-theme="neon"] .login-box h2 {
-            color: #ffffff;
             font-weight: 700;
+        }
+
+        html[data-theme="neon"]:not([data-deco-off~="glows"]) .login-box h2 {
+            color: var(--text-primary);
         }
 
         /* ===================== Revival =====================

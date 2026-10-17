@@ -9,6 +9,10 @@
         "html[data-theme=\"revival\"]::after|background-color|0": "Revival's film grain: its colour was drawn inside its picture (not in the golden file); the picture is a mask now and the grain shows the theme's text colour through it, on its own layer (html::after) because a mask covers a whole element",
         "html[data-theme=\"revival\"] .ctrl-btn.repeat-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Revival's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
         "html[data-theme=\"revival\"] .ctrl-btn.shuffle-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Revival's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light"
+      },
+      "neon": {
+        "html[data-theme=\"neon\"] .ctrl-btn.repeat-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light",
+        "html[data-theme=\"neon\"] .ctrl-btn.shuffle-active:hover|color|0": "not a new colour: the panel's own hover colour of a switched-on repeat/shuffle button (.ctrl-btn.repeat-active:hover, (0,3,0)) beat Neon's .ctrl-btn (0,2,1) before; the piece guard makes that (0,3,1), so this rule gives the hover back its accent-light"
       }
     },
     "mini": {}
