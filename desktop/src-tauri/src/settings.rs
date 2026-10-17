@@ -19,6 +19,22 @@ pub struct MiniPos {
     pub y: Option<i32>,
 }
 
+/// Which windows were open when the person last showed or hid one, so the next start reopens them. Hiding while a
+/// fullscreen app runs is the app's doing, and temporary: it never changes this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LastView {
+    pub panel: bool,
+    pub mini: bool,
+}
+
+impl Default for LastView {
+    /// The panel alone: how the app always started before it remembered.
+    fn default() -> Self {
+        LastView { panel: true, mini: false }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -44,6 +60,7 @@ pub struct Settings {
     pub mini_player_compact: bool,
     /// The app version that last ran: a different one at start means the app was just updated.
     pub last_run_version: Option<String>,
+    pub last_view: LastView,
 }
 
 impl Default for Settings {
@@ -64,6 +81,7 @@ impl Default for Settings {
             hotkeys: Hotkeys::default(),
             mini_player_compact: false,
             last_run_version: None,
+            last_view: LastView::default(),
         }
     }
 }
@@ -174,6 +192,26 @@ mod tests {
 
         save(&path, &Settings { last_run_version: Some("0.5.0".into()), ..Settings::default() }).unwrap();
         assert!(fs::read_to_string(&path).unwrap().contains(r#""lastRunVersion": "0.5.0""#));
+    }
+
+    #[test]
+    fn the_last_view_defaults_to_the_panel_alone_also_for_an_older_settings_file() {
+        assert_eq!(Settings::default().last_view, LastView { panel: true, mini: false });
+
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        // Written by 0.5/0.6, before the app remembered its windows: starts as it always did.
+        fs::write(&path, r#"{"notifyUpNext": false, "lastRunVersion": "0.6.0"}"#).unwrap();
+        assert_eq!(load(&path).last_view, LastView { panel: true, mini: false });
+        // Half a value fills the other half with its default.
+        fs::write(&path, r#"{"lastView": {"mini": true}}"#).unwrap();
+        assert_eq!(load(&path).last_view, LastView { panel: true, mini: true });
+
+        let both_closed = Settings { last_view: LastView { panel: false, mini: false }, ..Settings::default() };
+        save(&path, &both_closed).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains(r#""lastView": {"#) && text.contains(r#""panel": false"#) && text.contains(r#""mini": false"#), "{text}");
+        assert_eq!(load(&path), both_closed);
     }
 
     #[test]

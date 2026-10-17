@@ -17,7 +17,7 @@ mod tray;
 mod updates;
 mod whats_new;
 
-use settings::Settings;
+use settings::{LastView, Settings};
 use std::collections::HashMap;
 use state::{Change, StateStore};
 use std::path::PathBuf;
@@ -169,14 +169,52 @@ fn allowed_navigation(url: &url::Url, origin: &str) -> bool {
     url.scheme() == "https" && url.host_str() == Some("discord.com")
 }
 
-/// Launched by "Start with Windows": stay in the tray instead of opening the panel.
 /// Windows whose close request (X button, Alt+F4) hides them instead of destroying them.
 fn hides_on_close(label: &str) -> bool {
     label == "main" || label == mini_player::LABEL
 }
 
+/// Launched by "Start with Windows": stay in the tray instead of opening the panel.
 fn start_hidden(args: &[String]) -> bool {
     args.iter().any(|a| a == "--hidden")
+}
+
+/// Which windows a start shows, as (panel, mini-player): the ones open when the person last showed or hid one.
+/// Started by hand with everything in the tray, the panel opens anyway, so a launch never looks like nothing happened.
+/// Started with Windows (`hidden`), the panel never opens; the mini-player does if it was open.
+fn launch_view(last: LastView, hidden: bool) -> (bool, bool) {
+    if hidden {
+        return (false, last.mini);
+    }
+    (last.panel || !last.mini, last.mini)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ViewWindow {
+    Panel,
+    Mini,
+}
+
+fn remembered(last: LastView, window: ViewWindow, shown: bool) -> LastView {
+    match window {
+        ViewWindow::Panel => LastView { panel: shown, ..last },
+        ViewWindow::Mini => LastView { mini: shown, ..last },
+    }
+}
+
+/// The person showed or hid a window (tray, hotkey, close to the tray, a button): remembered for the next start.
+/// Only the user's paths call this, never the fullscreen auto-hide, which is temporary.
+pub(crate) fn remember_view(app: &AppHandle, window: ViewWindow, shown: bool) {
+    let state = app.state::<AppState>();
+    let mut settings = state.settings.lock().unwrap();
+    let next = remembered(settings.last_view, window, shown);
+    if next == settings.last_view {
+        return;
+    }
+    settings.last_view = next;
+    if let Err(e) = settings::save(&state.settings_path, &settings) {
+        log::warn!("could not save the open windows: {e}");
+    }
 }
 
 pub(crate) fn show_main(app: &AppHandle) {
@@ -184,16 +222,18 @@ pub(crate) fn show_main(app: &AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+        remember_view(app, ViewWindow::Panel, true);
     }
 }
 
-fn create_main_window(app: &AppHandle, panel_url: url::Url, origin: String, visible: bool) -> tauri::Result<()> {
+/// Created hidden: the page loads in the background either way (the mini-player works through it).
+fn create_main_window(app: &AppHandle, panel_url: url::Url, origin: String) -> tauri::Result<()> {
     let handle = app.clone();
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(panel_url))
         .title("Clout Kings Music Bot")
         .initialization_script(bridge::init_script(&origin))
         .inner_size(1280.0, 860.0)
-        .visible(visible)
+        .visible(false)
         // The panel uses HTML5 drag and drop (moving panes, dropping audio files to upload); on
         // Windows that only reaches the page when Tauri's own drop handler is off.
         .disable_drag_drop_handler()
@@ -242,14 +282,16 @@ fn main() {
             };
             // The same version the updater compares against.
             let version = app.package_info().version.to_string();
-            let show_whats_new = whats_new::just_updated(settings.last_run_version.as_deref(), &version, settings_existed);
+            let updated = whats_new::just_updated(settings.last_run_version.as_deref(), &version, settings_existed);
             if settings.last_run_version.as_deref() != Some(version.as_str()) {
-                settings.last_run_version = Some(version);
+                settings.last_run_version = Some(version.clone());
                 if let Err(e) = settings::save(&settings_path, &settings) {
                     log::warn!("could not save the app version: {e}");
                 }
             }
             let start_with_windows = settings.start_with_windows;
+            let hidden = start_hidden(&std::env::args().collect::<Vec<_>>());
+            let (show_panel, show_mini) = launch_view(settings.last_view, hidden);
             app.manage(AppState {
                 settings: Mutex::new(settings),
                 settings_path,
@@ -268,8 +310,7 @@ fn main() {
                     .window("main")
                     .permission("allow-bridge-report"),
             )?;
-            let hidden = start_hidden(&std::env::args().collect::<Vec<_>>());
-            create_main_window(app.handle(), panel_url, origin, !hidden)?;
+            create_main_window(app.handle(), panel_url, origin)?;
             if start_with_windows {
                 // Re-register so the entry follows the app if an update moved it.
                 if let Err(e) = app.autolaunch().enable() {
@@ -279,9 +320,16 @@ fn main() {
             start_media_keys(app.handle());
             tray::build(app.handle())?;
             mini_player::create(app.handle())?;
-            if show_whats_new {
-                // Just updated: the panel's "What's new" dialog is in this window.
+            log::info!("start: panel {show_panel}, mini-player {show_mini} (with Windows: {hidden}, just updated: {updated})");
+            if show_mini {
+                mini_player::show(app.handle());
+            }
+            // After the mini-player, so the panel ends up in front.
+            if show_panel {
                 show_main(app.handle());
+            }
+            if whats_new::after_launch(updated, show_panel) == whats_new::Announce::Toast {
+                notify::show(app.handle(), &whats_new::update_toast(&version));
             }
             spawn_ticker(app.handle().clone());
             sleep::spawn_worker(app.handle().clone());
@@ -299,6 +347,7 @@ fn main() {
                         mini_player::hide(window.app_handle());
                     } else {
                         let _ = window.hide();
+                        remember_view(window.app_handle(), ViewWindow::Panel, false);
                     }
                 }
                 WindowEvent::Moved(position) if window.label() == mini_player::LABEL => {
@@ -366,6 +415,78 @@ mod tests {
     fn start_hidden_flag() {
         assert!(start_hidden(&["app.exe".to_string(), "--hidden".to_string()]));
         assert!(!start_hidden(&["app.exe".to_string()]));
+    }
+
+    fn last(panel: bool, mini: bool) -> LastView {
+        LastView { panel, mini }
+    }
+
+    #[test]
+    fn a_normal_launch_reopens_the_last_view() {
+        assert_eq!(launch_view(last(true, false), false), (true, false), "the panel, as before");
+        assert_eq!(launch_view(last(false, true), false), (false, true), "the mini-player alone");
+        assert_eq!(launch_view(last(true, true), false), (true, true), "both");
+    }
+
+    #[test]
+    fn a_normal_launch_with_everything_in_the_tray_opens_the_panel() {
+        // Starting the app by hand must never look like nothing happened.
+        assert_eq!(launch_view(last(false, false), false), (true, false));
+    }
+
+    #[test]
+    fn start_with_windows_never_opens_the_panel() {
+        assert_eq!(launch_view(last(true, false), true), (false, false));
+        assert_eq!(launch_view(last(false, true), true), (false, true));
+        assert_eq!(launch_view(last(true, true), true), (false, true));
+        assert_eq!(launch_view(last(false, false), true), (false, false));
+    }
+
+    #[test]
+    fn an_older_settings_file_launches_as_before() {
+        assert_eq!(launch_view(LastView::default(), false), (true, false));
+        assert_eq!(launch_view(LastView::default(), true), (false, false));
+    }
+
+    #[test]
+    fn a_shown_or_hidden_window_changes_only_its_own_half_of_the_last_view() {
+        assert_eq!(remembered(last(true, false), ViewWindow::Mini, true), last(true, true));
+        assert_eq!(remembered(last(true, true), ViewWindow::Panel, false), last(false, true));
+        assert_eq!(remembered(last(false, true), ViewWindow::Mini, false), last(false, false));
+        assert_eq!(remembered(last(false, false), ViewWindow::Panel, true), last(true, false));
+        assert_eq!(remembered(last(true, false), ViewWindow::Panel, true), last(true, false));
+    }
+
+    /// The code of a source file, without its tests.
+    fn code_of(source: &str) -> &str {
+        source.split("#[cfg(test)]").next().unwrap()
+    }
+
+    #[test]
+    fn fullscreen_and_sleep_hiding_is_never_remembered() {
+        // The fullscreen hide is temporary: it goes straight to Windows and must not pass through the user's
+        // show/hide paths, which remember the view. The sleep timer only pauses the music.
+        let user_paths = ["remember_view", "mini_player::hide", "mini_player::toggle", "mini_player::show", "show_main", "settings::save"];
+        for (name, source) in [("fullscreen.rs", include_str!("fullscreen.rs")), ("sleep.rs", include_str!("sleep.rs"))] {
+            let code = code_of(source);
+            assert!(code.len() > 1000, "{name} was read");
+            for path in user_paths {
+                assert!(!code.contains(path), "{name} calls {path}");
+            }
+        }
+        // ...and the user's paths do remember it.
+        let mini = code_of(include_str!("mini_player.rs"));
+        for path in ["pub fn show(", "pub fn hide("] {
+            let body = &mini[mini.find(path).unwrap_or_else(|| panic!("{path}"))..];
+            // To the closing brace at the start of a line (with either line ending).
+            let body = &body[..body.find("\n}").unwrap()];
+            assert!(body.contains("remember_view("), "{path} remembers the view");
+        }
+        let main = code_of(include_str!("main.rs"));
+        let show = &main[main.find("pub(crate) fn show_main(").unwrap()..];
+        assert!(show[..show.find("\n}").unwrap()].contains("remember_view("), "show_main remembers the view");
+        let close = &main[main.find("WindowEvent::CloseRequested").unwrap()..];
+        assert!(close[..close.find("WindowEvent::Moved").unwrap()].contains("remember_view("), "closing the panel to the tray is remembered");
     }
 
     #[test]

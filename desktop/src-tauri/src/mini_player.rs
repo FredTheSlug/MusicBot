@@ -8,7 +8,7 @@ use crate::settings::Settings;
 use crate::sleep::{self, SleepInfo};
 use crate::state::{BotState, Change};
 use crate::theme::{self, CustomMini, PanelTheme, ThemeMenu, UiTheme};
-use crate::{settings, show_main, AppState};
+use crate::{remember_view, settings, show_main, AppState, ViewWindow};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -173,11 +173,16 @@ pub fn is_visible(app: &AppHandle) -> bool {
 }
 
 pub fn toggle(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(LABEL) else { return };
     if is_visible(app) {
         hide(app);
-        return;
+    } else {
+        show(app);
     }
+}
+
+/// Shows the mini-player on its saved spot, at the user's request (or at start, when it was open last time).
+pub fn show(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(LABEL) else { return };
     crate::fullscreen::forget_auto_hide();
     // The fullscreen hide bypasses tao, which then still thinks the window is shown; hiding first
     // brings its record back in line so the show below actually happens.
@@ -201,6 +206,7 @@ pub fn toggle(app: &AppHandle) {
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = window.show();
     let _ = window.set_focus();
+    remember_view(app, ViewWindow::Mini, true);
     emit_state(app);
     refresh_themes_in_background(app);
     refresh_likes_in_background(app);
@@ -509,6 +515,7 @@ pub fn hide(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();
     }
+    remember_view(app, ViewWindow::Mini, false);
 }
 
 static LAST_MOVE: Mutex<Option<(i32, i32, Instant)>> = Mutex::new(None);
