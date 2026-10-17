@@ -370,6 +370,8 @@ html:not(.compact) .bottom-row .status {
   right: 18px;
   right: anchor(--meta right);
 }
+/* With no message it is gone, so clicks on the artist line reach it and drag the window. */
+html:not(.compact) .bottom-row .status:empty { display: none; }
 html:not(.compact) .info:has(.status:not(:empty)) .meta { visibility: hidden; }
 html:not(.compact) .bottom-row #menuBtn { margin-left: auto; }
 

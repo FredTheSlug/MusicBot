@@ -1149,6 +1149,13 @@ test('in the full player a message takes the artist line\'s place, as it does in
   assert.match(mini, /el\('status'\)\.title = message;/);
 });
 
+test('with no message the status line is gone, so the artist line under it still drags the window', () => {
+  // Laid over the artist line, an empty status line would take its clicks; pointer-events: none would cost the tooltip.
+  assert.match(MINI_CSS, /\nhtml:not\(\.compact\) \.bottom-row \.status:empty \{ display: none; \}\n/);
+  assert.doesNotMatch(cssRule(MINI_CSS, 'html:not(.compact) .bottom-row .status'), /pointer-events/);
+  assert.match(MINI_HTML, /<div class="meta" id="meta" data-tauri-drag-region>/);
+});
+
 const { oneAtATime } = require('./view.js');
 
 test('oneAtATime runs one call at a time and says when it is busy', async () => {
