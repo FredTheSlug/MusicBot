@@ -32,7 +32,8 @@ function goldenOf(kind) {
 
 /*
  * Golden keys gone on purpose and new decoration keys added on purpose are listed, each with the reason it was
- * reviewed, in src/test/resources/theme-golden/allowlist.json (read by this test and by scripts/theme-golden.js).
+ * reviewed, in src/test/resources/theme-golden/allowlist.json (read by this test and by scripts/theme-golden.js), and
+ * so are the cascade flips a piece guard causes on purpose (cascadeFlipsAreRestoredOrListed).
  */
 const ALLOWLIST_FILE = 'src/test/resources/theme-golden/allowlist.json';
 
@@ -294,7 +295,7 @@ test('theAccentTriplesArePinned', () => {
 
 test('theAllowlistsAreOneReviewedFileTheScriptReadsToo', () => {
   const allow = readJson(ALLOWLIST_FILE);
-  assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose']);
+  assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose', 'flipsOnPurpose']);
   for (const list of Object.values(allow)) {
     assert.deepEqual(Object.keys(list), ['panel', 'mini']);
     for (const kind of ['panel', 'mini']) {
@@ -406,23 +407,33 @@ test('goldenCoversEveryDecoratedTheme', () => {
   assert.ok(Object.keys(pieces).every((id) => goldenOf('panel')[id] && goldenOf('mini')[id]));
 });
 
-// ---- the rewritten themes: colours from the slots, every decoration under one piece, motion that can stop
-// (Revival so far; each theme joins these as its decorations are rewritten)
+// ---- the rewritten themes: colours from the slots, every rule of a piece under its guard, shape left unguarded,
+// no cascade turned by a guard, motion that can stop (each theme joins these as its decorations are rewritten)
 
 const ThemePalette = require('../../main/resources/web/theme-palette.js');
-const vm = require('node:vm');
 
 const PIECES = readJson(PIECES_FILE);
+
+const REWRITTEN = ['revival'];
 
 function pieceIds(themeId) {
   return PIECES[themeId].pieces.map((p) => p.id);
 }
 
-/* Every declaration of every style rule of the panel, once per selector, in document order. */
-function panelDeclarations() {
+/* A theme id in a test name: dawn-dark -> dawnDark (camel) / DawnDark (capitalized). */
+function camel(id) {
+  return id.replace(/-(\w)/g, (m, c) => c.toUpperCase());
+}
+
+function capitalized(id) {
+  return camel(id)[0].toUpperCase() + camel(id).slice(1);
+}
+
+/* Every declaration of every style rule of a stylesheet, once per selector, in document order. */
+function declarationsOf(css) {
   const out = [];
   let order = 0;
-  Colors.parseCss(Colors.panelCss()).forEach((rule) => {
+  Colors.parseCss(css).forEach((rule) => {
     if (rule.type !== 'style') return;
     rule.selectors.forEach((raw) => {
       const selector = raw.trim().replace(/\s+/g, ' ');
@@ -436,66 +447,11 @@ function panelDeclarations() {
   return out;
 }
 
-/* The piece guards in a selector: the ids of :not([data-deco-off~="id"]), and how often data-deco-off appears. */
-function guardsOf(selector) {
-  return {
-    ids: [...selector.matchAll(/:not\(\s*\[\s*data-deco-off\s*~=\s*["']?([^"'\]\s]+)["']?\s*\]\s*\)/g)].map((m) => m[1]),
-    mentions: (selector.match(/data-deco-off/g) || []).length
-  };
-}
+let panelDecls = null;
 
-/* A selector's first compound and the rest (from the first space or combinator outside brackets). */
-function splitFirst(selector) {
-  let depth = 0;
-  for (let i = 0; i < selector.length; i++) {
-    const c = selector[i];
-    if (c === '"' || c === "'") {
-      i = selector.indexOf(c, i + 1);
-      continue;
-    }
-    if (c === '(' || c === '[') depth++;
-    else if (c === ')' || c === ']') depth--;
-    else if (depth === 0 && /[\s>+~]/.test(c)) return { head: selector.slice(0, i), rest: selector.slice(i) };
-  }
-  return { head: selector, rest: '' };
-}
-
-/* Does a string of attribute selectors and :not()s match an element with these attributes? */
-function attributesMatch(text, attrs) {
-  let i = 0;
-  while (i < text.length) {
-    if (text[i] === '[') {
-      const end = text.indexOf(']', i);
-      const m = /^\s*([-\w]+)\s*(?:(~?=)\s*(?:"([^"]*)"|'([^']*)'|([-\w]+)))?\s*$/.exec(text.slice(i + 1, end));
-      if (!m) throw new Error('can\'t read ' + text);
-      const has = Object.prototype.hasOwnProperty.call(attrs, m[1]);
-      const want = m[3] !== undefined ? m[3] : m[4] !== undefined ? m[4] : m[5];
-      const ok = !m[2] ? has : m[2] === '=' ? has && attrs[m[1]] === want : has && attrs[m[1]].split(/\s+/).includes(want);
-      if (!ok) return false;
-      i = end + 1;
-    } else if (text.startsWith(':not(', i)) {
-      let depth = 0;
-      let end = i + 4;
-      for (; end < text.length; end++) {
-        if (text[end] === '(') depth++;
-        else if (text[end] === ')' && --depth === 0) break;
-      }
-      const inner = text.slice(i + 5, end).split(',').map((s) => s.trim());
-      if (inner.some((s) => attributesMatch(s, attrs))) return false;
-      i = end + 1;
-    } else {
-      throw new Error('can\'t read ' + text.slice(i));
-    }
-  }
-  return true;
-}
-
-/* Does a selector's <html> part match <html> with these attributes? (null for a selector that doesn't start there) */
-function htmlMatches(selector, attrs) {
-  const head = splitFirst(selector).head.replace(/::?[-\w]+$/, '');
-  const m = /^(html|:root)(?![-\w])/.exec(head);
-  if (!m) return null;
-  return attributesMatch(head.slice(m[0].length), attrs);
+function panelDeclarations() {
+  if (!panelDecls) panelDecls = declarationsOf(Colors.panelCss());
+  return panelDecls;
 }
 
 /* Paints something: a colour, generated content, or an animation. */
@@ -505,89 +461,248 @@ function decorates(d, vars) {
   return /^animation(-name)?$/.test(d.decl.prop) && !/^none$/i.test(d.decl.value.trim());
 }
 
-test('revivalMatchesItsGolden', () => {
-  const allow = Colors.allowlist();
-  const problems = Colors.compareToGolden(goldenOf('panel').revival, Colors.panelCss(), 'revival', {
-    gone: Object.keys(allow.goneOnPurpose.panel.revival || {}),
-    added: Object.keys(allow.newOnPurpose.panel.revival || {})
+for (const themeId of REWRITTEN) {
+  test(camel(themeId) + 'MatchesItsGolden', () => {
+    const allow = Colors.allowlist();
+    const problems = Colors.compareToGolden(goldenOf('panel')[themeId], Colors.panelCss(), themeId, {
+      gone: Object.keys(allow.goneOnPurpose.panel[themeId] || {}),
+      added: Object.keys(allow.newOnPurpose.panel[themeId] || {})
+    });
+    assert.deepEqual(problems, []);
   });
-  assert.deepEqual(problems, []);
-});
+}
 
-test('revivalDecorationsFollowTheThemesColours', () => {
-  // with another palette (a custom theme: its colours inline on <html>, and the custom-theme rules), every decoration
-  // colour changes, but for plain black and white (shadows, the masks' alpha, the selected text) and see-through ones
-  const css = Colors.panelCss();
-  const customRules = {};
-  panelDeclarations().filter((d) => d.rule.at.length === 0 &&
-    d.norm === 'html[data-custom-theme][data-theme="revival"]').forEach((d) => {
-    customRules[d.decl.prop] = d.decl.value;
+for (const themeId of REWRITTEN) {
+  test(camel(themeId) + 'DecorationsFollowTheThemesColours', () => {
+    // with another palette (a custom theme: its colours inline on <html>, and the custom-theme rules), every decoration
+    // colour changes, but for plain black and white (shadows, masks, selected text) and see-through ones
+    const css = Colors.panelCss();
+    const customRules = {};
+    panelDeclarations().filter((d) => d.rule.at.length === 0 &&
+      d.norm === 'html[data-custom-theme][data-theme="' + themeId + '"]').forEach((d) => {
+      customRules[d.decl.prop] = d.decl.value;
+    });
+    const inline = ThemePalette.cssVars(ThemePalette.generate('#3b82f6', '#0b1020', 'dark'));
+    const block = 'html[data-theme="' + themeId + '"]|';
+    const stuck = [];
+    let checked = 0;
+    for (const e of Colors.decorationColours(css, themeId)) {
+      if (e.key.startsWith(block)) continue;
+      const before = Colors.evaluate(e.expr, e.vars);
+      if (before[3] === 0) continue;
+      if (before.slice(0, 3).every((v) => v === 0) || before.slice(0, 3).every((v) => v === 255)) continue;
+      checked++;
+      const after = Colors.evaluate(e.expr, Object.assign({}, e.vars, customRules, inline));
+      const readThroughASlot = e.via.some((name) => Object.prototype.hasOwnProperty.call(inline, name));
+      if (Colors.sameColour(Colors.format(before), after) && !readThroughASlot) stuck.push(e.key + ': ' + e.expr);
+    }
+    assert.ok(checked >= (themeId === 'revival' ? 80 : 20), 'checked ' + checked);
+    assert.deepEqual(stuck, [], 'colours a custom theme can\'t reach');
   });
-  const inline = ThemePalette.cssVars(ThemePalette.generate('#3b82f6', '#0b1020', 'dark'));
-  const block = 'html[data-theme="revival"]|';
-  const stuck = [];
-  let checked = 0;
-  for (const e of Colors.decorationColours(css, 'revival')) {
-    if (e.key.startsWith(block)) continue;
-    const before = Colors.evaluate(e.expr, e.vars);
-    if (before[3] === 0) continue;
-    if (before.slice(0, 3).every((v) => v === 0) || before.slice(0, 3).every((v) => v === 255)) continue;
-    checked++;
-    const after = Colors.evaluate(e.expr, Object.assign({}, e.vars, customRules, inline));
-    const readThroughASlot = e.via.some((name) => Object.prototype.hasOwnProperty.call(inline, name));
-    if (Colors.sameColour(Colors.format(before), after) && !readThroughASlot) stuck.push(e.key + ': ' + e.expr);
-  }
-  assert.ok(checked >= 80, 'checked ' + checked);
-  assert.deepEqual(stuck, [], 'colours a custom theme can\'t reach');
-});
+}
 
-test('everyRevivalDecorationRuleIsUnderOnePiece', () => {
-  const ids = pieceIds('revival');
-  const vars = Colors.themeVars(Colors.panelCss(), 'revival');
+/*
+ * Pieces the panel doesn't have: they are the mini-player's only (the panel's version of the theme never had them).
+ */
+const MINI_ONLY = {};
+
+/* Where a theme's decorations aren't each under exactly one of its pieces, right after html[data-theme="x"]. */
+function pieceGuardProblems(themeId) {
+  const ids = pieceIds(themeId);
+  const vars = Colors.themeVars(Colors.panelCss(), themeId);
   const problems = [];
   const used = new Set();
   for (const d of panelDeclarations()) {
-    if (d.theme !== 'revival') continue;
-    const guards = guardsOf(d.raw);
+    if (d.theme !== themeId) continue;
+    const guards = Colors.guardsOf(d.raw);
     guards.ids.forEach((id) => {
       used.add(id);
-      if (!ids.includes(id)) problems.push(d.raw + ': ' + id + ' is not a Revival piece');
+      if (!ids.includes(id)) problems.push(d.raw + ': ' + id + ' is not a piece of ' + themeId);
     });
-    if (Colors.declarationColours(d.decl.prop, d.decl.value, vars).length === 0) continue;
+    if (guards.mentions === 0 && !decorates(d, vars)) continue;
     const at = d.rule.at.length ? d.rule.at.join(' ') + ' ' : '';
     if (guards.mentions !== 1 || guards.ids.length !== 1) {
       problems.push(at + d.raw + ' { ' + d.decl.prop + ' }: ' + guards.ids.length + ' guards');
-    } else if (!d.raw.startsWith('html[data-theme="revival"]:not([data-deco-off~="' + guards.ids[0] + '"])')) {
-      problems.push(at + d.raw + ': the guard belongs right after html[data-theme="revival"]');
+    } else if (!d.raw.startsWith('html[data-theme="' + themeId + '"]:not([data-deco-off~="' + guards.ids[0] + '"])')) {
+      problems.push(at + d.raw + ': the guard belongs right after html[data-theme="' + themeId + '"]');
     }
   }
-  assert.deepEqual([...new Set(problems)], []);
-  assert.deepEqual([...used].sort(), [...ids].sort(), 'every piece has rules');
-});
+  return { problems: [...new Set(problems)], used: used };
+}
+
+for (const themeId of REWRITTEN) {
+  test('every' + capitalized(themeId) + 'DecorationRuleIsUnderOnePiece', () => {
+    const found = pieceGuardProblems(themeId);
+    assert.deepEqual(found.problems, []);
+    const miniOnly = MINI_ONLY[themeId] || [];
+    assert.deepEqual([...found.used].sort(), pieceIds(themeId).filter((id) => !miniOnly.includes(id)).sort(),
+      'every piece of the panel has rules');
+  });
+}
+
+/*
+ * What an unguarded rule of a decorated theme may set: the theme's shape, which is not a piece (spec §3) and stays with
+ * every piece off. Type (font, font-*, letter-spacing, word-spacing, line-height, text-transform, text-align,
+ * text-overflow, white-space, overflow), corners (border-*radius), sizes and spacing (width, height, min-/max-,
+ * margin*, padding*, gap, row-gap, column-gap), flex layout (flex-wrap, align-content, justify-content),
+ * scrollbar-width, and a border taken away (border, border-top/right/bottom/left: none or 0). Nothing on a
+ * pseudo-element: in a decorated theme that is a decoration's own layer, all of it the piece's. Besides the shape: the
+ * theme block's variables, and animation: none where motion is reduced.
+ */
+const SHAPE = new RegExp('^(font|font-[a-z-]+|letter-spacing|word-spacing|line-height|text-transform|text-align|' +
+  'text-overflow|white-space|overflow(-[xy])?|border(-(top|bottom)-(left|right))?-radius|(min-|max-)?(width|height)|' +
+  'margin(-[a-z]+)?|padding(-[a-z]+)?|(row-|column-)?gap|flex-wrap|align-content|justify-content|scrollbar-width)$');
+const BORDER_TAKEN_AWAY = /^border(-(top|right|bottom|left))?$/;
+
+function isShape(d, themeId) {
+  const prop = d.decl.prop;
+  const value = d.decl.value.trim();
+  if (prop.startsWith('--')) return d.norm === 'html[data-theme="' + themeId + '"]';
+  if (/^animation(-name)?$/.test(prop) && /^none$/i.test(value)) {
+    return /\[data-reduce-motion\]/.test(Colors.splitFirst(d.norm).head) ||
+      d.rule.at.join(' ') === '@media (prefers-reduced-motion:reduce)';
+  }
+  if (Colors.subjectOf(d.norm).pseudo) return false;
+  return SHAPE.test(prop) || (BORDER_TAKEN_AWAY.test(prop) && /^(none|0)$/i.test(value));
+}
+
+/*
+ * Layout effects of a piece that the shape rule alone would let pass (they are shape properties), pinned to their
+ * piece: [piece, normalized selector, properties].
+ */
+const LAYOUT_EFFECTS = {};
+
+/*
+ * What keeps a theme's pieces from switching off cleanly: a declaration under a guard that isn't one piece's, doesn't
+ * apply with every piece on, applies with every piece off, or doesn't follow its own piece alone; an unguarded one
+ * that isn't the theme's shape; a pinned layout effect that isn't under its piece. Every declaration of a guarded rule
+ * counts (its layout effects too).
+ */
+function piecesOffProblems(decls, themeId, ids, effects) {
+  const on = { 'data-theme': themeId };
+  const off = { 'data-theme': themeId, 'data-deco-off': ids.join(' ') };
+  const problems = [];
+  let guarded = 0;
+  for (const d of decls) {
+    if (d.theme !== themeId) continue;
+    const at = d.rule.at.length ? d.rule.at.join(' ') + ' ' : '';
+    const where = at + d.raw + ' { ' + d.decl.prop + ': ' + d.decl.value + ' }';
+    const guards = Colors.guardsOf(d.raw);
+    if (guards.mentions > 0) {
+      guarded++;
+      if (guards.mentions !== 1 || guards.ids.length !== 1) problems.push(where + ': under ' + guards.mentions + ' guards');
+      if (Colors.htmlMatches(d.raw, on) !== true) problems.push(where + ': off with every piece on');
+      if (Colors.htmlMatches(d.raw, off) !== false) problems.push(where + ': still on with every piece off');
+      for (const id of ids) {
+        const alone = Colors.htmlMatches(d.raw, { 'data-theme': themeId, 'data-deco-off': id });
+        if (alone === guards.ids.includes(id)) {
+          problems.push(where + ': ' + id + ' alone ' + (alone ? 'leaves it on' : 'switches it off'));
+        }
+      }
+    } else if (!isShape(d, themeId)) {
+      problems.push(where + ': not under a piece, and not the theme\'s shape');
+    }
+  }
+  for (const [piece, selector, props] of effects || []) {
+    for (const prop of props) {
+      const found = decls.filter((d) => d.theme === themeId && d.norm === selector && d.decl.prop === prop);
+      if (found.length === 0) problems.push(selector + ' { ' + prop + ' }: pinned to ' + piece + ' but not there');
+      found.forEach((d) => {
+        const ids2 = Colors.guardsOf(d.raw).ids;
+        if (ids2.length !== 1 || ids2[0] !== piece) problems.push(d.raw + ' { ' + prop + ' }: belongs to ' + piece);
+      });
+    }
+  }
+  return { problems: problems, guarded: guarded };
+}
 
 test('allPiecesOffLeavesNoDecoration', () => {
-  for (const themeId of ['revival']) {
-    const vars = Colors.themeVars(Colors.panelCss(), themeId);
-    const off = { 'data-theme': themeId, 'data-deco-off': pieceIds(themeId).join(' ') };
-    const on = { 'data-theme': themeId };
-    const still = [];
-    let decorations = 0;
-    for (const d of panelDeclarations()) {
-      if (d.theme !== themeId || !decorates(d, vars)) continue;
-      decorations++;
-      assert.equal(htmlMatches(d.raw, on), true, d.raw + ' applies with every piece on');
-      if (htmlMatches(d.raw, off)) still.push(d.raw + ' { ' + d.decl.prop + ': ' + d.decl.value + ' }');
-    }
-    assert.ok(decorations >= 60, themeId + ': ' + decorations);
-    assert.deepEqual(still, [], themeId + ': still on with every piece off');
-    // each piece alone switches off its own rules and nothing else
-    for (const id of pieceIds(themeId)) {
-      const one = { 'data-theme': themeId, 'data-deco-off': id };
-      const gone = panelDeclarations().filter((d) => d.theme === themeId && decorates(d, vars) && !htmlMatches(d.raw, one));
-      assert.ok(gone.length > 0, themeId + ' ' + id + ' switches something off');
-      gone.forEach((d) => assert.deepEqual(guardsOf(d.raw).ids, [id], d.raw));
+  for (const themeId of REWRITTEN) {
+    const found = piecesOffProblems(panelDeclarations(), themeId, pieceIds(themeId), LAYOUT_EFFECTS[themeId]);
+    assert.ok(found.guarded >= 20, themeId + ': ' + found.guarded + ' declarations under a piece');
+    assert.deepEqual(found.problems, [], themeId);
+  }
+});
+
+test('thePiecesOffCheckSeesALeftover', () => {
+  const css = [
+    'html[data-theme="x"] { --accent: #222222; --pad: 4px; }',
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .header::before { content: "HI"; position: absolute; color: var(--accent); }',
+    'html[data-theme="x"] .header { padding-bottom: 18px; font-size: 1rem; border-bottom: none; border-radius: 2px; }',
+    'html[data-theme="x"] .header { position: relative; border-top: 1px solid; }',
+    'html[data-theme="x"] .card::after { width: 2px; }',
+    'html[data-theme="x"] .card { --pad: 8px; }',
+    'html[data-reduce-motion][data-theme="x"] .card { animation: none !important; }',
+    'html[data-theme="x"] .badge { animation: none; }',
+    'html[data-theme="x"]:not([data-deco-off~="a"]):not([data-deco-off~="b"]) .logo { color: red; }'
+  ].join('\n');
+  const found = piecesOffProblems(declarationsOf(css), 'x', ['a', 'b'],
+    [['a', 'html[data-theme="x"] .header', ['padding-bottom', 'border-bottom']]]);
+  assert.deepEqual(found.problems, [
+    'html[data-theme="x"] .header { position: relative }: not under a piece, and not the theme\'s shape',
+    'html[data-theme="x"] .header { border-top: 1px solid }: not under a piece, and not the theme\'s shape',
+    'html[data-theme="x"] .card::after { width: 2px }: not under a piece, and not the theme\'s shape',
+    'html[data-theme="x"] .card { --pad: 8px }: not under a piece, and not the theme\'s shape',
+    'html[data-theme="x"] .badge { animation: none }: not under a piece, and not the theme\'s shape',
+    'html[data-theme="x"]:not([data-deco-off~="a"]):not([data-deco-off~="b"]) .logo { color: red }: under 2 guards',
+    'html[data-theme="x"] .header { padding-bottom }: belongs to a',
+    'html[data-theme="x"] .header { border-bottom }: belongs to a'
+  ]);
+  assert.equal(found.guarded, 4);
+});
+
+test('cascadeFlipsAreRestoredOrListed', () => {
+  // a guard weighs one attribute: a guarded rule can now beat a panel rule that beat it before (the hover colour of a
+  // switched-on repeat button); each such rule is given back by the theme under the same piece, or listed with a reason
+  const listed = Colors.allowlist().flipsOnPurpose.panel;
+  const problems = [];
+  const flips = Colors.cascadeFlips(Colors.panelCss(), REWRITTEN);
+  for (const f of flips) {
+    const why = (listed[f.theme] || {})[f.key];
+    if (!f.restored && why === undefined) problems.push(f.theme + ': ' + f.key);
+    if (f.restored && why !== undefined) problems.push(f.theme + ': listed but restored: ' + f.key);
+  }
+  for (const [themeId, entries] of Object.entries(listed)) {
+    for (const key of Object.keys(entries)) {
+      if (!flips.some((f) => f.theme === themeId && f.key === key)) problems.push(themeId + ': listed but no flip: ' + key);
     }
   }
+  assert.deepEqual(problems, []);
+});
+
+test('theFlipCheckCatchesTheRepeatButtonHover', () => {
+  const css = Colors.panelCss();
+  const restore = /html\[data-theme="revival"\]:not\(\[data-deco-off~="glows"\]\) \.ctrl-btn\.repeat-active:hover,\s*html\[data-theme="revival"\]:not\(\[data-deco-off~="glows"\]\) \.ctrl-btn\.shuffle-active:hover\s*\{[^}]*\}/;
+  assert.match(css, restore, 'Revival gives the hover colour back');
+  const key = (state) => 'html[data-theme="revival"] .ctrl-btn|color <- .ctrl-btn.' + state + '-active:hover|color';
+  const flips = (sheet) => Colors.cascadeFlips(sheet, ['revival']).filter((f) => /\.ctrl-btn\.\w+-active:hover/.test(f.key));
+  assert.deepEqual(flips(css).map((f) => [f.key, f.restored]), [[key('repeat'), true], [key('shuffle'), true]]);
+  assert.deepEqual(flips(css.replace(restore, '')).map((f) => [f.key, f.restored]),
+    [[key('repeat'), false], [key('shuffle'), false]]);
+  // a restoring rule has to beat the guarded one and carry the panel's own value
+  const wrong = css.replace(restore, (rule) => rule.replace(/color:\s*var\(--accent-light\)/, 'color: var(--accent)'));
+  assert.deepEqual(flips(wrong).map((f) => f.restored), [false, false]);
+});
+
+test('theFlipCheckReadsSubjectsAndFamilies', () => {
+  const sheet = [
+    '.ctrl-btn.repeat-active:hover { color: var(--accent-light); }',
+    'button[aria-pressed="true"] { color: red; }',
+    '.card .ctrl-btn:hover { border-color: blue; }',
+    '.ctrl-btn::after { color: green; }',
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .ctrl-btn { color: #111111; border: 1px solid #222222; }',
+    'html[data-theme="x"] .ctrl-btn.repeat-active:hover { color: #333333; }'
+  ].join('\n');
+  const keys = Colors.cascadeFlips(sheet, ['x']).map((f) => f.key + (f.restored ? ' (restored)' : ''));
+  assert.deepEqual(keys, [
+    'html[data-theme="x"] .ctrl-btn|color <- .ctrl-btn.repeat-active:hover|color',
+    'html[data-theme="x"] .ctrl-btn|border <- .card .ctrl-btn:hover|border-color'
+  ], 'a tag alone is another element, ::after another layer; an unguarded theme rule of (0,4,1) still wins');
+  assert.equal(Colors.propertyFamily('border-bottom-color'), 'border');
+  assert.equal(Colors.propertyFamily('border-top-left-radius'), 'border-radius');
+  assert.equal(Colors.propertyFamily('background-image'), 'background');
+  assert.equal(Colors.propertyFamily('-webkit-mask-image'), 'mask');
+  assert.equal(Colors.propertyFamily('color'), 'color');
 });
 
 /* The animations of these themes and the shared bgShift, and what doesn't stop them under each reduced-motion hook. */
@@ -597,7 +712,7 @@ function motionProblems(themeIds) {
   const stops = (d) => isAnimation(d) && /^none$/i.test(d.decl.value.trim());
   // where a declaration lands: the theme its html part names (null: any) and the element after it
   const target = (d) => {
-    const parts = splitFirst(d.norm);
+    const parts = Colors.splitFirst(d.norm);
     const m = /^(html|:root)(?![-\w])(.*?)(::[-\w]+)?$/.exec(parts.head);
     if (!m) return { html: '', theme: null, subject: ' ' + d.norm };
     const theme = /\[data-theme="([a-z-]+)"\]/.exec(m[2]);
@@ -630,79 +745,12 @@ function motionProblems(themeIds) {
 }
 
 test('reducedMotionStopsEveryAnimatedPiece', () => {
-  const found = motionProblems(['revival']);
-  const names = new Set(found.animated.flatMap((d) => d.decl.value.match(/\b(revival[A-Z]\w*|bgShift)\b/g) || []));
+  const found = motionProblems(REWRITTEN);
+  const names = new Set(found.animated.flatMap((d) => d.decl.value.match(/[A-Za-z][\w-]*/g)
+    .filter((w) => /[A-Z]/.test(w) && /^[a-z]/.test(w))));
   assert.deepEqual([...names].sort(),
     ['bgShift', 'revivalFloat', 'revivalGlowPulse', 'revivalRays', 'revivalRaysIn', 'revivalSpin', 'revivalSunrise']);
   assert.deepEqual(found.problems, []);
-});
-
-/* The source of a function of the panel (from "function name(" to its closing brace). */
-function panelFunction(name) {
-  const html = fs.readFileSync(path.join(ROOT, 'src/main/resources/web/index.html'), 'utf8').replace(/\r/g, '');
-  const at = html.indexOf('function ' + name + '(');
-  assert.ok(at >= 0, name + ' not found');
-  let depth = 0;
-  for (let i = html.indexOf('{', at); i < html.length; i++) {
-    if (html[i] === '{') depth++;
-    else if (html[i] === '}' && --depth === 0) return html.slice(at, i + 1);
-  }
-  throw new Error(name + ' never closes');
-}
-
-function fakeRoot() {
-  const attrs = {};
-  const has = (n) => Object.prototype.hasOwnProperty.call(attrs, n);
-  return {
-    setAttribute: (n, v) => { attrs[n] = String(v); },
-    removeAttribute: (n) => { delete attrs[n]; },
-    hasAttribute: has,
-    toggleAttribute: (n, force) => {
-      const on = force === undefined ? !has(n) : !!force;
-      if (on) attrs[n] = '';
-      else delete attrs[n];
-      return on;
-    }
-  };
-}
-
-test('theReduceMotionSwitchSetsTheHookOnThePage', () => {
-  const html = fs.readFileSync(path.join(ROOT, 'src/main/resources/web/index.html'), 'utf8').replace(/\r/g, '');
-  const head = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
-  // the tiny script in the head runs before the first paint, so nothing moves even for a moment
-  for (const [saved, system, expected] of [['1', false, true], ['0', true, false], [null, true, true], [null, false, false]]) {
-    const root = fakeRoot();
-    vm.runInNewContext(head, {
-      localStorage: { getItem: (k) => (k === 'jmusicbot_reduce_motion_v1' ? saved : null), setItem: () => {} },
-      document: { documentElement: root },
-      window: { matchMedia: () => ({ matches: system }) }
-    });
-    assert.equal(root.hasAttribute('data-reduce-motion'), expected, 'head script: saved ' + saved + ', system ' + system);
-  }
-  // the switch in the Panels menu, and the page as it starts
-  const root = fakeRoot();
-  const store = {};
-  const context = vm.createContext({
-    reduceMotion: null,
-    REDUCE_MOTION_STORAGE_KEY: 'jmusicbot_reduce_motion_v1',
-    localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
-    window: { matchMedia: () => ({ matches: false }) },
-    document: { documentElement: root },
-    themeBackdropData: null,
-    themeKit: null,
-    themeCreator: null
-  });
-  ['readReduceMotion', 'setReduceMotion', 'applyReduceMotionAttribute'].forEach((name) => {
-    vm.runInContext(panelFunction(name), context);
-  });
-  vm.runInContext('setReduceMotion(true)', context);
-  assert.equal(root.hasAttribute('data-reduce-motion'), true, 'on');
-  vm.runInContext('setReduceMotion(false)', context);
-  assert.equal(root.hasAttribute('data-reduce-motion'), false, 'off');
-  store.jmusicbot_reduce_motion_v1 = '1';
-  vm.runInContext('reduceMotion = null; applyReduceMotionAttribute()', context);
-  assert.equal(root.hasAttribute('data-reduce-motion'), true, 'from what was saved');
-  assert.match(panelFunction('initTheme'), /applyReduceMotionAttribute\(\)/, 'the page applies it as it starts');
 });
 
 test('revivalImagesCarryNoColour', () => {

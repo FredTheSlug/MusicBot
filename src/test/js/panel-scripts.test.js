@@ -77,3 +77,70 @@ test('theBidiCheckSeesACharacterItIsThereFor', () => {
   // the Arabic letter mark changes direction too, as the desktop guard knows
   assert.deepEqual(literalBidiControls('x' + String.fromCharCode(0x061C)), [{ line: 1, codePoint: 'U+061C' }]);
 });
+
+/* The source of a function of the panel (from "function name(" to its closing brace). */
+function panelFunction(name) {
+  const html = PANEL.replace(/\r/g, '');
+  const at = html.indexOf('function ' + name + '(');
+  assert.ok(at >= 0, name + ' not found');
+  let depth = 0;
+  for (let i = html.indexOf('{', at); i < html.length; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}' && --depth === 0) return html.slice(at, i + 1);
+  }
+  throw new Error(name + ' never closes');
+}
+
+function fakeRoot() {
+  const attrs = {};
+  const has = (n) => Object.prototype.hasOwnProperty.call(attrs, n);
+  return {
+    setAttribute: (n, v) => { attrs[n] = String(v); },
+    removeAttribute: (n) => { delete attrs[n]; },
+    hasAttribute: has,
+    toggleAttribute: (n, force) => {
+      const on = force === undefined ? !has(n) : !!force;
+      if (on) attrs[n] = '';
+      else delete attrs[n];
+      return on;
+    }
+  };
+}
+
+test('theReduceMotionSwitchSetsTheHookOnThePage', () => {
+  const head = inlineScripts(PANEL.replace(/\r/g, ''))[0];
+  // the tiny script in the head runs before the first paint, so nothing moves even for a moment
+  for (const [saved, system, expected] of [['1', false, true], ['0', true, false], [null, true, true], [null, false, false]]) {
+    const root = fakeRoot();
+    vm.runInNewContext(head, {
+      localStorage: { getItem: (k) => (k === 'jmusicbot_reduce_motion_v1' ? saved : null), setItem: () => {} },
+      document: { documentElement: root },
+      window: { matchMedia: () => ({ matches: system }) }
+    });
+    assert.equal(root.hasAttribute('data-reduce-motion'), expected, 'head script: saved ' + saved + ', system ' + system);
+  }
+  // the switch in the Panels menu, and the page as it starts
+  const root = fakeRoot();
+  const store = {};
+  const context = vm.createContext({
+    reduceMotion: null,
+    REDUCE_MOTION_STORAGE_KEY: 'jmusicbot_reduce_motion_v1',
+    localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
+    window: { matchMedia: () => ({ matches: false }) },
+    document: { documentElement: root },
+    themeBackdropData: null,
+    themeKit: null,
+    themeCreator: null
+  });
+  ['readReduceMotion', 'setReduceMotion', 'applyReduceMotionAttribute'].forEach((name) => {
+    vm.runInContext(panelFunction(name), context);
+  });
+  vm.runInContext('setReduceMotion(true)', context);
+  assert.equal(root.hasAttribute('data-reduce-motion'), true, 'on');
+  vm.runInContext('setReduceMotion(false)', context);
+  assert.equal(root.hasAttribute('data-reduce-motion'), false, 'off');
+  store.jmusicbot_reduce_motion_v1 = '1';
+  vm.runInContext('reduceMotion = null; applyReduceMotionAttribute()', context);
+  assert.equal(root.hasAttribute('data-reduce-motion'), true, 'from what was saved');
+  assert.match(panelFunction('initTheme'), /applyReduceMotionAttribute\(\)/, 'the page applies it as it starts');
+});

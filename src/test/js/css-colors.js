@@ -30,7 +30,21 @@
  *   is a custom property or listed in added).
  * - checkSheet(kind[, css]): compareToGolden for every theme of the golden file of 'panel' or 'mini', with the reviewed
  *   allowlists of src/test/resources/theme-golden/allowlist.json:
- *   { "goneOnPurpose" | "newOnPurpose": { "panel" | "mini": { "<theme>": { "<key>": "<why it is fine>" } } } }.
+ *   { "goneOnPurpose" | "newOnPurpose" | "flipsOnPurpose": { "panel" | "mini": { "<theme>": { "<key>": "<why>" } } } }.
+ *
+ * Pieces (selectors as written, guards and all):
+ * - guardsOf(selector) -> { ids, mentions }: the ids of its :not([data-deco-off~="id"]) guards, and how often
+ *   data-deco-off appears in it.
+ * - splitFirst(selector) -> { head, rest }: its first compound and the rest. htmlMatches(selector, attrs): does its
+ *   <html> part match <html> with these attributes (null for a selector that doesn't start at html / :root)?
+ *   attributesMatch(text, attrs) does the same for a string of [attribute] selectors and :not()s.
+ * - cascadeFlips(css, themeIds) -> [{ theme, piece, key, restored }]: a guard weighs one attribute, so a guarded theme
+ *   declaration T can beat a rule S that beat it before. S is any unguarded rule that applies while the theme is on
+ *   (shared, or the theme's own), styling the same element (the class and id names of one's last compound include the
+ *   other's; same tag, same pseudo-element) in the same property family (propertyFamily). It flips when S beats T
+ *   without its guard and T with it beats S. The theme restores S with a rule under T's piece that has S's selector
+ *   behind the theme's html part (in S's @media), S's property and value, and beats T. key: "<T> <- <S>", each
+ *   where|property (where = [@media ] normalized selector).
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -688,7 +702,10 @@ function rulesOf(css) {
 
 const flattened = new WeakMap();
 
-/* Every declaration of every style rule, once per selector: { rule, selector, spec, decl, order }. */
+/*
+ * Every declaration of every style rule, once per selector: { rule, selector, spaced, spec, decl, order } (selector:
+ * normalized, guards removed; spaced: normalized with its guards; spec: with its guards).
+ */
 function declarations(rules) {
   if (!flattened.has(rules)) {
     const out = [];
@@ -699,7 +716,9 @@ function declarations(rules) {
         const spaced = spaceSelector(raw);
         const selector = spaced.replace(GUARD, '').replace(/\s+/g, ' ').trim();
         const spec = specificity(spaced);
-        rule.decls.forEach((decl) => out.push({ rule: rule, selector: selector, spec: spec, decl: decl, order: ++order }));
+        rule.decls.forEach((decl) => out.push({
+          rule: rule, selector: selector, spaced: spaced, spec: spec, decl: decl, order: ++order
+        }));
       });
     });
     flattened.set(rules, out);
@@ -966,6 +985,188 @@ function compareToGolden(golden, css, themeId, allow) {
   return problems;
 }
 
+// ---- pieces: guards, what applies with some pieces off, and cascade flips
+
+/* The piece guards in a selector: the ids of :not([data-deco-off~="id"]), and how often data-deco-off appears. */
+function guardsOf(selector) {
+  return {
+    ids: [...selector.matchAll(/:not\(\s*\[\s*data-deco-off\s*~=\s*["']?([^"'\]\s]+)["']?\s*\]\s*\)/g)].map((m) => m[1]),
+    mentions: (selector.match(/data-deco-off/g) || []).length
+  };
+}
+
+/* A selector's first compound and the rest (from the first space or combinator outside brackets and strings). */
+function splitFirst(selector) {
+  let depth = 0;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i];
+    if (c === '"' || c === "'") {
+      i = endOfString(selector, i) - 1;
+      continue;
+    }
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && /[\s>+~]/.test(c)) return { head: selector.slice(0, i), rest: selector.slice(i) };
+  }
+  return { head: selector, rest: '' };
+}
+
+/* Does a string of attribute selectors ([a], [a="v"], [a~="v"]) and :not()s match an element with these attributes? */
+function attributesMatch(text, attrs) {
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '[') {
+      const end = closing(text, i);
+      const m = /^\s*([-\w]+)\s*(?:(~?=)\s*(?:"([^"]*)"|'([^']*)'|([-\w]+)))?\s*$/.exec(text.slice(i + 1, end - 1));
+      if (!m) throw new Error('can\'t read ' + text);
+      const has = Object.prototype.hasOwnProperty.call(attrs, m[1]);
+      const want = m[3] !== undefined ? m[3] : m[4] !== undefined ? m[4] : m[5];
+      const ok = !m[2] ? has : m[2] === '=' ? has && attrs[m[1]] === want : has && attrs[m[1]].split(/\s+/).includes(want);
+      if (!ok) return false;
+      i = end;
+    } else if (text.startsWith(':not(', i)) {
+      const end = closing(text, i + 4);
+      if (splitTop(text.slice(i + 5, end - 1), ',').some((s) => attributesMatch(s, attrs))) return false;
+      i = end;
+    } else {
+      throw new Error('can\'t read ' + text.slice(i));
+    }
+  }
+  return true;
+}
+
+/* Does a selector's <html> part match <html> with these attributes? (null for a selector that doesn't start there) */
+function htmlMatches(selector, attrs) {
+  const head = splitFirst(selector).head.replace(/::?[-\w]+$/, '');
+  const m = /^(html|:root)(?![-\w])/.exec(head);
+  if (!m) return null;
+  return attributesMatch(head.slice(m[0].length), attrs);
+}
+
+/* The element a normalized selector styles: its last compound's tag, class and id names, and pseudo-element. */
+function subjectOf(selector) {
+  const parts = compounds(selector);
+  const last = parts[parts.length - 1] || '';
+  const names = new Set();
+  let tag = '';
+  let pseudo = '';
+  let i = 0;
+  const t = /^(\*|[a-z][-\w]*|:root(?![-\w]))/i.exec(last);
+  if (t) {
+    tag = t[1] === ':root' ? 'html' : t[1].toLowerCase();
+    i = t[1].length;
+  }
+  while (i < last.length) {
+    const c = last[i];
+    if (c === '.' || c === '#') {
+      const end = skipName(last, i + 1);
+      names.add(last.slice(i, end));
+      i = end;
+    } else if (c === '[') {
+      i = closing(last, i);
+    } else if (c === ':') {
+      const element = last[i + 1] === ':';
+      const end = skipName(last, i + (element ? 2 : 1));
+      const name = last.slice(i + (element ? 2 : 1), end).toLowerCase();
+      if (element || /^(before|after|first-line|first-letter)$/.test(name)) pseudo = '::' + name;
+      i = last[end] === '(' ? closing(last, end) : end;
+    } else {
+      i++;
+    }
+  }
+  return { tag: tag, names: names, pseudo: pseudo };
+}
+
+/*
+ * Could two subjects be the same element? Same pseudo-element; one's class and id names include all of the other's; and
+ * the same tag, where one is named only by its tag (a "button" is not taken for a ".card"; "*" is anything).
+ */
+function sameSubject(a, b) {
+  if (a.pseudo !== b.pseudo) return false;
+  const any = (x) => x.tag === '' || x.tag === '*';
+  if (!any(a) && !any(b) && a.tag !== b.tag) return false;
+  if ((a.names.size === 0 && !any(a) && a.tag !== b.tag) || (b.names.size === 0 && !any(b) && a.tag !== b.tag)) {
+    return false;
+  }
+  const within = (x, y) => [...x.names].every((n) => y.names.has(n));
+  return within(a, b) || within(b, a);
+}
+
+/* Properties that set each other (a shorthand and its longhands) share a family: border, background, margin, ... */
+function propertyFamily(prop) {
+  const p = prop.replace(/^-webkit-/, '');
+  if (/-radius$/.test(p)) return 'border-radius';
+  if (/^(top|right|bottom|left|inset)$/.test(p)) return 'inset';
+  if (/^(row-|column-)?gap$/.test(p)) return 'gap';
+  const m = /^(border|background|margin|padding|outline|font|animation|transition|mask|flex|grid|overflow|text-decoration|list-style|scroll-margin|scroll-padding|place)(-|$)/
+    .exec(p);
+  return m ? m[1] : p;
+}
+
+/* The html states a theme's rules are seen in: plain, as a custom theme's base, and with motion reduced. */
+function themeStates(themeId) {
+  return [{ 'data-theme': themeId }, { 'data-theme': themeId, 'data-custom-theme': 'x' },
+    { 'data-theme': themeId, 'data-reduce-motion': '' }];
+}
+
+function sameValue(a, b) {
+  return a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
+}
+
+/* See the top of this file. */
+function cascadeFlips(css, themeIds) {
+  const all = declarations(rulesOf(css));
+  const subjects = new Map();
+  const subject = (d) => {
+    if (!subjects.has(d.selector)) subjects.set(d.selector, subjectOf(d.selector));
+    return subjects.get(d.selector);
+  };
+  const out = [];
+  themeIds.forEach((themeId) => {
+    const states = themeStates(themeId);
+    const applies = (d) => {
+      const m = htmlMatches(d.selector, states[0]);
+      return m === null || states.some((s) => htmlMatches(d.selector, s));
+    };
+    const guarded = [];
+    const unguarded = [];
+    all.forEach((d) => {
+      if (d.decl.prop.startsWith('--')) return;
+      const theme = themeOfSelector(d.selector);
+      const ids = guardsOf(d.spaced).ids;
+      if (ids.length > 0) {
+        if (theme === themeId) guarded.push(d);
+      } else if ((theme === null || theme === themeId) && applies(d)) {
+        unguarded.push(d);
+      }
+    });
+    guarded.forEach((t) => {
+      const family = propertyFamily(t.decl.prop);
+      const tSubject = subject(t);
+      const before = [t.decl.important ? 1 : 0].concat(specificity(t.selector), [t.order]);
+      const now = rankOf(t);
+      const piece = guardsOf(t.spaced).ids;
+      const head = splitFirst(t.selector).head.replace(/::?[-\w]+$/, '');
+      unguarded.forEach((s) => {
+        if (propertyFamily(s.decl.prop) !== family || !sameSubject(tSubject, subject(s))) return;
+        const rank = rankOf(s);
+        if (compareRank(rank, before) <= 0 || compareRank(now, rank) <= 0) return;
+        const wanted = themeOfSelector(s.selector) === themeId ? s.selector : head + ' ' + s.selector;
+        const restored = guarded.some((r) => r.selector === wanted && atKey(r.rule.at) === atKey(s.rule.at) &&
+          r.decl.prop === s.decl.prop && sameValue(r.decl.value, s.decl.value) &&
+          guardsOf(r.spaced).ids.join(' ') === piece.join(' ') && compareRank(rankOf(r), now) > 0);
+        out.push({
+          theme: themeId,
+          piece: piece.join(' '),
+          key: where(t) + '|' + t.decl.prop + ' <- ' + where(s) + '|' + s.decl.prop,
+          restored: restored
+        });
+      });
+    });
+  });
+  return out;
+}
+
 // ---- today's stylesheets, as the panel and the mini-player load them, and the golden files
 
 function read(rel) {
@@ -1029,6 +1230,13 @@ module.exports = {
   inspect: inspect,
   snapshot: snapshot,
   compareToGolden: compareToGolden,
+  guardsOf: guardsOf,
+  splitFirst: splitFirst,
+  attributesMatch: attributesMatch,
+  htmlMatches: htmlMatches,
+  subjectOf: subjectOf,
+  propertyFamily: propertyFamily,
+  cascadeFlips: cascadeFlips,
   panelCss: panelCss,
   miniCss: miniCss,
   goldenFile: goldenFile,
