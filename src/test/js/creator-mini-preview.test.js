@@ -98,13 +98,15 @@ function previewDocument() {
 
 /*
  * The creator's step 5, run from the panel's own source: tcMiniStep with its preview and the helpers it draws with.
- * reduce.on is the panel's Reduce motion. load(withViewJs) loads the frame's page (the copied files there or not).
+ * reduce.on is the panel's Reduce motion. load(withViewJs) loads the frame's page (the copied files there or not);
+ * resize(width) lays the preview's box out that wide, as a ResizeObserver hears it.
  */
 function creatorStep(state, reduce) {
   const panelRoot = fakeElement('html');
   const frames = [];
   const probes = [];
   const srcSets = [];
+  const observers = [];
   const document = {
     documentElement: panelRoot,
     createElement: (tag) => {
@@ -132,13 +134,20 @@ function creatorStep(state, reduce) {
     Image: class { constructor() { this.src = ''; probes.push(this); } },
     firstFrameOf: () => Promise.resolve(FIRST_FRAME),
     readReduceMotion: () => !!(reduce && reduce.on),
-    tcCommit: () => {}
+    tcCommit: () => {},
+    ResizeObserver: class {
+      constructor(callback) { this.callback = callback; this.watched = []; observers.push(this); }
+      observe(el) { this.watched.push(el); }
+    }
   });
   const constant = /var TC_MINI_PREVIEW_PAGE = '[^']*';/.exec(PANEL);
   assert.ok(constant, 'TC_MINI_PREVIEW_PAGE not found');
   vm.runInContext(constant[0], context);
+  const width = /var TC_MINI_WIDTH = \d+;/.exec(PANEL);
+  assert.ok(width, 'TC_MINI_WIDTH not found');
+  vm.runInContext(width[0], context);
   vm.runInContext('var tcPictureState = new WeakMap();', context);
-  ['plEl', 'tcBtn', 'tcChoice', 'tcPress', 'tcGroup', 'tcColorInput', 'tcRange', 'tcPictureSrc', 'tcSetPicture',
+  ['plEl', 'tcMiniScale', 'tcBtn', 'tcChoice', 'tcPress', 'tcGroup', 'tcColorInput', 'tcRange', 'tcPictureSrc', 'tcSetPicture',
     'tcMiniPreview', 'tcMiniStatus', 'tcMiniStep'].forEach((name) => vm.runInContext(panelFunction(name), context));
   context.s = { state: state, blobUrl: '', body: fakeElement('div') };
   const step = {
@@ -162,7 +171,13 @@ function creatorStep(state, reduce) {
       frame.fire('load');
       return step.doc;
     },
-    box: () => frames[frames.length - 1].parentNode
+    box: () => frames[frames.length - 1].parentNode,
+    resize: (px) => {
+      const box = step.box();
+      box.clientWidth = px;
+      observers.filter((o) => o.watched.includes(box)).forEach((o) => o.callback([]));
+    },
+    observers: observers
   };
   return step.show();
 }
@@ -314,6 +329,46 @@ test('aVersionUsingThePictureHasTheBasesBackgroundPiecesOffInThePreviewButNotInW
   assert.equal(root.getAttribute('data-deco-off'), 'record sunrise rays');
 });
 
+/* A saved theme of Revival's whose mini-player version uses its picture (at the link given). */
+function pictureState(url) {
+  return TC.fromTheme({
+    id: 'k3j9x0q2m7ab', name: 'Midnight Drive', mine: true, version: 3, base: 'revival', decorationsOff: [],
+    colors: Object.assign({}, TC.BASE_PALETTES.revival.colors), radiusScale: 100, font: 'Fraunces',
+    background: { url: url, dim: 30, blur: 0, fit: 'cover' },
+    mini: { colors: TC.startState('revival').mini.colors, useImage: true, dim: 40 }
+  }, PIECES);
+}
+
+test('aNewPictureLinkStaysHiddenUntilItHasLoaded', () => {
+  const OTHER = '/theme-images/' + '5c6d'.repeat(8) + '.jpg';
+  const step = creatorStep(pictureState(PICTURE));
+  const doc = step.load();
+  const pic = doc.byId.bgPic;
+  pic.onload();
+  assert.equal(pic.hidden, false, 'the first picture, loaded');
+  // another picture in the same page: its <img> waits for it, and the darkening with it
+  step.commit(pictureState(OTHER));
+  assert.equal(pic.src, OTHER);
+  assert.equal(pic.hidden, true, 'not before the new one has loaded');
+  assert.equal(doc.byId.bgDim.hidden, true);
+  pic.onload();
+  assert.equal(pic.hidden, false);
+  assert.equal(doc.byId.bgDim.hidden, false);
+  // one that can't be shown stays hidden
+  step.commit(pictureState(PICTURE));
+  assert.equal(pic.hidden, true);
+  pic.onerror();
+  assert.equal(pic.hidden, true);
+  assert.equal(doc.byId.bgDim.hidden, true);
+  // the same link again after the version stopped using it: what loaded shows at once (nothing to wait for)
+  step.commit(pictureState(OTHER));
+  pic.onload();
+  step.commit(TC.setMiniPicture(pictureState(OTHER), false));
+  assert.equal(pic.hidden, true);
+  step.commit(pictureState(OTHER));
+  assert.equal(pic.hidden, false);
+});
+
 test('creatorMiniPreviewRespectsReduceMotion', async () => {
   const reduce = { on: true };
   const state = TC.chooseBase(TC.startState('nebula'), 'aurora', PIECES);
@@ -452,5 +507,54 @@ test('theCreatorsStylesheetHasOnlyTheFrameOfThePreview', () => {
   assert.match(MINI_CSS, /\.shell > \.mini \{ flex: 0 0 auto; height: 170px; \}/);
   const box = /\n        \.tc-minip \{([^}]*)\}/.exec(PANEL)[1];
   assert.match(box, /max-width: 360px;/);
-  assert.match(box, /height: 170px;/);
+  assert.match(box, /aspect-ratio: 360 \/ 170;/, 'the room the card takes, at any scale');
+  assert.match(box, /overflow: hidden;/);
+  // the frame itself is always the app's window, scaled down from its corner where there is less room
+  const frame = /\n        \.tc-minip-frame \{([^}]*)\}/.exec(PANEL)[1];
+  assert.match(frame, /width: 360px;/);
+  assert.match(frame, /height: 170px;/);
+  assert.match(frame, /transform-origin: 0 0;/);
+  assert.doesNotMatch(frame, /transform:/);
+});
+
+test('tcMiniScaleFitsTheAppsWindowIntoTheRoomThereIs', () => {
+  const context = vm.createContext({});
+  vm.runInContext(/var TC_MINI_WIDTH = \d+;/.exec(PANEL)[0], context);
+  vm.runInContext(panelFunction('tcMiniScale'), context);
+  const scale = (w) => { context.w = w; return vm.runInContext('tcMiniScale(w)', context); };
+  assert.equal(context.TC_MINI_WIDTH, 360);
+  // room enough: the app's size, never bigger
+  assert.equal(scale(360), 1);
+  assert.equal(scale(800), 1);
+  // a 375 px phone leaves 343 px
+  assert.equal(scale(343), 343 / 360);
+  assert.equal(scale(180), 0.5);
+  // not laid out yet (hidden, or not in the page): left alone until it is
+  assert.equal(scale(0), 1);
+  assert.equal(scale(NaN), 1);
+  assert.equal(scale(undefined), 1);
+});
+
+test('thePreviewScalesTheCardToItsBoxAndBackWhenThereIsRoom', () => {
+  const step = creatorStep(TC.startState('revival'));
+  step.load();
+  const frame = step.frames[0];
+  assert.equal(step.observers.length, 1, 'one observer for the one box');
+  step.resize(343);
+  assert.equal(frame.props.transform, 'scale(' + 343 / 360 + ')');
+  step.resize(300);
+  assert.equal(frame.props.transform, 'scale(' + 300 / 360 + ')');
+  // room again: exactly the app's 360 x 170, no transform at all
+  step.resize(360);
+  assert.equal('transform' in frame.props, false);
+  // hidden (Skip) and shown again
+  step.resize(0);
+  assert.equal('transform' in frame.props, false);
+  step.resize(343);
+  assert.equal(frame.props.transform, 'scale(' + 343 / 360 + ')');
+  // the step drawn again keeps the one observer
+  step.show();
+  step.resize(320);
+  assert.equal(frame.props.transform, 'scale(' + 320 / 360 + ')');
+  assert.equal(step.observers.length, 1);
 });

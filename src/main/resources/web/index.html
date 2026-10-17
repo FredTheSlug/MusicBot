@@ -6236,17 +6236,20 @@
 
         /*
          * step 5: the mini-player. The preview is the desktop app's own card in a frame (web/mini-preview.html, see
-         * tcMiniPreview), at the app's size: its window is 360 px wide and the card 170 px tall. Nothing of the
-         * mini-player's look is here: its stylesheets are only ever loaded in the frame's page.
+         * tcMiniPreview), at the app's size: its window is 360 px wide and the card 170 px tall. Where there is less
+         * room (a phone) the frame keeps that size and is scaled down to fit (tcMiniScale); the box keeps the card's
+         * shape, so it takes the scaled height. Nothing of the mini-player's look is here: its stylesheets are only
+         * ever loaded in the frame's page.
          */
         .tc-stage { position: sticky; top: 0; z-index: 1; padding: 8px 0 10px; background: var(--tc-bg); }
         .tc-minip {
             width: 100%;
             max-width: 360px;
-            height: 170px;
+            aspect-ratio: 360 / 170;
             margin: 0 auto;
+            overflow: hidden;
         }
-        .tc-minip-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+        .tc-minip-frame { display: block; width: 360px; height: 170px; border: 0; background: transparent; transform-origin: 0 0; }
         .tc-minip.loading .tc-minip-frame { visibility: hidden; }
         .tc-link {
             padding: 0;
@@ -7957,6 +7960,14 @@
 
         // The page the mini-player preview shows (see tcMiniPreview).
         var TC_MINI_PREVIEW_PAGE = '/web/mini-preview.html';
+        // The width of the app's mini-player window (its card is 170 px tall).
+        var TC_MINI_WIDTH = 360;
+
+        // How much the preview is scaled to fit a box `width` px wide: not at all where the app's window fits, never up,
+        // and not while the box isn't laid out (0: hidden, or not in the page yet).
+        function tcMiniScale(width) {
+            return width > 0 && width < TC_MINI_WIDTH ? width / TC_MINI_WIDTH : 1;
+        }
 
         // The mini-player preview: the desktop app's own card, as the app (0.7.0) will show this theme's mini-player
         // version. web/mini-preview.html is the app's card with a sample song, drawn by the app's own stylesheets, with the
@@ -7979,7 +7990,18 @@
             frame.src = TC_MINI_PREVIEW_PAGE;
             box.appendChild(frame);
 
-            var page = null;   // the frame's page once loaded: {doc, view (its view.js), names, back, pictureOk}
+            // Narrower than the app's window: the card scaled down whole rather than squeezed. Again whenever the box's
+            // width changes (the window, the step shown or hidden); the box's own height follows its width in CSS.
+            function fit() {
+                var scale = tcMiniScale(box.clientWidth);
+                if (scale < 1) frame.style.setProperty('transform', 'scale(' + scale + ')');
+                else frame.style.removeProperty('transform');
+            }
+            if (typeof ResizeObserver === 'function') new ResizeObserver(fit).observe(box);
+
+            // the frame's page once loaded: {doc, view (its view.js), names, back, url (the picture last asked for),
+            // pictureOk (that one has loaded)}
+            var page = null;
             var wanted = null; // the last update: {theme, view, src}
 
             frame.addEventListener('load', function () {
@@ -7987,7 +8009,8 @@
                 var doc = frame.contentDocument;
                 // Without the bot's copies of the mini-player's files (a page served from the sources) there is no view.js:
                 // the page then shows a note in place of the card by itself, and is left as it is.
-                page = win && doc && win.__cksMiniView ? { doc: doc, view: win.__cksMiniView, names: [], back: null, pictureOk: false } : null;
+                page = win && doc && win.__cksMiniView
+                    ? { doc: doc, view: win.__cksMiniView, names: [], back: null, url: '', pictureOk: false } : null;
                 draw();
                 box.classList.remove('loading');
             });
@@ -8015,6 +8038,11 @@
                 var back = wanted.view.useImage && wanted.src
                     ? themeKit.backdrop({ url: wanted.src, dim: wanted.view.dim, blur: 0, fit: 'cover' }, themeLocalPicture) : null;
                 p.back = back;
+                if (back && back.url !== p.url) {
+                    // another picture: hidden until it has loaded (tcSetPicture says so); the same one shows at once
+                    p.url = back.url;
+                    p.pictureOk = false;
+                }
                 if (back) {
                     dim.style.setProperty('background-color', back.overlay);
                     tcSetPicture(pic, back.url, function (ok) {
