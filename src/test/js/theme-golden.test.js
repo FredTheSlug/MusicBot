@@ -357,8 +357,10 @@ test('theAccentTriplesArePinned', () => {
 
 test('theAllowlistsAreOneReviewedFileTheScriptReadsToo', () => {
   const allow = readJson(ALLOWLIST_FILE);
-  assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose', 'changedOnPurpose', 'flipsOnPurpose']);
-  for (const [name, list] of Object.entries(allow)) {
+  // the colours' lists, then the shapes' (theme-shape-golden.test.js checks those)
+  assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose', 'changedOnPurpose', 'flipsOnPurpose',
+    'shapeGoneOnPurpose', 'shapeNewOnPurpose', 'shapeChangedOnPurpose']);
+  for (const [name, list] of Object.entries(allow).filter(([n]) => !n.startsWith('shape'))) {
     assert.deepEqual(Object.keys(list), ['panel', 'mini']);
     for (const kind of ['panel', 'mini']) {
       for (const theme of Object.keys(list[kind])) {

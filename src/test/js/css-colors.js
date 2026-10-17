@@ -39,6 +39,26 @@
  *   { "why": "<why>", "is": "rgba(r,g,b,a)" } } } }; allowedFor(kind, themeId) gives one theme's, as compareToGolden
  *   takes them.
  *
+ * Shapes (everything else a theme's rules set: geometry, opacity, blur, sizes, positions, layers, animations, z-index,
+ * display, ...):
+ * - shapeValue(prop, value[, vars]): a value with its colours taken out. Spaced one way (one space between words, ", "
+ *   between items, none inside brackets); every colour expression (hex, rgb()/hsl()/color-mix()/..., a named colour or
+ *   transparent, a var() that holds one colour with vars) written <c>; strings and url() as written; a property whose
+ *   words are names (font, animation, content, ...) only spaced.
+ * - shapes(css, themeId) -> { key: value }: every declaration of the theme's rules and of the @keyframes they animate
+ *   with, as decorationColours reads them (the same keys without |n, ranked the same way), value = shapeValue, then
+ *   " !important" when it is. Left to the colours: a value that is one colour alone (<c>), and the accent triples
+ *   (--accent-r/g/b, --accent2-r/g/b).
+ * - compareShapes(golden, css, themeId, { gone, added, changed }): a shape gone (unless listed in gone), changed (unless
+ *   listed in changed, { key: value }: then it must be that value) or new (unless listed in added, { key: value }, the
+ *   same way; a new variable counts too: it is a shape until a rule reads it), and a listed key that doesn't fit.
+ * - checkShapes(kind[, css]): compareShapes for every theme of the shape golden of 'panel' or 'mini' (shapeGoldenFile:
+ *   theme-golden/panel-shapes.json, mini-shapes.json), with allowlist.json's "shapeGoneOnPurpose": { kind: { theme:
+ *   { key: "<why>" } } }, "shapeNewOnPurpose" and "shapeChangedOnPurpose": { kind: { theme: { key: { "why", "is" } } } };
+ *   allowedShapesFor(kind, themeId) gives one theme's.
+ * - ORIGINAL: the commit the golden files are written from (the last before the rewrite); originalCss(kind) is that
+ *   commit's stylesheet, read with git (the script's; a shallow clone hasn't got it).
+ *
  * Pieces (selectors as written, guards and all):
  * - guardsOf(selector) -> { ids, mentions }: the ids of its :not([data-deco-off~="id"]) guards, and how often
  *   data-deco-off appears in it.
@@ -61,6 +81,7 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const ThemePalette = require('../../main/resources/web/theme-palette.js');
 
 const ROOT = path.join(__dirname, '../../..');
@@ -1060,6 +1081,176 @@ function compareToGolden(golden, css, themeId, allow) {
   return problems;
 }
 
+// ---- shapes: every other value of a theme's rules
+
+const COLOUR = '<c>';
+
+/* The accent triples: numbers of a colour, pinned by the colour golden (the synthetic --accent-rgb keys). */
+const TRIPLE = /^--accent2?-[rgb]$/;
+
+/* Does a var() hold one colour with these variables? */
+function holdsOneColour(expr, vars) {
+  try {
+    evaluate(expr, vars);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* A value's words spaced one way, its colours written <c> unless colours is false (see the top of this file). */
+function shapeText(value, vars, colours) {
+  let out = '';
+  let space = false;
+  const put = (text) => {
+    if (space && out !== '') out += ' ';
+    space = false;
+    out += text;
+  };
+  let i = 0;
+  while (i < value.length) {
+    const c = value[i];
+    const rest = value.slice(i);
+    let m;
+    if (/\s/.test(c)) {
+      space = true;
+      i++;
+    } else if (c === ',') {
+      out += ',';
+      space = true;
+      i++;
+    } else if (c === '"' || c === "'") {
+      const j = endOfString(value, i);
+      put(value.slice(i, j));
+      i = j;
+    } else if (c === '#') {
+      const word = (/^#[0-9a-z]+/i.exec(rest) || ['#'])[0];
+      put(colours && /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(word) ? COLOUR : word);
+      i += word.length;
+    } else if (/[-+.\d]/.test(c) && (m = /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?[a-z%]*/i.exec(rest))) {
+      put(m[0]);
+      i += m[0].length;
+    } else if ((m = /^-*[a-z_][-\w]*/i.exec(rest))) {
+      const name = m[0];
+      const after = i + name.length;
+      if (value[after] === '(') {
+        const end = closing(value, after);
+        const fn = name.toLowerCase();
+        const whole = value.slice(i, end);
+        if (fn === 'url') put(whole);
+        else if (colours && (COLOUR_FUNCTIONS.has(fn) || (fn === 'var' && holdsOneColour(whole, vars)))) put(COLOUR);
+        else put(name + '(' + shapeText(value.slice(after + 1, end - 1), vars, colours) + ')');
+        i = end;
+      } else {
+        put(colours && Object.prototype.hasOwnProperty.call(NAMED, name.toLowerCase()) ? COLOUR : name);
+        i = after;
+      }
+    } else {
+      put(c);
+      i++;
+    }
+  }
+  return out;
+}
+
+/* A declaration's value with its colours taken out (see the top of this file). */
+function shapeValue(prop, value, vars) {
+  return shapeText(String(value), vars || {}, !NOT_COLOURS.test(prop));
+}
+
+/* { key: value } for every shape of a theme (see the top of this file). */
+function shapes(css, themeId) {
+  const rules = rulesOf(css);
+  const scopes = new Map();
+  const scopeOf = (at) => {
+    if (!scopes.has(atKey(at))) scopes.set(atKey(at), themeVars(rules, themeId, at));
+    return scopes.get(atKey(at));
+  };
+  const best = new Map();
+  const put = (key, decl, vars, rank) => {
+    if (TRIPLE.test(decl.prop)) return;
+    const before = best.get(key);
+    if (before && compareRank(rank, before.rank) < 0) return;
+    best.set(key, { rank: rank, value: shapeValue(decl.prop, decl.value, vars) + (decl.important ? ' !important' : '') });
+  };
+  const animated = new Set();
+  declarations(rules).forEach((d) => {
+    if (d.theme !== themeId) return;
+    put(where(d) + '|' + d.decl.prop, d.decl, scopeOf(d.rule.at), rankOf(d));
+    if (d.decl.prop === 'animation' || d.decl.prop === 'animation-name') {
+      (d.decl.value.match(/[-\w]+/g) || []).forEach((w) => animated.add(w));
+    }
+  });
+  // the last @keyframes of a name is the one that counts
+  const keyframes = new Map();
+  rules.forEach((r) => {
+    if (r.type === 'keyframes' && animated.has(r.name)) keyframes.set(r.name, r);
+  });
+  let step = 0;
+  keyframes.forEach((r) => {
+    const prefix = (r.at.length ? atKey(r.at) + ' ' : '') + '@keyframes ' + r.name + ' ';
+    r.steps.forEach((s) => s.decls.forEach((d) => put(prefix + s.step + '|' + d.prop, d, scopeOf(r.at), [0, 0, 0, 0, ++step])));
+  });
+  const out = {};
+  best.forEach((e, key) => {
+    if (e.value !== COLOUR) out[key] = e.value;
+  });
+  return out;
+}
+
+/*
+ * What differs between a theme's golden shapes and a stylesheet, one line each: a shape gone (unless listed in
+ * allow.gone), changed (unless listed in allow.changed with what it is now) or new (unless listed in allow.added with
+ * what it is), and a listed key that doesn't fit its list.
+ */
+function compareShapes(golden, css, themeId, allow) {
+  const goneOk = new Set((allow && allow.gone) || []);
+  const added = (allow && allow.added) || {};
+  const changed = (allow && allow.changed) || {};
+  [added, changed].forEach((list) => {
+    if (Array.isArray(list)) throw new Error('a shape listed as new or changed is listed with its value: { key: "value" }');
+  });
+  const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+  const current = shapes(css, themeId);
+  const problems = [];
+  Object.keys(golden).forEach((key) => {
+    const was = golden[key];
+    const now = has(current, key) ? current[key] : undefined;
+    if (goneOk.has(key)) {
+      if (now !== undefined) problems.push('listed as gone but still there: ' + key);
+    } else if (has(changed, key)) {
+      if (now === was) problems.push('listed as changed but the same: ' + key);
+      else if (now !== undefined && now !== changed[key]) {
+        problems.push('changed: ' + key + ': listed as changed to ' + changed[key] + ', now ' + now);
+      }
+    } else if (now === undefined) {
+      problems.push('gone: ' + key + ' (was ' + was + ')');
+    } else if (now !== was) {
+      problems.push('changed: ' + key + ': was ' + was + ', now ' + now);
+    }
+  });
+  Object.keys(current).forEach((key) => {
+    if (has(golden, key)) return;
+    if (!has(added, key)) problems.push('new: ' + key + ' (' + current[key] + ')');
+    else if (current[key] !== added[key]) {
+      problems.push('changed: ' + key + ': listed as new with ' + added[key] + ', now ' + current[key]);
+    }
+  });
+  goneOk.forEach((key) => {
+    if (!has(golden, key)) problems.push('listed as gone but not golden: ' + key);
+  });
+  Object.keys(changed).forEach((key) => {
+    if (!has(golden, key)) problems.push('listed as changed but not golden: ' + key);
+    else if (goneOk.has(key)) problems.push('listed as changed and as gone: ' + key);
+    else if (!has(current, key)) problems.push('listed as changed but gone: ' + key);
+  });
+  Object.keys(added).forEach((key) => {
+    if (has(golden, key)) problems.push('listed as new but golden: ' + key);
+    else if (!has(current, key)) problems.push('listed as new but not there: ' + key);
+  });
+  return problems;
+}
+
 // ---- pieces: guards, what applies with some pieces off, and cascade flips
 
 /* The piece guards in a selector: the ids of :not([data-deco-off~="id"]), and how often data-deco-off appears. */
@@ -1298,15 +1489,33 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r/g, '');
 }
 
-/* The panel's <style> (index.html). */
-function panelCss() {
-  const html = read('src/main/resources/web/index.html');
+/* The panel's <style> (index.html), its files read with readFile. */
+function panelCssOf(readFile) {
+  const html = readFile('src/main/resources/web/index.html');
   return Array.from(html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g), (m) => m[1]).join('\n');
 }
 
-/* The mini-player's mini.css, then its themes.css (the order its page links them). */
+/* The mini-player's mini.css, then its themes.css (the order its page links them), read with readFile. */
+function miniCssOf(readFile) {
+  return readFile('desktop/ui/mini-player/mini.css') + '\n' + readFile('desktop/ui/mini-player/themes.css');
+}
+
+function panelCss() {
+  return panelCssOf(read);
+}
+
 function miniCss() {
-  return read('desktop/ui/mini-player/mini.css') + '\n' + read('desktop/ui/mini-player/themes.css');
+  return miniCssOf(read);
+}
+
+/* The last commit before the decorations were rewritten: the golden files are its stylesheets. */
+const ORIGINAL = 'dd330df';
+
+/* The stylesheet of 'panel' or 'mini' as it was at ORIGINAL (read with git; throws when git hasn't got the commit). */
+function originalCss(kind) {
+  const show = (rel) => execFileSync('git', ['show', ORIGINAL + ':' + rel],
+    { cwd: ROOT, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf8').replace(/\r/g, '');
+  return kind === 'mini' ? miniCssOf(show) : panelCssOf(show);
 }
 
 const GOLDEN_DIR = 'src/test/resources/theme-golden/';
@@ -1353,6 +1562,45 @@ function checkSheet(kind, css) {
   return problems;
 }
 
+/* The golden shapes of 'panel' or 'mini': { theme: { key: value } }. */
+function shapeGoldenFile(kind) {
+  return JSON.parse(read(GOLDEN_DIR + kind + '-shapes.json'));
+}
+
+const SHAPE_LISTS = ['shapeGoneOnPurpose', 'shapeNewOnPurpose', 'shapeChangedOnPurpose'];
+
+/* One theme's reviewed shape allowlists of 'panel' or 'mini', as compareShapes takes them. */
+function allowedShapesFor(kind, themeId) {
+  const allow = allowlist();
+  const pinned = (name) => {
+    const out = {};
+    Object.entries(allow[name][kind][themeId] || {}).forEach(([key, entry]) => {
+      out[key] = entry.is;
+    });
+    return out;
+  };
+  return {
+    gone: Object.keys(allow.shapeGoneOnPurpose[kind][themeId] || {}),
+    added: pinned('shapeNewOnPurpose'),
+    changed: pinned('shapeChangedOnPurpose')
+  };
+}
+
+/* Every difference between a shape golden file and a stylesheet (today's by default), each line led by its theme. */
+function checkShapes(kind, css) {
+  const golden = shapeGoldenFile(kind);
+  const allow = allowlist();
+  const sheet = css === undefined ? (kind === 'mini' ? miniCss() : panelCss()) : css;
+  const problems = [];
+  Object.keys(golden).forEach((theme) => {
+    compareShapes(golden[theme], sheet, theme, allowedShapesFor(kind, theme)).forEach((p) => problems.push(theme + ': ' + p));
+  });
+  SHAPE_LISTS.forEach((name) => Object.keys(allow[name][kind]).forEach((theme) => {
+    if (!golden[theme]) problems.push(theme + ': in ' + name + ' but has no golden shapes');
+  }));
+  return problems;
+}
+
 module.exports = {
   evaluate: evaluate,
   format: format,
@@ -1383,5 +1631,13 @@ module.exports = {
   goldenFile: goldenFile,
   allowlist: allowlist,
   allowedFor: allowedFor,
-  checkSheet: checkSheet
+  checkSheet: checkSheet,
+  shapeValue: shapeValue,
+  shapes: shapes,
+  compareShapes: compareShapes,
+  shapeGoldenFile: shapeGoldenFile,
+  allowedShapesFor: allowedShapesFor,
+  checkShapes: checkShapes,
+  ORIGINAL: ORIGINAL,
+  originalCss: originalCss
 };

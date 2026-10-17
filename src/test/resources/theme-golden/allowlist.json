@@ -139,5 +139,424 @@
   "flipsOnPurpose": {
     "panel": {},
     "mini": {}
+  },
+  "shapeGoneOnPurpose": {
+    "panel": {
+      "grove": {
+        "html[data-theme=\"grove\"] body::before|animation": "ruling T4-b: Grove hid the shared ambient glow with opacity: 0 and animation: none; it hides it with display: none now (html[data-theme=\"grove\"] body::before|display), which can't paint either",
+        "html[data-theme=\"grove\"] body::before|opacity": "ruling T4-b: Grove hid the shared ambient glow with opacity: 0 and animation: none; it hides it with display: none now (html[data-theme=\"grove\"] body::before|display), which can't paint either"
+      },
+      "sumi": {
+        "html[data-theme=\"sumi\"] body::after|background-image": "Sumi's kanji watermark is a mask now: the tile (/web/sumi-kanji-tile.svg, 420px, repeated) is the mask of a layer painted in the theme's text colour at 7% (html[data-theme=\"sumi\"] body::after|mask), so a custom theme reaches its colour",
+        "html[data-theme=\"sumi\"] body::after|background-size": "Sumi's kanji watermark is a mask now: the tile (/web/sumi-kanji-tile.svg, 420px, repeated) is the mask of a layer painted in the theme's text colour at 7% (html[data-theme=\"sumi\"] body::after|mask), so a custom theme reaches its colour",
+        "html[data-theme=\"sumi\"] body::after|background-repeat": "Sumi's kanji watermark is a mask now: the tile (/web/sumi-kanji-tile.svg, 420px, repeated) is the mask of a layer painted in the theme's text colour at 7% (html[data-theme=\"sumi\"] body::after|mask), so a custom theme reaches its colour"
+      },
+      "cipher": {
+        "html[data-theme=\"cipher\"] .header|backdrop-filter": "ruling T3-a: Cipher's 10px header blur is its --header-blur now (html[data-theme=\"cipher\"]|--header-blur), which the panel's own .header rule blurs with (backdrop-filter and -webkit-backdrop-filter): the same 10px"
+      }
+    },
+    "mini": {
+      "dawn": {
+        "html[data-theme=\"dawn\"] .mini::before|background": "Dawn's skin had no base glow (background: none on .mini::before); the layer is hidden with display: none now, nothing painted either way"
+      }
+    }
+  },
+  "shapeNewOnPurpose": {
+    "panel": {
+      "ember": {
+        "html[data-theme=\"ember\"]|--ember-flame": {
+          "why": "Ember's flame shapes as masks: the same path as the old flame pictures (big 40x72 and small 32x56; the old right-hand flames were mirrored, a no-op for this symmetric path), with no colour in it",
+          "is": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 72'%3E%3Cpath d='M20 3C6 26 1 38 1 51c0 13 7 21 19 19 12 2 19-6 19-19 0-13-5-25-19-48z'/%3E%3C/svg%3E\")"
+        },
+        "html[data-theme=\"ember\"]|--ember-flame-small": {
+          "why": "Ember's flame shapes as masks: the same path as the old flame pictures (big 40x72 and small 32x56; the old right-hand flames were mirrored, a no-op for this symmetric path), with no colour in it",
+          "is": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 56'%3E%3Cpath d='M16 2C5 20 1 30 1 40c0 9 5 15 15 14 10 1 15-5 15-14 0-10-4-20-15-38z'/%3E%3C/svg%3E\")"
+        },
+        "html[data-theme=\"ember\"] body::after|opacity": {
+          "why": "Ember's flames and flame edge rest at the flicker's quietest frame (0.42) where motion is reduced (new for Ember); while the flicker runs its keyframes set the opacity on every frame, so the look with motion is the same (emberRestsAtItsQuietestFlicker)",
+          "is": "0.42"
+        },
+        "html[data-theme=\"ember\"] body::after|-webkit-mask-image": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "var(--ember-flame), var(--ember-flame), var(--ember-flame-small), var(--ember-flame-small)"
+        },
+        "html[data-theme=\"ember\"] body::after|mask-image": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "var(--ember-flame), var(--ember-flame), var(--ember-flame-small), var(--ember-flame-small)"
+        },
+        "html[data-theme=\"ember\"] body::after|-webkit-mask-repeat": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "no-repeat"
+        },
+        "html[data-theme=\"ember\"] body::after|mask-repeat": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "no-repeat"
+        },
+        "html[data-theme=\"ember\"] body::after|-webkit-mask-size": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "min(92px, 14vw) calc(min(92px, 14vw) * 1.8), min(88px, 13vw) calc(min(88px, 13vw) * 1.8), min(56px, 9vw) calc(min(56px, 9vw) * 1.75), min(52px, 8vw) calc(min(52px, 8vw) * 1.75)"
+        },
+        "html[data-theme=\"ember\"] body::after|mask-size": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "min(92px, 14vw) calc(min(92px, 14vw) * 1.8), min(88px, 13vw) calc(min(88px, 13vw) * 1.8), min(56px, 9vw) calc(min(56px, 9vw) * 1.75), min(52px, 8vw) calc(min(52px, 8vw) * 1.75)"
+        },
+        "html[data-theme=\"ember\"] body::after|-webkit-mask-position": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "left max(8px, env(safe-area-inset-left)) bottom max(20px, env(safe-area-inset-bottom)), right max(8px, env(safe-area-inset-right)) bottom max(24px, env(safe-area-inset-bottom)), left min(22vw, 280px) bottom max(14px, env(safe-area-inset-bottom)), right min(20vw, 260px) bottom max(18px, env(safe-area-inset-bottom))"
+        },
+        "html[data-theme=\"ember\"] body::after|mask-position": {
+          "why": "Ember's flames as masks: each mask layer is placed, sized and repeated exactly as its flame picture was (the same values as background-position, background-size and background-repeat)",
+          "is": "left max(8px, env(safe-area-inset-left)) bottom max(20px, env(safe-area-inset-bottom)), right max(8px, env(safe-area-inset-right)) bottom max(24px, env(safe-area-inset-bottom)), left min(22vw, 280px) bottom max(14px, env(safe-area-inset-bottom)), right min(20vw, 260px) bottom max(18px, env(safe-area-inset-bottom))"
+        },
+        "html[data-reduce-motion][data-theme=\"ember\"] body::after|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "html[data-reduce-motion][data-theme=\"ember\"] .header::after|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"ember\"] body::after|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"ember\"] .header::after|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        }
+      },
+      "dawn-dark": {
+        "html[data-theme=\"dawn-dark\"] body::before|display": {
+          "why": "ruling T4-c: the theme hides the panel's shared ambient glow (body::before) and its wash/mist piece shows it again with its tuning; display: block is what the fixed-position layer always was, so with the piece on the look is the same",
+          "is": "block"
+        }
+      },
+      "steel": {
+        "html[data-theme=\"steel\"] body::before|display": {
+          "why": "ruling T4-c: the theme hides the panel's shared ambient glow (body::before) and its wash/mist piece shows it again with its tuning; display: block is what the fixed-position layer always was, so with the piece on the look is the same",
+          "is": "block"
+        }
+      },
+      "grove": {
+        "html[data-theme=\"grove\"] body::before|display": {
+          "why": "ruling T4-b: Grove's plain page hides the shared ambient glow (it had opacity: 0 and animation: none): display: none can't paint, the same look",
+          "is": "none"
+        }
+      },
+      "sumi": {
+        "html[data-theme=\"sumi\"] body::before|display": {
+          "why": "ruling T4-c: the theme hides the panel's shared ambient glow (body::before) and its wash/mist piece shows it again with its tuning; display: block is what the fixed-position layer always was, so with the piece on the look is the same",
+          "is": "block"
+        },
+        "html[data-theme=\"sumi\"] body::after|-webkit-mask": {
+          "why": "Sumi's kanji watermark as a mask: the same tile, size and repeat as its old background-image (0 0 / 420px 420px repeat)",
+          "is": "url(\"/web/sumi-kanji-tile.svg\") 0 0 / 420px 420px repeat"
+        },
+        "html[data-theme=\"sumi\"] body::after|mask": {
+          "why": "Sumi's kanji watermark as a mask: the same tile, size and repeat as its old background-image (0 0 / 420px 420px repeat)",
+          "is": "url(\"/web/sumi-kanji-tile.svg\") 0 0 / 420px 420px repeat"
+        }
+      },
+      "cipher": {
+        "html[data-theme=\"cipher\"]|--header-blur": {
+          "why": "ruling T3-a: Cipher's header blur, 10px as its .header rule had it, set where the panel's own .header rule reads it",
+          "is": "10px"
+        }
+      },
+      "revival": {
+        "html[data-theme=\"revival\"]::after|content": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "''"
+        },
+        "html[data-theme=\"revival\"]::after|position": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "fixed"
+        },
+        "html[data-theme=\"revival\"]::after|z-index": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "0"
+        },
+        "html[data-theme=\"revival\"]::after|top": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "0"
+        },
+        "html[data-theme=\"revival\"]::after|right": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "0"
+        },
+        "html[data-theme=\"revival\"]::after|bottom": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "0"
+        },
+        "html[data-theme=\"revival\"]::after|left": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "0"
+        },
+        "html[data-theme=\"revival\"]::after|pointer-events": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "none"
+        },
+        "html[data-theme=\"revival\"]::after|-webkit-mask": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E\") 0 0 / 180px 180px"
+        },
+        "html[data-theme=\"revival\"]::after|mask": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E\") 0 0 / 180px 180px"
+        },
+        "html[data-theme=\"revival\"]::after|animation": {
+          "why": "ruling T2-d: Revival's film grain on its own layer (html::after), as body::before held it: fixed over the whole window, no clicks, the same noise tile (180px) as a mask without colour, fading in with the sunrise as body::before does (revivalSunrise); painted just above the rays (z-index 0, after body), accepted by eye",
+          "is": "revivalSunrise 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) both"
+        },
+        "html[data-theme=\"revival\"] .card|box-shadow": {
+          "why": "the cards' shadow with the cream top highlight that was inside --card-shadow: in Revival's glows .card rule, after the shadow as it was in the variable (the same shadows, in the same order)",
+          "is": "var(--card-shadow), inset 0 1px 0 <c>"
+        },
+        "html[data-reduce-motion][data-theme=\"revival\"] body::before|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "html[data-reduce-motion][data-theme=\"revival\"]::after|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "html[data-reduce-motion][data-theme=\"revival\"] body::after|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "html[data-reduce-motion][data-theme=\"revival\"] .logo-icon::before|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "html[data-reduce-motion][data-theme=\"revival\"] .np-glow.active|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "html[data-reduce-motion][data-theme=\"revival\"] .np-artwork|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "html[data-reduce-motion][data-theme=\"revival\"] .empty-state .icon|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"revival\"]::after|animation": {
+          "why": "the animated pieces stop under the panel's Reduce motion and prefers-reduced-motion (spec, Task 2-4); !important so the stop beats the piece-guarded animation rule (a guard weighs one attribute) (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        }
+      }
+    },
+    "mini": {
+      "nebula": {
+        "html[data-theme=\"nebula\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "aurora": {
+        "html[data-theme=\"aurora\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "ember": {
+        "html[data-theme=\"ember\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "crimson": {
+        "html[data-theme=\"crimson\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "dawn": {
+        "html[data-theme=\"dawn\"] .mini::before|display": {
+          "why": "Dawn's skin had no base glow (background: none on .mini::before); the layer is hidden with display: none now, nothing painted either way",
+          "is": "none"
+        }
+      },
+      "dawn-dark": {
+        "html[data-theme=\"dawn-dark\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "steel": {
+        "html[data-theme=\"steel\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "verdant": {
+        "html[data-theme=\"verdant\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "grove": {
+        "html[data-theme=\"grove\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "grapevine": {
+        "html[data-theme=\"grapevine\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "sumi": {
+        "html[data-theme=\"sumi\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "rasta": {
+        "html[data-theme=\"rasta\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "cipher": {
+        "html[data-theme=\"cipher\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "signal": {
+        "html[data-theme=\"signal\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "victory": {
+        "html[data-theme=\"victory\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "neon": {
+        "html[data-theme=\"neon\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        }
+      },
+      "revival": {
+        "html[data-theme=\"revival\"] .mini::before|display": {
+          "why": "the base glow layer (mini.css .mini::before, absolutely positioned: always a block) is the skin's piece now: each skin hides it and its piece shows it again with display: block, so with the piece on the look is the same and with every piece off no glow is left (allMiniPiecesOffLeavesNoDecoration)",
+          "is": "block"
+        },
+        "html[data-theme=\"revival\"] .mini::after|z-index": {
+          "why": "Revival's sunrise glow on its own layer (.mini::after, the sunrise piece): the same gradient as the second picture of the old .mini::before, at z-index -2 so it stays under the rays (-1) as it did inside their background",
+          "is": "-2"
+        },
+        "html[data-theme=\"revival\"] .mini::after|background": {
+          "why": "Revival's sunrise glow on its own layer (.mini::after, the sunrise piece): the same gradient as the second picture of the old .mini::before, at z-index -2 so it stays under the rays (-1) as it did inside their background",
+          "is": "radial-gradient(ellipse 70% 90% at 0% 100%, <c>, <c> 70%)"
+        }
+      }
+    }
+  },
+  "shapeChangedOnPurpose": {
+    "panel": {
+      "ember": {
+        "html[data-theme=\"ember\"] body::after|background-image": {
+          "why": "Ember's corner flames are masks now: the four flame pictures (SVG data URIs with their colours inside) became four gradients of the stylesheet seen through the flame shapes (mask-image, --ember-flame / --ember-flame-small); the stops sit where the old pictures' stops fell on the flame (offsets of the path's box, 4.17% / 43.43% / 97.65% for the big left one), pinned by emberFlamesAreMasksNotColours",
+          "is": "linear-gradient(180deg, <c> 4.17%, <c> 43.43%, <c> 97.65%), linear-gradient(180deg, <c> 4.17%, <c> 50.91%, <c> 97.65%), linear-gradient(180deg, <c> 3.57%, <c> 54.75%, <c> 96.62%), linear-gradient(180deg, <c> 3.57%, <c> 50.1%, <c> 96.62%)"
+        },
+        "html[data-theme=\"ember\"] body::after|background-size": {
+          "why": "Ember's flames as gradients: a gradient has no height of its own, so \"auto\" (the old pictures' own 40:72 and 32:56) is written out as the same height, 1.8 and 1.75 times the width",
+          "is": "min(92px, 14vw) calc(min(92px, 14vw) * 1.8), min(88px, 13vw) calc(min(88px, 13vw) * 1.8), min(56px, 9vw) calc(min(56px, 9vw) * 1.75), min(52px, 8vw) calc(min(52px, 8vw) * 1.75)"
+        },
+        "html[data-theme=\"ember\"] .header::after|opacity": {
+          "why": "Ember's flames and flame edge rest at the flicker's quietest frame (0.42) where motion is reduced (new for Ember); while the flicker runs its keyframes set the opacity on every frame, so the look with motion is the same (emberRestsAtItsQuietestFlicker)",
+          "is": "0.42"
+        }
+      },
+      "rasta": {
+        "html[data-theme=\"rasta\"]|--card-shadow": {
+          "why": "the green ring left the variable: the panel's own .card rule paints --card-shadow whatever the pieces (and in a custom theme it kept the built-in colour); it is Rasta's card style now, in its own unguarded .card rule (CARD_STYLE), so the cards look the same (--card-shadow is painted by .card rules only)",
+          "is": "0 8px 40px <c>"
+        },
+        "html[data-theme=\"rasta\"] .card|box-shadow": {
+          "why": "the cards' shadow with the green ring that was inside --card-shadow: Rasta's card style now, in its own unguarded .card rule (CARD_STYLE) (the same shadows, in the same order)",
+          "is": "var(--card-shadow), 0 0 0 1px <c>"
+        }
+      },
+      "cipher": {
+        "html[data-theme=\"cipher\"]|--card-shadow": {
+          "why": "the accent ring left the variable: the panel's own .card rule paints --card-shadow whatever the pieces (and in a custom theme it kept the built-in colour); it is in Cipher's glows .card rule, in front of the shadow as it was in the variable, so the cards look the same (--card-shadow is painted by .card rules only)",
+          "is": "0 12px 40px <c>"
+        },
+        "html[data-theme=\"cipher\"] .card|box-shadow": {
+          "why": "the cards' shadow with the accent ring that was inside --card-shadow: in Cipher's glows .card rule, in front of the shadow as it was in the variable (the same shadows, in the same order)",
+          "is": "0 0 0 1px <c>, var(--card-shadow)"
+        }
+      },
+      "victory": {
+        "html[data-theme=\"victory\"]|--card-shadow": {
+          "why": "the accent ring left the variable: the panel's own .card rule paints --card-shadow whatever the pieces (and in a custom theme it kept the built-in colour); it is in Victory's gilded .card rule, after the shadow as it was in the variable, so the cards look the same (--card-shadow is painted by .card rules only)",
+          "is": "0 16px 48px <c>"
+        },
+        "html[data-theme=\"victory\"] .card|box-shadow": {
+          "why": "the cards' shadow with the accent ring that was inside --card-shadow: in Victory's gilded .card rule, after the shadow as it was in the variable (the same shadows, in the same order)",
+          "is": "var(--card-shadow), 0 0 0 1px <c>"
+        }
+      },
+      "neon": {
+        "html[data-theme=\"neon\"]|--card-shadow": {
+          "why": "the accent ring left the variable: the panel's own .card rule paints --card-shadow whatever the pieces (and in a custom theme it kept the built-in colour); it is in Neon's glows .card rule, between the shadow and the outer glow as it was, so the cards look the same (--card-shadow is painted by .card rules only)",
+          "is": "0 12px 40px <c>"
+        },
+        "html[data-theme=\"neon\"] .card|box-shadow": {
+          "why": "the cards' shadow with the accent ring that was inside --card-shadow: in Neon's glows .card rule, between the shadow and the outer glow as it was (the same shadows, in the same order)",
+          "is": "var(--card-shadow), 0 0 0 1px <c>, 0 0 48px <c>"
+        }
+      },
+      "revival": {
+        "html[data-theme=\"revival\"]|--card-shadow": {
+          "why": "the cream top highlight left the variable: the panel's own .card rule paints --card-shadow whatever the pieces (and in a custom theme it kept the built-in colour); it is in Revival's glows .card rule, after the shadow as it was in the variable, so the cards look the same (--card-shadow is painted by .card rules only)",
+          "is": "0 20px 50px <c>"
+        },
+        "html[data-theme=\"revival\"] body::before|background": {
+          "why": "ruling T2-d: Revival's film grain left the sunrise layer: it was the top picture of body::before's background, with its colour inside; it is a mask on its own layer now (html::after: a mask covers a whole element), the same noise and tile (0 0 / 180px 180px); the sunrise glows stay here unchanged",
+          "is": "radial-gradient(ellipse 85% 55% at 50% 118%, <c> 0%, <c> 40%, <c> 72%), radial-gradient(ellipse 55% 35% at 50% 108%, <c> 0%, <c> 62%), radial-gradient(circle at 12% 8%, <c> 0%, <c> 38%), radial-gradient(circle at 88% 14%, <c> 0%, <c> 36%)"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"revival\"] body::before|animation": {
+          "why": "the same stop as before, now !important: the animation it stops sits under a piece guard (one attribute more), which would beat it otherwise (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"revival\"] body::after|animation": {
+          "why": "the same stop as before, now !important: the animation it stops sits under a piece guard (one attribute more), which would beat it otherwise (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"revival\"] .logo-icon::before|animation": {
+          "why": "the same stop as before, now !important: the animation it stops sits under a piece guard (one attribute more), which would beat it otherwise (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"revival\"] .np-glow.active|animation": {
+          "why": "the same stop as before, now !important: the animation it stops sits under a piece guard (one attribute more), which would beat it otherwise (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"revival\"] .np-artwork|animation": {
+          "why": "the same stop as before, now !important: the animation it stops sits under a piece guard (one attribute more), which would beat it otherwise (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        },
+        "@media (prefers-reduced-motion:reduce) html[data-theme=\"revival\"] .empty-state .icon|animation": {
+          "why": "the same stop as before, now !important: the animation it stops sits under a piece guard (one attribute more), which would beat it otherwise (reducedMotionStopsEveryAnimatedPiece)",
+          "is": "none !important"
+        }
+      }
+    },
+    "mini": {
+      "revival": {
+        "html[data-theme=\"revival\"] .mini::before|background": {
+          "why": "Revival's sunrise glow left the rays' layer: the rays and the glow were two pictures of one background, and a declaration sits under one piece; the glow is on .mini::after now (the sunrise piece), the rays stay here unchanged",
+          "is": "repeating-conic-gradient(from 0deg at 0% 100%, <c> 0deg 4deg, <c> 4deg 12deg)"
+        }
+      }
+    }
   }
 }
