@@ -56,6 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.json.JSONArray;
@@ -650,6 +651,146 @@ public class ThemeRoutesTest
         assertTrue(served.toString(), served.getJSONArray("decorationsOff")
                 .similar(new JSONArray().put("grid").put("underline").put("glows").put("prompt")));
         assertEquals("Cipher's own cyan", "#22d3ee", served.getJSONObject("colors").getString("decoExtra"));
+    }
+
+    // ---- the 0.6.0 desktop app reads the same list
+
+    /** The 0.6.0 app's built-in themes (dd330df theme.rs THEME_IDS): a base it doesn't know drops the theme. */
+    private static final List<String> ZERO_SIX_BASES = Arrays.asList("nebula", "aurora", "ember", "crimson", "dawn", "dawn-dark",
+            "steel", "verdant", "grove", "grapevine", "sumi", "rasta", "cipher", "signal", "victory", "neon", "revival");
+    /** Its 14 mini-player colors (dd330df theme.rs MINI_SLOTS, view.js CUSTOM_SLOTS): any missing or bad drops the theme. */
+    private static final List<String> ZERO_SIX_MINI_SLOTS = Arrays.asList("bgPrimary", "bgSecondary", "bgCard", "bgElevated",
+            "bgHover", "accent", "accentLight", "accent2", "textPrimary", "textSecondary", "textTertiary", "border", "borderLight",
+            "success");
+    /** Its fonts (dd330df theme.rs FONTS): another one shows as Inter. */
+    private static final List<String> ZERO_SIX_FONTS = Arrays.asList("Inter", "DM Sans", "Outfit", "Syne", "Fraunces",
+            "IBM Plex Mono", "Noto Sans JP", "Shippori Mincho");
+    /** valid_color (7 or 9 bytes, '#' and hex digits of either case), and view.js COLOR, the same. */
+    private static final Pattern ZERO_SIX_COLOR = Pattern.compile("#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})");
+    private static final Pattern ZERO_SIX_ID = Pattern.compile("[a-z0-9]{12}");
+    private static final Pattern ZERO_SIX_PICTURE = Pattern.compile("/theme-images/[0-9a-f]{32}\\.(?:jpg|png|webp|gif)");
+
+    /**
+     * What a 0.6.0 app trips on in one theme of {@code GET /api/themes}, by field (none: it shows the theme as it was made).
+     * The rules of dd330df's {@code desktop/src-tauri/src/theme.rs} {@code parse_mini}, and of {@code view.js customVars},
+     * which gets its result: a theme is left out without {@code id} ({@code [a-z0-9]{12}}), the {@code mini} object, a
+     * {@code base} it knows, and all 14 colors in {@code mini.colors}; the rest it reads with a fallback (name, owner name,
+     * mine, visibility, hiddenByOwner, font, mini.dim, mini.useImage and the picture's link), so those are listed too when
+     * they aren't what it reads. Keys it doesn't know (decorationsOff, the 15th and 16th colors) it never looks at.
+     */
+    private static List<String> zeroSixTrips(JSONObject theme)
+    {
+        List<String> trips = new ArrayList<>();
+        Object id = theme.opt("id");
+        if(!(id instanceof String) || !ZERO_SIX_ID.matcher((String) id).matches())
+            trips.add("id");
+        Object miniValue = theme.opt("mini");
+        if(!(miniValue instanceof JSONObject))
+        {
+            trips.add("mini");
+            return trips;
+        }
+        JSONObject mini = (JSONObject) miniValue;
+        Object base = theme.opt("base");
+        if(!(base instanceof String) || !ZERO_SIX_BASES.contains(base))
+            trips.add("base");
+        Object colorsValue = mini.opt("colors");
+        if(!(colorsValue instanceof JSONObject))
+            trips.add("mini.colors");
+        else
+            for(String slot : ZERO_SIX_MINI_SLOTS)
+            {
+                Object color = ((JSONObject) colorsValue).opt(slot);
+                if(!(color instanceof String) || !ZERO_SIX_COLOR.matcher((String) color).matches())
+                    trips.add("mini.colors." + slot);
+            }
+        if(!(theme.opt("name") instanceof String))
+            trips.add("name");
+        Object owner = theme.opt("owner");
+        if(!(owner instanceof JSONObject) || !(((JSONObject) owner).opt("name") instanceof String))
+            trips.add("owner.name");
+        for(String flag : new String[]{"mine", "hiddenByOwner"})
+            if(!(theme.opt(flag) instanceof Boolean))
+                trips.add(flag);
+        if(!(theme.opt("visibility") instanceof String))
+            trips.add("visibility");
+        if(!ZERO_SIX_FONTS.contains(theme.opt("font")))
+            trips.add("font");
+        Object dim = mini.opt("dim");
+        if(!(dim instanceof Number) || ((Number) dim).doubleValue() < 0 || ((Number) dim).doubleValue() > 90)
+            trips.add("mini.dim");
+        Object useImage = mini.opt("useImage");
+        if(!(useImage instanceof Boolean))
+            trips.add("mini.useImage");
+        else if((Boolean) useImage)
+        {
+            Object background = theme.opt("background");
+            Object url = background instanceof JSONObject ? ((JSONObject) background).opt("url") : null;
+            if(!(url instanceof String) || !ZERO_SIX_PICTURE.matcher((String) url).matches())
+                trips.add("background.url");
+        }
+        return trips;
+    }
+
+    @Test
+    public void theZeroSixAppStillReadsTheList() throws Exception
+    {
+        // themes of every shape the bot has: the new form, with a picture, from a panel before the pieces, without a
+        // mini-player version, and a file saved before the pieces (served in the new form)
+        JSONObject revival = withMini(themeJson("Revival blue", "public"), false).put("base", "revival")
+                .put("decorationsOff", new JSONArray().put("rays"));
+        ok(createTheme(revival, null));
+        ok(createTheme(withMini(withBackground(themeJson("With a picture", "public")), true), jpeg(1)));
+        JSONObject oldPanel = withMini(themeJson("Old panel", "public"), false).put("base", "rasta").put("effects", false);
+        oldPanel.remove("decorationsOff");
+        oldPanel.put("colors", oldColors(true));
+        oldPanel.getJSONObject("mini").put("colors", oldColors(false));
+        ok(createTheme(oldPanel, null));
+        ok(createTheme(themeJson("No mini-player", "public"), null));
+        JSONObject made = ok(createTheme(withMini(themeJson("Saved long ago", "public"), false).put("base", "cipher"), null));
+        Path path = themesDir.resolve(made.getString("id") + ".json");
+        JSONObject file = new JSONObject(new String(Files.readAllBytes(path), StandardCharsets.UTF_8));
+        file.remove("decorationsOff");
+        file.put("effects", false);
+        file.put("colors", oldColors(true));
+        file.getJSONObject("mini").put("colors", oldColors(false));
+        Files.write(path, file.toString(2).getBytes(StandardCharsets.UTF_8));
+
+        for(Person who : new Person[]{ALICE, BOB})
+        {
+            JSONObject list = list(who);
+            // custom_minis reads data.themes
+            JSONArray themes = list.getJSONArray("themes");
+            assertEquals(5, themes.length());
+            for(int i = 0; i < themes.length(); i++)
+            {
+                JSONObject theme = themes.getJSONObject(i);
+                String name = theme.getString("name");
+                List<String> trips = zeroSixTrips(theme);
+                if(name.equals("No mini-player"))
+                {
+                    assertEquals("left out, as it always was", Arrays.asList("mini"), trips);
+                    continue;
+                }
+                assertEquals(who.getName() + ": " + name + " " + theme, new ArrayList<String>(), trips);
+                // the 14 colors it shows are the theme's own, whatever else is in there now
+                JSONObject colors = theme.getJSONObject("mini").getJSONObject("colors");
+                for(String slot : ZERO_SIX_MINI_SLOTS)
+                    assertEquals(name + " " + slot, oldColors(false).getString(slot), colors.getString(slot));
+            }
+            assertTrue(themeNamed(list, "With a picture").getJSONObject("mini").getBoolean("useImage"));
+        }
+
+        // and the rules have teeth: what drops a theme in that app is seen
+        JSONObject served = themeNamed(list(ALICE), "Revival blue");
+        JSONObject noSlot = new JSONObject(served.toString());
+        noSlot.getJSONObject("mini").getJSONObject("colors").remove("success");
+        assertEquals(Arrays.asList("mini.colors.success"), zeroSixTrips(noSlot));
+        assertEquals(Arrays.asList("base"), zeroSixTrips(new JSONObject(served.toString()).put("base", "custom")));
+        assertEquals(Arrays.asList("mini.colors.accent"), zeroSixTrips(new JSONObject(served.toString())
+                .put("mini", new JSONObject(served.getJSONObject("mini").toString()).put("colors",
+                        new JSONObject(served.getJSONObject("mini").getJSONObject("colors").toString()).put("accent", "blue")))));
+        assertEquals(Arrays.asList("id"), zeroSixTrips(new JSONObject(served.toString()).put("id", "custom:x")));
     }
 
     @Test
