@@ -7905,7 +7905,8 @@
             s.body.appendChild(details);
             if (s.flag) details.open = true;
 
-            var colorsGroup = tcGroup('Colors', 'Changing the colors on the Colors step starts these over.');
+            var colorsGroup = tcGroup('Colors', 'Changing the colors on the Colors step starts these over.' + (TC.hasDecorations(s.state.base)
+                ? ' An extra decoration color you set here stays, unless you use the colors of a theme.' : ''));
             var grid = plEl('div', 'tc-colors');
             var rows = TC.fineTuneColors(s.state.base).map(function (choice) {
                 var row = plEl('label', 'tc-color-row');

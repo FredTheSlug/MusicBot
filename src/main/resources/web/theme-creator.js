@@ -410,13 +410,15 @@
     }
 
     /*
-     * A theme's look. Its extra decoration color counts as set by hand when it is neither its accent-light nor its
-     * starting theme's own.
+     * A theme's look. Its extra decoration color counts as set by hand when it is none of: its accent-light, its
+     * starting theme's own, or the own of a built-in theme whose 16 colors it has exactly ("Use colors from" Rasta on
+     * Revival keeps Rasta's red without anybody choosing it).
      */
     function themeLook(theme, pieces) {
         var look = lookFields(theme.base, theme.colors, theme.font, savedPiecesOff(theme, pieces), theme.radiusScale);
         var extra = look.colors.decoExtra;
-        look.decoExtraSetByHand = extra !== rgbOf(look.colors.accentLight) && extra !== BASE_PALETTES[look.base].colors.decoExtra;
+        look.decoExtraSetByHand = extra !== rgbOf(look.colors.accentLight) && extra !== BASE_PALETTES[look.base].colors.decoExtra &&
+            !Object.keys(BASE_PALETTES).some(function (id) { return colorsAreFrom(look, id); });
         return look;
     }
 
@@ -854,7 +856,7 @@
         return next;
     }
 
-    /* The mini-player's 14 colors made from a main color and a background of its own (readable, like step 2's). */
+    /* The mini-player's 15 colors made from a main color and a background of its own (readable, like step 2's). */
     function miniFrom(main, page) {
         return palette.mini(palette.generate(main, page, modeOf(page)));
     }

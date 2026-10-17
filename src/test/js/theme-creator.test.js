@@ -7,6 +7,7 @@ const path = require('node:path');
 const ThemeCreator = require('../../main/resources/web/theme-creator.js');
 const ThemeApply = require('../../main/resources/web/theme-apply.js');
 const ThemePalette = require('../../main/resources/web/theme-palette.js');
+const { panelFunction } = require('./panel-source.js');
 
 const INDEX = fs.readFileSync(path.join(__dirname, '../../main/resources/web/index.html'), 'utf8').replace(/\r/g, '');
 const THEME_FILE = fs.readFileSync(
@@ -675,6 +676,17 @@ test('decoExtraFollowsColoursUntilSetByHand', () => {
   assert.equal(reopen('#dc2626').decoExtraSetByHand, true, "Rasta's red on Ember was chosen");
   assert.equal(C.setMain(reopen('#dc2626'), '#3b82f6').colors.decoExtra, '#dc2626', 'and stays');
   assert.equal(C.setMain(reopen('#fde047'), '#3b82f6').colors.decoExtra, C.setMain(reopen('#fde047'), '#3b82f6').colors.accentLight);
+  // a theme saved with "Use colors from" a theme that has its own (Rasta, Cipher, Ember) on another base: not by hand
+  for (const [id, own] of [['rasta', '#dc2626'], ['cipher', '#22d3ee'], ['ember', '#fde047']]) {
+    const saved = C.buildValues(C.useColoursFrom(C.startState('revival'), id));
+    const back = C.fromTheme(savedTheme({ base: 'revival', colors: saved.colors }), PIECES);
+    assert.equal(back.colors.decoExtra, own, id);
+    assert.equal(back.decoExtraSetByHand, false, id + "'s colors, all 16: borrowed, not set by hand");
+    assert.equal(C.setMain(back, '#3b82f6').colors.decoExtra, C.setMain(back, '#3b82f6').colors.accentLight, id + ': it follows again');
+    // its colors changed afterwards: that red, cyan or yellow on another base was kept on purpose
+    const tweaked = C.buildValues(C.tweakColor(C.useColoursFrom(C.startState('revival'), id), 'bgCard', '#123456'));
+    assert.equal(C.fromTheme(savedTheme({ base: 'revival', colors: tweaked.colors }), PIECES).decoExtraSetByHand, true, id + ' tweaked');
+  }
   // the mini-player version takes it along while it follows the theme
   assert.equal(own.mini.colors.decoExtra, '#ff0000');
 });
@@ -1638,6 +1650,30 @@ test('everyStateTransitionLeavesTheOneItWasGivenAlone', () => {
   C.withoutPicture(base);
   C.asNewTheme(base);
   assert.equal(JSON.stringify(base), frozen);
+  // the pieces and the colors from any theme too, on a starting theme with pieces off and its extra color set by hand
+  const revival = C.setDecoExtra(C.setPiece(C.setPiece(C.makeMini(withPicture(C.startState('revival'))), 'rays', false, PIECES),
+    'glows', false, PIECES), '#ff00aa');
+  const before = JSON.stringify(revival);
+  const after = [
+    C.setPiece(revival, 'record', false, PIECES),
+    C.setPiece(revival, 'rays', true, PIECES),
+    C.allPieces(revival, false, PIECES),
+    C.allPieces(revival, true, PIECES),
+    C.useColoursFrom(revival, 'rasta'),
+    C.setDecoExtra(revival, '#00ff00'),
+    C.tweakColor(revival, 'accentLight', '#123456'),
+    C.chooseBase(revival, 'neon', PIECES),
+    C.chooseBase(revival, 'nebula', PIECES),
+    C.chooseTheme(revival, savedTheme(), PIECES)
+  ];
+  assert.equal(JSON.stringify(revival), before);
+  // and what they give back shares nothing that could change it later
+  for (const next of after) {
+    next.decorationsOff.push('logo');
+    next.colors.accent = '#000000';
+    if (next.mini) next.mini.colors.accent = '#000000';
+  }
+  assert.equal(JSON.stringify(revival), before);
 });
 
 // ---- a new theme is made with a mini-player version unless the person skips it
@@ -2028,21 +2064,9 @@ test('thePageDrawsThePiecesAndTheColorChipsFromTheTestedModule', () => {
   // the piece labels come from theme-pieces.json and go in as text only
   assert.match(CREATOR_CODE, /plEl\('span', 'tc-opt-name', piece\.label\)/);
   // a list that arrives while the creator is open shows its switches and reaches the preview
-  assert.match(panelFunctionOf('retryThemePieces'), /if \(themeCreator\) tcPiecesArrived\(themeCreator\);/);
-  assert.match(panelFunctionOf('openThemeCreator'), /loadThemePieces\(\)\.then\(function \(\) \{ tcPiecesArrived\(s\); \}\)/);
+  assert.match(panelFunction('retryThemePieces'), /if \(themeCreator\) tcPiecesArrived\(themeCreator\);/);
+  assert.match(panelFunction('openThemeCreator'), /loadThemePieces\(\)\.then\(function \(\) \{ tcPiecesArrived\(s\); \}\)/);
 });
-
-/* The source of one of the page's functions (from "function name(" to its closing brace). */
-function panelFunctionOf(name) {
-  const at = INDEX.indexOf('function ' + name + '(');
-  assert.ok(at >= 0, name + ' not found');
-  let depth = 0;
-  for (let i = INDEX.indexOf('{', at); i < INDEX.length; i++) {
-    if (INDEX[i] === '{') depth++;
-    else if (INDEX[i] === '}' && --depth === 0) return INDEX.slice(at, i + 1);
-  }
-  throw new Error(name + ' never closes');
-}
 
 test('theThemeListRefreshingDoesNotPutTheRealThemeBackWhileTheCreatorShowsItsPreview', () => {
   const fn = /function reconcileThemeChoice\(\) \{([\s\S]*?)\n        \}/.exec(INDEX);

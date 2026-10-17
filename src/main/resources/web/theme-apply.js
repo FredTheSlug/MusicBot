@@ -231,8 +231,8 @@
      * theme shows a background picture, every background piece of the base after it, so nothing paints over the
      * picture. `pieces` is theme-pieces.json as parsed; without an entry for the base (the list didn't load) only the
      * saved ids that look like ids go in, as the server checked them, and nothing is added for a picture.
-     * A theme in the old shape (no list; the creator's preview still sends one) gets the server's conversion:
-     * effects false is every piece off, anything else none.
+     * A theme in the old shape (no list, as saved before the pieces; the creator reads one it reopens through here too)
+     * gets the server's conversion: effects false is every piece off, anything else none.
      */
     function decoOffFor(theme, hasPicture, pieces) {
         if (!isObject(theme) || !isBuiltIn(theme.base)) return '';

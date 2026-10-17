@@ -4,8 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { panelFunction } = require('./panel-source.js');
 
-const PANEL = fs.readFileSync(path.join(__dirname, '../../main/resources/web/index.html'), 'utf8');
+const PANEL =fs.readFileSync(path.join(__dirname, '../../main/resources/web/index.html'), 'utf8');
 
 /** The panel's inline scripts (the ones written in the page, not loaded from /web/…). */
 function inlineScripts(html) {
@@ -77,19 +78,6 @@ test('theBidiCheckSeesACharacterItIsThereFor', () => {
   // the Arabic letter mark changes direction too, as the desktop guard knows
   assert.deepEqual(literalBidiControls('x' + String.fromCharCode(0x061C)), [{ line: 1, codePoint: 'U+061C' }]);
 });
-
-/* The source of a function of the panel (from "function name(" to its closing brace). */
-function panelFunction(name) {
-  const html = PANEL.replace(/\r/g, '');
-  const at = html.indexOf('function ' + name + '(');
-  assert.ok(at >= 0, name + ' not found');
-  let depth = 0;
-  for (let i = html.indexOf('{', at); i < html.length; i++) {
-    if (html[i] === '{') depth++;
-    else if (html[i] === '}' && --depth === 0) return html.slice(at, i + 1);
-  }
-  throw new Error(name + ' never closes');
-}
 
 function fakeRoot() {
   const attrs = {};
