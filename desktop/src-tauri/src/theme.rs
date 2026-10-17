@@ -153,7 +153,7 @@ pub struct CustomMini {
     /// The picture's path on the bot (`/theme-images/<32 hex>.<ext>`): set only when this version uses the theme's picture.
     pub picture: Option<String>,
     /// The base's pieces switched off, for the mini-player's `data-deco-off`: the theme's `decorationsOff` (only the
-    /// base's own ids, once each, in order), and with a picture the base's background pieces too.
+    /// base's own ids, once each, in order). Where the picture is shown (`into_ui`), the base's background pieces too.
     pub decorations_off: Vec<String>,
 }
 
@@ -187,14 +187,16 @@ fn clean_name(value: Option<&Value>, fallback: &str) -> String {
 }
 
 /// The base's pieces a theme switches off: its `decorationsOff` (the base's own ids only, once each, in order; a bot
-/// from before the pieces sends none, and its `effects` is the bot's to turn into pieces), then with a picture the base's
-/// background pieces.
-fn decorations_off(theme: &Value, base: &str, has_picture: bool) -> Vec<String> {
-    let pieces = pieces_of(base);
-    let mut off: Vec<String> = Vec::new();
+/// from before the pieces sends none, and its `effects` is the bot's to turn into pieces).
+fn decorations_off(theme: &Value, base: &str) -> Vec<String> {
     let listed = theme.get("decorationsOff").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str);
-    let pictured = pieces.iter().filter(|p| has_picture && p.background).map(|p| p.id.as_str());
-    for id in listed.chain(pictured) {
+    with_pieces_off(Vec::new(), base, listed)
+}
+
+/// `off` with these ids of the base's pieces added, each once, in order (anything that isn't one of its pieces left out).
+fn with_pieces_off<'a>(mut off: Vec<String>, base: &str, ids: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let pieces = pieces_of(base);
+    for id in ids {
         if pieces.iter().any(|p| p.id == id) && !off.iter().any(|o| o == id) {
             off.push(id.to_string());
         }
@@ -233,7 +235,7 @@ fn parse_mini(theme: &Value) -> Option<CustomMini> {
         font: theme.get("font").and_then(Value::as_str).filter(|f| FONTS.contains(f)).unwrap_or(FONTS[0]).to_string(),
         colors,
         dim: mini.get("dim").and_then(Value::as_f64).map_or(0, |d| d.round().clamp(0.0, 90.0) as u8),
-        decorations_off: decorations_off(theme, base, picture.is_some()),
+        decorations_off: decorations_off(theme, base),
         picture,
     })
 }
@@ -354,12 +356,17 @@ pub struct UiTheme {
 
 impl MiniThemeChoice {
     /// For the UI. `origin` is the bot's address (`scheme://host[:port]`), which a custom picture's path is joined to;
-    /// without one the picture is dropped.
+    /// without one the picture is dropped. A picture that is shown takes the base's background pieces' place, so they
+    /// are switched off too; with none shown they stay.
     pub fn into_ui(self, origin: Option<&str>) -> UiTheme {
         match self {
             MiniThemeChoice::Builtin { id, vars } => UiTheme { id, vars, custom: None },
             MiniThemeChoice::Custom(mut custom) => {
                 custom.picture = custom.picture.take().and_then(|path| origin.map(|o| format!("{o}{path}")));
+                if custom.picture.is_some() {
+                    let background = pieces_of(&custom.base).iter().filter(|p| p.background).map(|p| p.id.as_str());
+                    custom.decorations_off = with_pieces_off(std::mem::take(&mut custom.decorations_off), &custom.base, background);
+                }
                 UiTheme { id: custom.base.clone(), vars: BTreeMap::new(), custom: Some(custom) }
             }
         }
@@ -805,11 +812,13 @@ mod tests {
 
     #[test]
     fn a_picture_switches_the_bases_background_pieces_off() {
+        // where the mini-player is told to show the picture: its link joined to the bot's address
         let with_picture = |base: &str, off: serde_json::Value, use_image: bool| {
             let mut t = api_theme_now("aaaaaaaaaaaa", base, off);
             t["mini"]["useImage"] = json!(use_image);
             t["background"] = json!({ "url": PIC, "dim": 10, "blur": 0, "fit": "cover" });
-            custom_minis(&list(vec![t])).remove(0).decorations_off
+            let custom = custom_minis(&list(vec![t])).remove(0);
+            MiniThemeChoice::Custom(custom).into_ui(Some("https://x")).custom.unwrap().decorations_off
         };
         // its own list first, then the base's background pieces in the list's order, each once
         assert_eq!(with_picture("revival", json!(["record"]), true), ["record", "sunrise", "rays"]);
@@ -821,7 +830,27 @@ mod tests {
         assert_eq!(with_picture("revival", json!(["record"]), false), ["record"]);
         let mut no_picture = api_theme_now("aaaaaaaaaaaa", "revival", json!([]));
         no_picture["mini"]["useImage"] = json!(true);
-        assert!(custom_minis(&list(vec![no_picture]))[0].decorations_off.is_empty(), "useImage with no picture is no picture");
+        let custom = custom_minis(&list(vec![no_picture])).remove(0);
+        assert!(MiniThemeChoice::Custom(custom).into_ui(Some("https://x")).custom.unwrap().decorations_off.is_empty(),
+            "useImage with no picture is no picture");
+    }
+
+    #[test]
+    fn background_pieces_stay_on_when_the_picture_cant_be_shown() {
+        // the list holds the version with its picture, but a bot address that isn't a usable URL gives no link to it:
+        // no picture is shown, so the base's background (Revival's sunrise and rays) stays, with only its own pieces off
+        let mut t = api_theme_now("aaaaaaaaaaaa", "revival", json!(["record"]));
+        t["mini"]["useImage"] = json!(true);
+        t["background"] = json!({ "url": PIC });
+        let custom = custom_minis(&list(vec![t])).remove(0);
+        assert_eq!(custom.picture.as_deref(), Some(PIC));
+        assert_eq!(custom.decorations_off, ["record"], "the list keeps the theme's own pieces only");
+        let ui = MiniThemeChoice::Custom(custom.clone()).into_ui(None).custom.unwrap();
+        assert_eq!(ui.picture, None);
+        assert_eq!(ui.decorations_off, ["record"]);
+        let shown = MiniThemeChoice::Custom(custom).into_ui(Some("https://x")).custom.unwrap();
+        assert!(shown.picture.is_some());
+        assert_eq!(shown.decorations_off, ["record", "sunrise", "rays"]);
     }
 
     #[test]
@@ -876,7 +905,8 @@ mod tests {
         pic["base"] = json!("revival");
         pic["mini"]["useImage"] = json!(true);
         pic["background"] = json!({ "url": PIC });
-        assert_eq!(custom_minis(&list(vec![pic]))[0].decorations_off, ["sunrise", "rays"]);
+        let custom = custom_minis(&list(vec![pic])).remove(0);
+        assert_eq!(MiniThemeChoice::Custom(custom).into_ui(Some("https://x")).custom.unwrap().decorations_off, ["sunrise", "rays"]);
     }
 
     #[test]

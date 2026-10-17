@@ -64,6 +64,8 @@
 
   /** The glow behind text when the background is see-through, for dark text: the one Dawn's skin sets in themes.css. */
   var LIGHT_LEGIBILITY_SHADOW = '0 1px 3px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.7)';
+  /** ... and for light text: mini.css's own default (a test keeps them equal). */
+  var DARK_LEGIBILITY_SHADOW = '0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.6)';
 
   /** The font-family value for a theme's font; anything unknown is Inter. */
   function fontStack(font) {
@@ -100,7 +102,7 @@
    * The inline variables for a custom mini-player version: the 16 the panel's themes set (glow and gradient derived from
    * the accent as the panel derives them, the font from the theme's font), --on-accent, the second accent as the skins
    * paint with it (--accent2-r/g/b, as the panel's ThemePalette.cssVars gives it), --deco-extra when the version has a
-   * usable extra decoration color (else the skin's own shows), and for dark text the light --legibility-shadow. null
+   * usable extra decoration color (else the skin's own shows), and the --legibility-shadow for its text. null
    * when any of the other 14 colors is not a plain #rrggbb / #rrggbbaa, so nothing from the page's data ever becomes
    * more than a color. custom = {colors, font, ...} as the app sends it.
    */
@@ -138,8 +140,9 @@
     var extra = colors[DECO_EXTRA];
     if (typeof extra === 'string' && COLOR.test(extra)) vars['--deco-extra'] = extra;
     // Dark text (a light version) must not get the default black halo below 60% Background: nearly unreadable over a
-    // dark wallpaper. It gets Dawn's light glow instead; light text keeps mini.css's dark default.
-    if (onAccent(colors.textPrimary) === '#ffffff') vars['--legibility-shadow'] = LIGHT_LEGIBILITY_SHADOW;
+    // dark wallpaper. It gets Dawn's light glow instead, and light text the dark one, both set here: the version wears
+    // its base skin, whose own glow (Dawn's light one) is for the skin's text, not the version's.
+    vars['--legibility-shadow'] = onAccent(colors.textPrimary) === '#ffffff' ? LIGHT_LEGIBILITY_SHADOW : DARK_LEGIBILITY_SHADOW;
     return vars;
   }
 
@@ -633,7 +636,7 @@
     view: view, THEMES: THEMES, applyTheme: applyTheme, applyOpacity: applyOpacity,
     customVars: customVars, onAccent: onAccent, fontStack: fontStack, themeMenu: themeMenu, themeLabel: themeLabel,
     pictureLayer: pictureLayer, themePicture: themePicture, CUSTOM_SLOTS: CUSTOM_SLOTS, FONT_STACKS: FONT_STACKS,
-    LIGHT_LEGIBILITY_SHADOW: LIGHT_LEGIBILITY_SHADOW, themeSetArgs: themeSetArgs,
+    LIGHT_LEGIBILITY_SHADOW: LIGHT_LEGIBILITY_SHADOW, DARK_LEGIBILITY_SHADOW: DARK_LEGIBILITY_SHADOW, themeSetArgs: themeSetArgs,
     spotifyView: spotifyView, isLink: isLink, formatDuration: formatDuration, latestOnly: latestOnly, oneAtATime: oneAtATime,
     currentLyricIndex: currentLyricIndex, trackKey: trackKey
   };

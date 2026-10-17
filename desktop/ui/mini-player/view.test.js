@@ -318,7 +318,7 @@ test('pickerError shows the bot\'s words, short and on one line', () => {
 
 const {
   customVars, onAccent, fontStack, themeMenu, themeLabel, pictureLayer, themePicture, CUSTOM_SLOTS, FONT_STACKS,
-  LIGHT_LEGIBILITY_SHADOW, themeSetArgs
+  LIGHT_LEGIBILITY_SHADOW, DARK_LEGIBILITY_SHADOW, themeSetArgs
 } = require('./view.js');
 const ThemePalette = require('../../../src/main/resources/web/theme-palette.js');
 const ThemeApply = require('../../../src/main/resources/web/theme-apply.js');
@@ -352,7 +352,7 @@ test('customVars turns a mini palette into the 16 variables plus the color on th
     '--accent-glow', '--accent-gradient', '--text-primary', '--text-secondary', '--text-tertiary', '--border', '--border-light',
     '--success', '--font-family'];
   assert.deepEqual(Object.keys(vars).sort(),
-    SIXTEEN.concat(['--on-accent', '--deco-extra', '--accent2-r', '--accent2-g', '--accent2-b']).sort());
+    SIXTEEN.concat(['--on-accent', '--deco-extra', '--accent2-r', '--accent2-g', '--accent2-b', '--legibility-shadow']).sort());
   assert.equal(vars['--bg-card'], '#161a26');
   assert.equal(vars['--accent'], '#7c5cff');
   assert.equal(vars['--accent-light'], '#a08bff');
@@ -390,7 +390,7 @@ test('customVars gives the mini-player exactly what the panel\'s creator preview
     const vars = customVars(custom({ colors }));
     const panel = ThemePalette.cssVars(Object.assign({ glass: '#10131ce0' }, colors));
     for (const name of Object.keys(vars)) {
-      if (name === '--font-family' || name === '--on-accent') continue;
+      if (name === '--font-family' || name === '--on-accent' || name === '--legibility-shadow') continue;
       assert.equal(vars[name], panel[name], name + ' for ' + accent);
     }
     assert.equal(vars['--on-accent'], ThemePalette.onAccent(accent));
@@ -447,7 +447,7 @@ test('customMiniUsesItsBaseSkin', () => {
   const root = fakeRoot();
   let applied = applyTheme(root, { id: 'revival', vars: {}, custom: custom({ base: 'revival' }) }, []);
   assert.deepEqual(root.attrs, { 'data-theme': 'revival', 'data-custom-theme': 'k3j9x0q2m7ab' }, 'every piece on');
-  assert.equal(applied.length, 21);
+  assert.equal(applied.length, 22);
   assert.equal(root.props['--accent'], '#7c5cff');
   assert.equal(root.props['--on-accent'], '#000000');
   assert.equal(root.props['--font-family'], FONT_STACKS.Outfit);
@@ -533,7 +533,7 @@ test('oldPayloadStillWorks', () => {
   const root = fakeRoot();
   const applied = applyTheme(root, { id: 'rasta', vars: {}, custom: old }, []);
   assert.deepEqual(root.attrs, { 'data-theme': 'rasta', 'data-custom-theme': 'k3j9x0q2m7ab' });
-  assert.equal(applied.length, 20);
+  assert.equal(applied.length, 21);
   assert.equal(root.props['--accent'], OLD_MINI_COLORS.accent);
   assert.equal(themePicture({ id: 'rasta', vars: {}, custom: Object.assign({}, old, { picture: PIC }) }, false).url, PIC);
 });
@@ -744,14 +744,19 @@ function shadowOf(css, selector) {
   return m[1].trim();
 }
 
-test('a light custom version (dark text) gets the light glow below 60% Background, a dark one keeps the default dark glow', () => {
+test('a light custom version (dark text) gets the light glow below 60% Background, a dark one the dark glow, always inline', () => {
   const light = customVars(custom({ colors: LIGHT_COLORS }));
   assert.equal(light['--legibility-shadow'], LIGHT_LEGIBILITY_SHADOW);
   assert.match(LIGHT_LEGIBILITY_SHADOW, /rgba\(255, 255, 255/, 'a light glow, not a black halo');
   assert.doesNotMatch(LIGHT_LEGIBILITY_SHADOW, /rgba\(0, 0, 0/);
-  // light text: nothing is set, so mini.css's dark default (below) applies
-  assert.equal('--legibility-shadow' in customVars(custom()), false);
-  assert.match(shadowOf(MINI_CSS, ':root'), /^0 1px 3px rgba\(0, 0, 0, 0\.9\), 0 0 8px rgba\(0, 0, 0, 0\.6\)$/, 'the default is the dark glow');
+  // light text: the dark glow, set inline too: the version wears its base skin, and a skin may have its own (Dawn's)
+  assert.equal(customVars(custom())['--legibility-shadow'], DARK_LEGIBILITY_SHADOW);
+  assert.match(DARK_LEGIBILITY_SHADOW, /rgba\(0, 0, 0/);
+  assert.doesNotMatch(DARK_LEGIBILITY_SHADOW, /rgba\(255, 255, 255/);
+});
+
+test('the dark glow is mini.css\'s own default', () => {
+  assert.equal(DARK_LEGIBILITY_SHADOW, shadowOf(MINI_CSS, ':root'));
 });
 
 test('the light glow is the one Dawn, the hand-made light skin, uses', () => {
@@ -767,14 +772,14 @@ test('the glow follows the main text by the same black-or-white rule as the colo
     const textPrimary = '#' + Math.floor(rnd() * 0x1000000).toString(16).padStart(6, '0');
     const vars = customVars(custom({ colors: Object.assign({}, MINI_COLORS, { textPrimary }) }));
     const darkText = onAccent(textPrimary) === '#ffffff';
-    assert.equal(vars['--legibility-shadow'], darkText ? LIGHT_LEGIBILITY_SHADOW : undefined, textPrimary);
+    assert.equal(vars['--legibility-shadow'], darkText ? LIGHT_LEGIBILITY_SHADOW : DARK_LEGIBILITY_SHADOW, textPrimary);
     if (darkText) lights++;
   }
   assert.ok(lights > 50 && lights < 350, 'both kinds were tried: ' + lights);
   // the edges
   const text = (textPrimary) => customVars(custom({ colors: Object.assign({}, MINI_COLORS, { textPrimary }) }))['--legibility-shadow'];
   assert.equal(text('#000000'), LIGHT_LEGIBILITY_SHADOW);
-  assert.equal(text('#ffffff'), undefined);
+  assert.equal(text('#ffffff'), DARK_LEGIBILITY_SHADOW);
   assert.equal(text('#1c1917ff'), LIGHT_LEGIBILITY_SHADOW, 'alpha written out is the same color');
 });
 
@@ -783,13 +788,43 @@ test('the light glow goes with a light version and comes off with it', () => {
   let applied = applyTheme(root, { id: 'dawn', vars: {}, custom: custom({ colors: LIGHT_COLORS }) }, []);
   assert.equal(root.props['--legibility-shadow'], LIGHT_LEGIBILITY_SHADOW);
   assert.equal(root.props['--on-accent'], onAccent(LIGHT_COLORS.accent), 'the color on the accent follows the accent, not the text');
-  // a dark version after it: the glow is gone, so mini.css's dark default is back
+  // a dark version after it: the dark glow, inline
   applied = applyTheme(root, { id: 'ember', vars: {}, custom: custom() }, applied);
-  assert.equal('--legibility-shadow' in root.props, false);
+  assert.equal(root.props['--legibility-shadow'], DARK_LEGIBILITY_SHADOW);
   // and to a built-in skin: Dawn sets its own in themes.css; nothing is left inline
   applied = applyTheme(root, { id: 'dawn', vars: {}, custom: custom({ colors: LIGHT_COLORS }) }, applied);
   applyTheme(root, { id: 'dawn', vars: {} }, applied);
   assert.deepEqual(root.props, {});
+});
+
+test('aLightTextVersionOnDawnGetsTheDarkGlow', () => {
+  // Dawn's skin sets a white glow for its own dark text; a version with light text worn on Dawn must not inherit it:
+  // its own glow is inline, which wins over the skin's. The same on every skin, for light and dark text alike.
+  const themes = fs.readFileSync(path.join(__dirname, 'themes.css'), 'utf8').replace(/\r/g, '');
+  const skinGlow = (id) => {
+    const at = themes.indexOf('html[data-theme="' + id + '"] {');
+    return at >= 0 && /--legibility-shadow:/.test(themes.slice(at, themes.indexOf('}', at)))
+      ? shadowOf(themes, 'html[data-theme="' + id + '"]') : null;
+  };
+  // the glow the text gets: the inline value, else the skin's, else mini.css's default
+  const shown = (root) => root.props['--legibility-shadow'] || skinGlow(root.attrs['data-theme']) || shadowOf(MINI_CSS, ':root');
+  assert.equal(skinGlow('dawn'), LIGHT_LEGIBILITY_SHADOW, 'Dawn\'s skin has the light glow of its own');
+  const root = fakeRoot();
+  applyTheme(root, { id: 'dawn', vars: {}, custom: custom({ base: 'dawn' }) }, []);
+  assert.equal(root.attrs['data-theme'], 'dawn');
+  assert.equal(onAccent(MINI_COLORS.textPrimary), '#000000', 'light text');
+  assert.equal(shown(root), DARK_LEGIBILITY_SHADOW);
+  for (const id of THEME_IDS) {
+    for (const [colors, glow] of [[MINI_COLORS, DARK_LEGIBILITY_SHADOW], [LIGHT_COLORS, LIGHT_LEGIBILITY_SHADOW]]) {
+      const r = fakeRoot();
+      applyTheme(r, { id: id, vars: {}, custom: custom({ base: id, colors: colors }) }, []);
+      assert.equal(shown(r), glow, id + ' with ' + colors.textPrimary + ' text');
+    }
+  }
+  // the built-in skin keeps its own, as before: nothing inline
+  const builtIn = fakeRoot();
+  applyTheme(builtIn, { id: 'dawn', vars: {} }, []);
+  assert.equal(shown(builtIn), LIGHT_LEGIBILITY_SHADOW);
 });
 
 test('the glow reaches the text through the low-alpha rules, and the value is set with setProperty only', () => {
