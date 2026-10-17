@@ -1,0 +1,128 @@
+<!doctype html>
+<!--
+  The theme creator's mini-player preview (index.html tcMiniPreview shows it in a frame): the desktop app's own card,
+  drawn by the app's own stylesheets, with a sample song. The bot's build copies mini.css, themes.css and view.js from
+  desktop/ui/mini-player into web/mini-player/ (pom.xml); the card below is the app's markup (desktop/ui/mini-player/
+  index.html), which a test keeps equal. The app's mini.js never runs here: the panel puts the theme on this page with
+  view.js's applyTheme, as mini.js does in the app. Served straight from the sources (the static dev preview), the
+  copied files are missing, and the page says so in place of the card.
+-->
+<html lang="en" data-theme="nebula">
+<head>
+  <meta charset="utf-8">
+  <title>Mini-player preview</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Sans:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&family=Outfit:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,500..700;1,9..144,500&display=swap">
+  <link rel="stylesheet" href="mini-player/mini.css">
+  <link rel="stylesheet" href="mini-player/themes.css">
+  <style>
+    /* The sample song, part way through. */
+    #progressFill { width: 38%; }
+
+    /* The panel's Reduce motion switch: the panel sets data-reduce-motion on this page's <html> as on its own, and the
+       skins' animations stop as they do in the app under the system setting (mini.css). */
+    html[data-reduce-motion] *, html[data-reduce-motion] *::before, html[data-reduce-motion] *::after { animation: none !important; }
+
+    /* Without the copied files: a note in place of the card, readable without the app's stylesheets. */
+    .preview-note { display: none; }
+    html.preview-missing, html.preview-missing body { height: 100%; margin: 0; background: transparent; }
+    html.preview-missing .shell { display: none; }
+    html.preview-missing .preview-note {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      height: 100%;
+      margin: 0;
+      padding: 0 16px;
+      border: 1px dashed #7a7f9a;
+      border-radius: 16px;
+      background: #181b2e;
+      color: #eef0f6;
+      font: 500 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+  </style>
+  <script src="mini-player/view.js"></script>
+  <script>
+    if (!window.__cksMiniView) document.documentElement.classList.add('preview-missing');
+  </script>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <main class="mini" id="mini" data-tauri-drag-region>
+      <img class="bg-pic" id="bgPic" alt="" hidden>
+      <canvas class="bg-pic" id="bgFrame" hidden></canvas>
+      <div class="bg-dim" id="bgDim" hidden></div>
+      <div class="drop-hint" id="dropHint">Drop a Spotify playlist, album or song</div>
+      <div class="disc" id="disc" data-tauri-drag-region>
+        <img class="art" id="art" alt="" hidden>
+        <span class="spindle"></span>
+      </div>
+
+      <section class="info" data-tauri-drag-region>
+        <div class="title" id="title" data-tauri-drag-region>Song title</div>
+        <div class="meta" id="meta" data-tauri-drag-region>Artist name</div>
+
+        <div class="seek" id="seek"><div class="progress" id="progress"><div class="progress-fill" id="progressFill"></div></div></div>
+
+        <div class="controls">
+          <button type="button" id="restart" class="ctrl" title="Restart song" aria-label="Restart song">
+            <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>
+          </button>
+          <button type="button" id="toggle" class="ctrl primary" title="Pause" aria-label="Pause">
+            <svg viewBox="0 0 24 24" id="toggleIcon"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+          </button>
+          <button type="button" id="skip" class="ctrl" title="Skip" aria-label="Skip">
+            <svg viewBox="0 0 24 24"><path d="M4 5v14l10.5-7zM16 5h2v14h-2z"/></svg>
+          </button>
+          <button type="button" id="shuffleBtn" class="ctrl mode on" title="Shuffle: on" aria-label="Shuffle" aria-pressed="true">
+            <svg viewBox="0 0 24 24"><path d="M16 3h5v5l-1.8-1.8-3.5 3.5-1.4-1.4 3.5-3.5zM4 18.6 15.6 7 17 8.4 5.4 20zm10.3-3.3 1.4-1.4 3.5 3.5L21 16v5h-5l1.8-1.8zM4 5.4 5.4 4l5.3 5.3-1.4 1.4z"/></svg>
+          </button>
+          <button type="button" id="repeatBtn" class="ctrl mode" title="Repeat: off" aria-label="Repeat: off">
+            <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg>
+            <span class="mode-badge" id="repeatBadge"></span>
+          </button>
+          <input type="range" id="volume" class="volume" min="0" max="150" step="1" value="100" title="Volume" aria-label="Volume">
+          <button type="button" id="openPanel" class="open-panel" hidden>Open panel</button>
+        </div>
+
+        <div class="bottom-row">
+          <button type="button" id="spotifyBtn" class="icon-btn spotify" disabled title="Spotify isn't open" aria-label="Spotify isn't open">
+            <svg viewBox="0 0 24 24"><circle class="sp-disc" cx="12" cy="12" r="10.5"/><path class="sp-waves" d="M6.6 9.3c3.7-1.1 7.9-.8 11 1M7.3 12.4c3.1-.8 6.4-.5 9 .9M8 15.3c2.4-.6 4.9-.4 6.9.7"/></svg>
+          </button>
+          <button type="button" id="pasteBtn" class="icon-btn" title="Play link from clipboard" aria-label="Play link from clipboard">
+            <svg viewBox="0 0 24 24"><path d="M19 3h-4.2A3 3 0 0 0 12 1a3 3 0 0 0-2.8 2H5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm7 17H5V5h2v3h10V5h2z"/></svg>
+          </button>
+          <button type="button" id="lyricsBtn" class="icon-btn" title="Lyrics" aria-label="Lyrics" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z"/></svg>
+          </button>
+          <button type="button" id="queueBtn" class="icon-btn" title="Up next" aria-label="Up next" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M3 6h12v2H3zm0 5h12v2H3zm0 5h8v2H3zm14-5v6.2A3 3 0 1 0 19 20v-7h3v-2z"/></svg>
+          </button>
+          <button type="button" id="addBtn" class="icon-btn" title="Add to playlist" aria-label="Add to playlist" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>
+          </button>
+          <button type="button" id="likeBtn" class="icon-btn like" title="Like" aria-label="Like" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg>
+          </button>
+          <span class="sleep-badge" id="sleepBadge" hidden>☾</span>
+          <div class="status" id="status" role="status" aria-live="polite"></div>
+          <button type="button" id="menuBtn" class="icon-btn" title="Search and settings" aria-label="Search and settings" aria-pressed="false">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zM4 11h16v2H4zM4 16h16v2H4z"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <button type="button" class="compact-toggle" id="compactBtn" title="Compact mode" aria-label="Compact mode">
+        <svg viewBox="0 0 24 24" id="compactIcon"><path d="M4 14h16v2H4z"/></svg>
+      </button>
+      <button type="button" class="close" id="close" title="Hide mini-player" aria-label="Hide mini-player">
+        <svg viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z"/></svg>
+      </button>
+    </main>
+  </div>
+  <p class="preview-note">Preview needs the built bot</p>
+</body>
+</html>

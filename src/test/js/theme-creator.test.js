@@ -1290,8 +1290,6 @@ test('aHugeOrMultilineErrorBodyIsNotShownAsItIs', () => {
 
 // ---- step 5: the mini-player version
 
-const DESKTOP_CORE = require('../../../desktop/bridge/core.js');
-
 /* A theme with a picture chosen here (the file itself is the page's business). */
 function withPicture(state, dim) {
   return C.withNewPicture(state, dim === undefined ? 35 : dim);
@@ -1605,35 +1603,54 @@ test('fixItInTheMiniPlayerAlwaysEndsReadableAndLeavesAReadableOneAlone', () => {
   assert.equal(C.fixMini(fine), fine);
 });
 
-test('theMiniPlayerPreviewIsStyledByExactlyTheSixteenVariablesTheMiniPlayerTakes', () => {
-  assert.deepEqual(C.MINI_VARS, DESKTOP_CORE.THEME_VARS, 'the real mini-player copies these 16 and no others');
-  assert.equal(C.MINI_VARS.length, 16);
-  const s = C.makeMini(C.startState('ember'));
-  const vars = C.miniView(s).vars;
-  assert.deepEqual(Object.keys(vars).sort(), C.MINI_VARS.slice().sort());
-  const c = s.mini.colors;
-  assert.equal(vars['--bg-primary'], c.bgPrimary);
-  assert.equal(vars['--bg-card'], c.bgCard);
-  assert.equal(vars['--accent'], c.accent);
-  assert.equal(vars['--text-secondary'], c.textSecondary);
-  assert.equal(vars['--border'], c.border);
-  assert.equal(vars['--success'], c.success);
-  assert.equal(vars['--accent-glow'], P.cssVars(c)['--accent-glow']);
-  assert.equal(vars['--accent-gradient'], 'linear-gradient(135deg, ' + c.accent + ', ' + c.accent2 + ')');
-  assert.equal(vars['--font-family'], ThemeApply.fontStack(s.font));
-  for (const name of C.MINI_VARS) assert.equal(typeof vars[name], 'string', name);
-  // not the panel's extras: no glass, no r/g/b numbers
-  assert.equal('--glass' in vars, false);
-  assert.equal('--accent-r' in vars, false);
+test('theMiniPreviewThemeIsTheVersionAsTheDesktopAppGetsIt', () => {
+  // what the 0.7.0 app hands view.js applyTheme for a custom version (theme.rs into_ui): its base's skin, no live
+  // panel values, and the version: the theme's font, the mini-player's own 15 colors, its darkening, its pieces off
+  let s = C.setPiece(C.makeMini(C.startState('revival')), 'rays', false, PIECES);
+  s = C.setFont(C.setMiniMain(s, '#ff7a00'), 'Fraunces');
+  const v = C.buildValues(s);
+  const theme = C.miniPreviewTheme(s, PIECES);
+  assert.deepEqual(theme, {
+    id: 'revival',
+    vars: {},
+    custom: {
+      id: C.PREVIEW_ID, base: 'revival', font: 'Fraunces', colors: v.mini.colors, dim: v.mini.dim, picture: null,
+      decorationsOff: ['rays']
+    }
+  });
+  assert.equal(theme.custom.colors.accent, '#ff7a00', "the mini-player's own main color, not the theme's");
+  assert.notEqual(theme.custom.colors.accent, s.colors.accent);
+  assert.deepEqual(Object.keys(theme.custom.colors), P.MINI_SLOTS.slice(), 'the 15, with the extra decoration color');
+  // the app's own view.js takes it as a usable version
+  const MV = require('../../../desktop/ui/mini-player/view.js');
+  const vars = MV.customVars(theme.custom);
+  assert.ok(vars, 'usable');
+  assert.equal(vars['--accent'], '#ff7a00');
+  assert.equal(vars['--font-family'], MV.fontStack('Fraunces'));
+  assert.equal(vars['--deco-extra'], theme.custom.colors.decoExtra);
+  // an edit previews the same way; no version, nothing to preview
+  assert.equal(C.miniPreviewTheme(C.fromTheme(savedTheme(), PIECES), PIECES).custom.base, 'ember');
+  assert.equal(C.miniPreviewTheme(C.skipMini(s), PIECES), null);
 });
 
-test('theMiniPlayerPreviewWearsTheThemesFontAndItsOwnColors', () => {
-  let s = C.makeMini(C.startState('nebula'));
-  s = C.setFont(s, 'Fraunces');
-  assert.equal(C.miniView(s).vars['--font-family'], ThemeApply.fontStack('Fraunces'));
-  s = C.setMiniMain(s, '#ff7a00');
-  assert.equal(C.miniView(s).vars['--accent'], '#ff7a00');
-  assert.notEqual(C.miniView(s).vars['--accent'], s.colors.accent, "not the theme's main color");
+test('aMiniVersionUsingThePictureHasItsBasesBackgroundPiecesOffInThePreviewOnly', () => {
+  // as the app does (theme.rs into_ui): the base's background pieces go after the ones switched off, in the list's order
+  const s = C.setPiece(withPicture(C.startState('revival')), 'record', false, PIECES);
+  assert.equal(s.mini.useImage, true);
+  const before = JSON.stringify(s);
+  assert.deepEqual(C.miniPreviewTheme(s, PIECES).custom.decorationsOff, ['record', 'sunrise', 'rays']);
+  // the saved list stays as the person set it, and the state is left alone
+  assert.deepEqual(C.buildValues(s).decorationsOff, ['record']);
+  assert.equal(JSON.stringify(s), before);
+  // a version that doesn't use the picture keeps them
+  assert.deepEqual(C.miniPreviewTheme(C.setMiniPicture(s, false), PIECES).custom.decorationsOff, ['record']);
+  // a background piece switched off by hand is in the list once
+  const both = C.setPiece(s, 'rays', false, PIECES);
+  assert.deepEqual(C.miniPreviewTheme(both, PIECES).custom.decorationsOff, ['record', 'rays', 'sunrise']);
+  // without the pieces list nothing is known to be a background piece: the saved ids only (ThemeApply.decoOffFor)
+  assert.deepEqual(C.miniPreviewTheme(s, null).custom.decorationsOff, ['record']);
+  // the picture itself is the page's to show (the creator's link may be its local one, which view.js would not take)
+  assert.equal(C.miniPreviewTheme(s, PIECES).custom.picture, null);
 });
 
 test('everyStateTransitionLeavesTheOneItWasGivenAlone', () => {
@@ -1781,14 +1798,12 @@ test('theMiniPlayerStepIsBuiltByTcMiniStepAndIsNoLongerAPlaceholder', () => {
   }
 });
 
-test('theMiniPlayerPreviewGetsItsColorsOnItsOwnElementAndNeverOnThePage', () => {
-  const fn = /function tcMiniPreview\(\) \{([\s\S]*?)\n        \}\n/.exec(CREATOR_CODE);
-  assert.ok(fn, 'tcMiniPreview not found');
-  assert.match(fn[1], /el\.style\.setProperty\(name, vars\[name\]\)/);
+test('theMiniPlayerPreviewShowsOnlyTheCreatorsValidatedPicture', () => {
+  const fn = panelFunction('tcMiniPreview');
   assert.doesNotMatch(CREATOR_CODE, /documentElement\.style\.setProperty/);
   // the picture is the creator's validated one, and goes in as an <img>, never as CSS text
-  assert.match(CREATOR_CODE, /themeKit\.backdrop\(\{ url: src, dim: view\.dim/);
-  assert.match(CREATOR_CODE, /tcSetPicture\(pic, back\.url,/);
+  assert.match(fn, /themeKit\.backdrop\(\{ url: wanted\.src, dim: wanted\.view\.dim, blur: 0, fit: 'cover' \}, themeLocalPicture\)/);
+  assert.match(fn, /tcSetPicture\(pic, back\.url,/);
 });
 
 test('everyPictureTheCreatorShowsGoesThroughTheOneHelperThatHonoursReduceMotion', () => {
@@ -2000,49 +2015,15 @@ test('theCallerHearsWhenTheShownPictureHasLoadedOrFailed', () => {
   assert.deepEqual(told2, [false]);
 });
 
-test('theMiniPlayerPreviewStylesUseOnlyTheSixteenMiniVariables', () => {
-  const rules = [...INDEX.matchAll(/\n        (\.tc-minip[^{]*)\{([^}]*)\}/g)];
-  assert.ok(rules.length >= 8, 'preview rules not found: ' + rules.length);
-  const used = new Set();
-  for (const rule of rules) {
-    for (const m of rule[2].matchAll(/var\((--[a-z0-9-]+)/g)) used.add(m[1]);
-  }
-  assert.ok(used.size >= 8, [...used].join(' '));
-  // --on-accent is the mini-player's own extra (the play icon on the accent), not one of the 16 it copies from a theme
-  for (const name of used) {
-    assert.ok(C.MINI_VARS.includes(name) || name === '--on-accent', name + ' is not one of the mini-player variables');
-  }
-  // and it does not paint with the creator's or the page's other colors
-  for (const rule of rules) assert.doesNotMatch(rule[2], /--tc-|--glass|--accent2|--card-/, rule[1]);
-});
-
-test('theMiniPlayerPreviewPaintsItsIconsWithTheOnAccentColorNotWhite', () => {
-  function rule(selector) {
-    const at = INDEX.indexOf('\n        ' + selector + ' {');
-    assert.ok(at >= 0, selector + ' not found');
-    return INDEX.slice(at, INDEX.indexOf('}', at));
-  }
-  const art = rule('.tc-minip-art');
-  const play = rule('.tc-minip-ctrl.primary');
-  assert.match(art, /color:\s*var\(--on-accent\)/);
-  assert.match(play, /color:\s*var\(--on-accent\)/);
-  assert.doesNotMatch(art + play, /#fff\b|white/i, 'no hard-coded white on the accent');
-  // and the preview gives that variable to its own element, from the tested view
-  const fn = /function tcMiniPreview\(\) \{([\s\S]*?)\n        \}\n/.exec(CREATOR_CODE);
-  assert.ok(fn, 'tcMiniPreview not found');
-  assert.match(fn[1], /el\.style\.setProperty\('--on-accent', view\.onAccent\)/);
-});
-
-test('theMiniPlayerPreviewDerivesTheColorOnTheAccentFromTheMiniPlayersMainColor', () => {
-  let s = C.makeMini(C.startState('nebula'));
-  assert.equal(C.miniView(s).onAccent, P.onAccent(s.mini.colors.accent));
-  s = C.setMiniMain(s, '#fff200');
-  assert.equal(C.miniView(s).onAccent, '#000000', 'dark icons on a light main color');
-  s = C.setMiniMain(s, '#101a5c');
-  assert.equal(C.miniView(s).onAccent, '#ffffff', 'white icons on a dark main color');
-  assert.equal(C.miniView(s).onAccent, P.onAccent(s.mini.colors.accent));
-  // it is not one of the 16 variables a theme gives the mini-player
-  assert.equal('--on-accent' in C.miniView(s).vars, false);
+test('theHandMadeMiniPlayerMockIsGone', () => {
+  // the preview is the app's own card now (creator-mini-preview.test.js): no look of its own in the panel's stylesheet
+  assert.doesNotMatch(INDEX, /\.tc-minip-(?:art|info|title|meta|bar|fill|controls|ctrl|pic|dim)\b/);
+  assert.doesNotMatch(CREATOR_CODE, /TC_MINI_ICONS|function tcIcon\(/);
+  // and what only the mock used is gone from the module
+  const view = C.miniView(C.makeMini(C.startState('nebula')));
+  assert.equal('vars' in view, false);
+  assert.equal('onAccent' in view, false);
+  assert.equal('MINI_VARS' in C, false);
 });
 
 test('theCreatorPreviewsThroughTheSameFunctionThatAppliesSavedThemes', () => {

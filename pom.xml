@@ -190,6 +190,17 @@
           </includes>
           <targetPath>META-INF</targetPath>
         </resource>
+        <!-- The desktop mini-player's own look and theme code, served at /web/mini-player/ for the theme creator's
+             mini-player preview (web/mini-preview.html). desktop/ui/mini-player stays the only copy in the sources. -->
+        <resource>
+          <directory>desktop/ui/mini-player</directory>
+          <includes>
+            <include>mini.css</include>
+            <include>themes.css</include>
+            <include>view.js</include>
+          </includes>
+          <targetPath>web/mini-player</targetPath>
+        </resource>
       </resources>
       <plugins>
         <plugin>

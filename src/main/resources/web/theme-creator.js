@@ -826,11 +826,6 @@
 
     /* ---- step 5: the mini-player version ---- */
 
-    /* The 16 variables the desktop mini-player takes from a theme (desktop/bridge/core.js THEME_VARS; a test keeps them equal). */
-    var MINI_VARS = Object.freeze(['--bg-primary', '--bg-secondary', '--bg-card', '--bg-elevated', '--bg-hover', '--accent',
-        '--accent-light', '--accent-glow', '--accent-gradient', '--text-primary', '--text-secondary', '--text-tertiary',
-        '--border', '--border-light', '--success', '--font-family']);
-
     function sameColors(a, b) {
         return palette.MINI_SLOTS.every(function (slot) { return !!a && !!b && a[slot] === b[slot]; });
     }
@@ -919,15 +914,6 @@
         return state.mini ? withMini(state, { dim: clampInt(dim, 0, 90, state.mini.dim) }) : state;
     }
 
-    /* The 16 variables for the preview, from the mini-player's colors and the theme's font. */
-    function miniVars(state) {
-        var all = palette.cssVars(state.mini.colors);
-        var vars = {};
-        MINI_VARS.forEach(function (name) { vars[name] = all[name]; });
-        vars['--font-family'] = apply.fontStack(state.font) || apply.fontStack('Inter');
-        return vars;
-    }
-
     /* Everything the step shows about the mini-player version, or {made: false} when there is none. */
     function miniView(state) {
         if (!state.mini) return { made: false };
@@ -941,10 +927,34 @@
             report: report(colors),
             hasPicture: picture,
             useImage: state.mini.useImage === true && picture,
-            dim: clampInt(state.mini.dim, 0, 90, DEFAULT_DIM),
-            vars: miniVars(state),
-            /* The mini-player's own --on-accent: the play icon's color on the main color (dark on light, white on dark). */
-            onAccent: palette.onAccent(colors.accent)
+            dim: clampInt(state.mini.dim, 0, 90, DEFAULT_DIM)
+        };
+    }
+
+    /*
+     * The mini-player version for the step's preview, in the shape the desktop app (0.7.0) gives its view.js applyTheme
+     * once the theme is saved (theme.rs into_ui): {id: the starting theme, vars: {}, custom: {id, base, font, colors (the
+     * 15), dim, picture, decorationsOff}}; null when there is no version. As in the app, a version that uses the picture
+     * has the starting theme's background pieces off too (ThemeApply.decoOffFor, the rule the page uses); what is saved
+     * keeps the person's own list. The picture itself is the page's to show (its link may be the creator's local one,
+     * which view.js does not take), so picture is null. The id is the preview's own, as on the page.
+     */
+    function miniPreviewTheme(state, pieces) {
+        if (!state.mini) return null;
+        var values = buildValues(state);
+        var off = apply.decoOffFor({ base: values.base, decorationsOff: values.decorationsOff }, values.mini.useImage, pieces);
+        return {
+            id: values.base,
+            vars: {},
+            custom: {
+                id: PREVIEW_ID,
+                base: values.base,
+                font: values.font,
+                colors: values.mini.colors,
+                dim: values.mini.dim,
+                picture: null,
+                decorationsOff: off ? off.split(' ') : []
+            }
         };
     }
 
@@ -1154,7 +1164,6 @@
         withNewPicture: withNewPicture,
         withoutPicture: withoutPicture,
         setPictureLook: setPictureLook,
-        MINI_VARS: MINI_VARS,
         makeMini: makeMini,
         skipMini: skipMini,
         miniFollows: miniFollows,
@@ -1165,6 +1174,7 @@
         setMiniPicture: setMiniPicture,
         setMiniDim: setMiniDim,
         miniView: miniView,
+        miniPreviewTheme: miniPreviewTheme,
         averageBrightness: averageBrightness,
         suggestedDim: suggestedDim,
         sniffPicture: sniffPicture,

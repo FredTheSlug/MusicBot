@@ -6235,97 +6235,19 @@
         .tc-pieces .tc-switch { margin-top: 8px; padding: 10px 12px; }
 
         /*
-         * step 5: the mini-player. The preview is drawn like the real one (desktop/ui/mini-player/mini.css) from the
-         * mini-player's own 16 variables, which are set on .tc-minip itself; nothing here reads the page's colors or
-         * the creator's, so what it shows is what the mini-player will look like.
+         * step 5: the mini-player. The preview is the desktop app's own card in a frame (web/mini-preview.html, see
+         * tcMiniPreview), at the app's size: its window is 360 px wide and the card 170 px tall. Nothing of the
+         * mini-player's look is here: its stylesheets are only ever loaded in the frame's page.
          */
         .tc-stage { position: sticky; top: 0; z-index: 1; padding: 8px 0 10px; background: var(--tc-bg); }
         .tc-minip {
-            position: relative;
-            display: flex;
-            align-items: center;
-            gap: 14px;
             width: 100%;
             max-width: 360px;
+            height: 170px;
             margin: 0 auto;
-            padding: 12px 14px;
-            overflow: hidden;
-            isolation: isolate;
-            border: 1px solid var(--border-light);
-            border-radius: 16px;
-            background: var(--bg-card);
-            color: var(--text-primary);
-            font-family: var(--font-family);
-            font-size: 16px;
-            line-height: 1.25;
-            user-select: none;
         }
-        .tc-minip::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            z-index: -1;
-            background: radial-gradient(ellipse 60% 80% at 100% 0%, var(--accent-glow), transparent 70%);
-        }
-        .tc-minip-pic { position: absolute; inset: 0; z-index: -3; width: 100%; height: 100%; object-fit: cover; }
-        .tc-minip-dim { position: absolute; inset: 0; z-index: -2; }
-        .tc-minip-art {
-            display: flex;
-            flex: 0 0 76px;
-            align-items: center;
-            justify-content: center;
-            width: 76px;
-            height: 76px;
-            border-radius: 10px;
-            background: var(--accent-gradient);
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-            color: var(--on-accent);
-        }
-        .tc-minip-art svg { width: 32px; height: 32px; fill: currentColor; opacity: 0.85; }
-        .tc-minip-info { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; padding-right: 4px; }
-        .tc-minip-title {
-            overflow: hidden;
-            font-weight: 600;
-            letter-spacing: -0.01em;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: var(--text-primary);
-        }
-        .tc-minip-meta { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; color: var(--accent-light); }
-        .tc-minip-bar {
-            height: 4px;
-            margin: 4px 0 6px;
-            border-radius: 4px;
-            background: var(--border-light);
-            background: color-mix(in srgb, var(--accent) 18%, transparent);
-            overflow: hidden;
-        }
-        .tc-minip-fill { width: 38%; height: 100%; background: var(--accent-gradient); box-shadow: 0 0 10px var(--accent-glow); }
-        .tc-minip-controls { display: flex; align-items: center; gap: 5px; }
-        .tc-minip-ctrl {
-            display: inline-flex;
-            flex: 0 0 auto;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            border: 1px solid var(--border-light);
-            border-radius: 50%;
-            background: var(--bg-elevated);
-            color: var(--text-primary);
-        }
-        .tc-minip-ctrl svg { width: 14px; height: 14px; fill: currentColor; }
-        .tc-minip-ctrl.primary {
-            width: 32px;
-            height: 32px;
-            border-color: transparent;
-            background: var(--accent-gradient);
-            box-shadow: 0 4px 14px var(--accent-glow);
-            color: var(--on-accent);
-        }
-        .tc-minip-ctrl.mode { width: 24px; height: 24px; border-color: transparent; background: transparent; color: var(--text-tertiary); }
-        .tc-minip-ctrl.mode svg { width: 13px; height: 13px; }
-        .tc-minip-ctrl.on { background: var(--accent-glow); color: var(--accent-light); }
+        .tc-minip-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+        .tc-minip.loading .tc-minip-frame { visibility: hidden; }
         .tc-link {
             padding: 0;
             border: none;
@@ -7270,6 +7192,7 @@
                 fileProblem: '',
                 pictureSeq: 0,
                 previewTimer: 0,
+                miniPreview: null,     // step 5's mini-player preview (tcMiniPreview), made the first time it is shown
                 inerted: [],
                 returnFocus: opts && opts.returnFocus ? opts.returnFocus : document.activeElement,
                 refresh: function () {}
@@ -8032,82 +7955,85 @@
 
         // ---- step 5: the mini-player ----
 
-        // The icons of the real mini-player (desktop/ui/mini-player/index.html), as paths in a 24 x 24 box.
-        var TC_MINI_ICONS = {
-            note: 'M12 3v10.55A4 4 0 1 0 14 17V7h4V3z',
-            restart: 'M6 5h2v14H6zM20 5v14L9.5 12z',
-            play: 'M8 5v14l11-7z',
-            skip: 'M4 5v14l10.5-7zM16 5h2v14h-2z',
-            shuffle: 'M16 3h5v5l-1.8-1.8-3.5 3.5-1.4-1.4 3.5-3.5zM4 18.6 15.6 7 17 8.4 5.4 20zm10.3-3.3 1.4-1.4 3.5 3.5L21 16v5h-5l1.8-1.8zM4 5.4 5.4 4l5.3 5.3-1.4 1.4z',
-            repeat: 'M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z'
-        };
+        // The page the mini-player preview shows (see tcMiniPreview).
+        var TC_MINI_PREVIEW_PAGE = '/web/mini-preview.html';
 
-        // One of the icons above (fixed text, never anything from the person or the server).
-        function tcIcon(name) {
-            var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('viewBox', '0 0 24 24');
-            var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', TC_MINI_ICONS[name]);
-            svg.appendChild(path);
-            return svg;
-        }
-
-        // A small mini-player drawn the way the real one is (artwork, song, artist, progress, buttons). Its colors are the
-        // mini-player's 16 variables, set on this element only: the page behind keeps showing the panel's theme.
-        // update(view, src): view is ThemeCreator.miniView(); src the link of the theme's picture ('' for none), which only
-        // shows when the mini-player is set to use it (an <img>, so a picture that does not load just isn't there).
+        // The mini-player preview: the desktop app's own card, as the app (0.7.0) will show this theme's mini-player
+        // version. web/mini-preview.html is the app's card with a sample song, drawn by the app's own stylesheets, with the
+        // app's own view.js (desktop/ui/mini-player, copied into the bot's web/mini-player/ when it is built). It is a page
+        // of its own in a frame: the app's skins are written for html[data-theme=...] and can't reach this page's <html>.
+        // update(theme, view, src) does what the app's mini.js does with a theme: view.js applyTheme on the frame's <html>
+        // (the starting theme's skin, the version's colors, its pieces off), then the picture behind the card; and the
+        // frame follows the panel's Reduce motion. theme is ThemeCreator.miniPreviewTheme(), view ThemeCreator.miniView(),
+        // src the link of the theme's picture ('' for none), shown while the version uses it.
+        // Made once per creator (s.miniPreview) and mount()ed in step 5 each time the step is drawn. A frame put back in a
+        // page loads its page again, so it stays hidden until it has, and the last update goes on the new page.
         function tcMiniPreview() {
-            var el = plEl('div', 'tc-minip');
-            el.setAttribute('role', 'img');
-            el.setAttribute('aria-label', 'A preview of the mini-player');
-            var pic = plEl('img', 'tc-minip-pic');
-            pic.alt = '';
-            pic.hidden = true;
-            var dim = plEl('div', 'tc-minip-dim');
-            dim.hidden = true;
-            el.appendChild(pic);
-            el.appendChild(dim);
+            var box = plEl('div', 'tc-minip loading');
+            box.setAttribute('role', 'img');
+            box.setAttribute('aria-label', 'A preview of the mini-player');
+            var frame = plEl('iframe', 'tc-minip-frame');
+            frame.title = 'Mini-player preview';
+            frame.tabIndex = -1;
+            frame.inert = true; // a picture of the player: its buttons take no clicks and no focus
+            frame.src = TC_MINI_PREVIEW_PAGE;
+            box.appendChild(frame);
 
-            var art = plEl('div', 'tc-minip-art');
-            art.appendChild(tcIcon('note'));
-            el.appendChild(art);
-            var info = plEl('div', 'tc-minip-info');
-            info.appendChild(plEl('div', 'tc-minip-title', 'Song title'));
-            info.appendChild(plEl('div', 'tc-minip-meta', 'Artist name'));
-            var bar = plEl('div', 'tc-minip-bar');
-            bar.appendChild(plEl('div', 'tc-minip-fill'));
-            info.appendChild(bar);
-            var controls = plEl('div', 'tc-minip-controls');
-            [['restart', ''], ['play', ' primary'], ['skip', ''], ['shuffle', ' mode on'], ['repeat', ' mode']].forEach(function (c) {
-                var b = plEl('span', 'tc-minip-ctrl' + c[1]);
-                b.appendChild(tcIcon(c[0]));
-                controls.appendChild(b);
+            var page = null;   // the frame's page once loaded: {doc, view (its view.js), names, back, pictureOk}
+            var wanted = null; // the last update: {theme, view, src}
+
+            frame.addEventListener('load', function () {
+                var win = frame.contentWindow;
+                var doc = frame.contentDocument;
+                // Without the bot's copies of the mini-player's files (a page served from the sources) there is no view.js:
+                // the page then shows a note in place of the card by itself, and is left as it is.
+                page = win && doc && win.__cksMiniView ? { doc: doc, view: win.__cksMiniView, names: [], back: null, pictureOk: false } : null;
+                draw();
+                box.classList.remove('loading');
             });
-            info.appendChild(controls);
-            el.appendChild(info);
 
-            var back = null;      // what ThemeApply.backdrop made of the picture, or null
-            var loaded = false;   // the picture in the <img> has loaded (and is not one that failed)
             function draw() {
-                var on = !!back && loaded;
-                pic.hidden = !on;
-                dim.hidden = !on;
+                if (!page || !wanted) return;
+                var root = page.doc.documentElement;
+                page.names = page.view.applyTheme(root, wanted.theme, page.names);
+                root.toggleAttribute('data-reduce-motion', readReduceMotion());
+                drawPicture(page);
+            }
+
+            // The picture behind the card under the version's darkening, as the app shows it: only once it has loaded. It
+            // is the creator's own link (view.js only takes the bot's), shown through tcSetPicture like the creator's other
+            // pictures, so Reduce motion shows the first frame of one that can move.
+            function drawPicture(p) {
+                var pic = p.doc.getElementById('bgPic');
+                var dim = p.doc.getElementById('bgDim');
+                if (!pic || !dim) return;
+                function show() {
+                    var on = !!p.back && p.pictureOk;
+                    pic.hidden = !on;
+                    dim.hidden = !on;
+                }
+                var back = wanted.view.useImage && wanted.src
+                    ? themeKit.backdrop({ url: wanted.src, dim: wanted.view.dim, blur: 0, fit: 'cover' }, themeLocalPicture) : null;
+                p.back = back;
+                if (back) {
+                    dim.style.setProperty('background-color', back.overlay);
+                    tcSetPicture(pic, back.url, function (ok) {
+                        p.pictureOk = ok;
+                        show();
+                    });
+                }
+                show();
             }
 
             return {
-                el: el,
-                update: function (view, src) {
-                    var vars = view.vars;
-                    Object.keys(vars).forEach(function (name) { el.style.setProperty(name, vars[name]); });
-                    el.style.setProperty('--on-accent', view.onAccent);
-                    back = view.useImage && src ? themeKit.backdrop({ url: src, dim: view.dim, blur: 0, fit: 'cover' }, themeLocalPicture) : null;
-                    if (back) {
-                        dim.style.setProperty('background-color', back.overlay);
-                        tcSetPicture(pic, back.url, function (ok) {
-                            loaded = ok;
-                            draw();
-                        });
-                    }
+                el: box,
+                mount: function (parent) {
+                    page = null;
+                    box.classList.add('loading');
+                    parent.appendChild(box);
+                },
+                update: function (theme, view, src) {
+                    wanted = { theme: theme, view: view, src: src };
                     draw();
                 }
             };
@@ -8180,9 +8106,9 @@
             host.appendChild(list);
 
             var made = plEl('div');
-            var preview = tcMiniPreview();
+            var preview = s.miniPreview || (s.miniPreview = tcMiniPreview());
             var stage = plEl('div', 'tc-stage');
-            stage.appendChild(preview.el);
+            preview.mount(stage);
             made.appendChild(stage);
             var status = tcMiniStatus(s);
             made.appendChild(status.el);
@@ -8236,7 +8162,7 @@
                 choices.forEach(function (c) { tcPress(c.el, c.make === view.made); });
                 made.hidden = !view.made;
                 if (!view.made) return;
-                preview.update(view, tcPictureSrc(s));
+                preview.update(TC.miniPreviewTheme(s.state, themePieces), view, tcPictureSrc(s));
                 status.update(view);
                 mainInput.value = view.main;
                 pageInput.value = view.page;
