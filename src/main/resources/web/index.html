@@ -8608,8 +8608,23 @@
             return themePiecesLoading;
         }
 
-        // Fetches /api/themes (and the pieces list alongside, so a theme is applied with its pieces). A failed or
-        // unauthorized answer changes nothing; the newest request wins.
+        // Waits for the pieces list's request (loadThemePieces) to settle, but 3 s at most: a fetch has no time limit
+        // of its own, and the custom themes mustn't stay on their base theme for it. Resolves true when it settled
+        // (with the list or without), false when the wait ran out.
+        function waitForThemePieces(pieces) {
+            var timer = null;
+            var waited = new Promise(function (resolve) {
+                timer = setTimeout(function () { resolve(false); }, 3000);
+            });
+            return Promise.race([pieces.then(function () { return true; }), waited]).then(function (settled) {
+                clearTimeout(timer);
+                return settled;
+            });
+        }
+
+        // Fetches /api/themes (and the pieces list alongside, so a theme is applied with its pieces; a pieces list that
+        // takes longer than a moment comes after, and the theme is applied anew then). A failed or unauthorized answer
+        // changes nothing; the newest request wins.
         async function loadCustomThemes() {
             if (!themeKit) return;
             var seq = ++themeLoadSeq;
@@ -8623,7 +8638,7 @@
             } catch (e) {
                 return;
             }
-            await pieces;
+            var piecesSettled = await waitForThemePieces(pieces);
             if (seq !== themeLoadSeq || !data || !Array.isArray(data.themes)) return;
             // a theme applied while the pieces list was missing is applied again with it
             if (!hadPieces && themePieces) customThemes.activeJson = '';
@@ -8637,6 +8652,8 @@
             });
             rebuildThemePicker();
             reconcileThemeChoice();
+            // the pieces list is still on its way: the theme is applied anew when it comes (the same request)
+            if (!piecesSettled) retryThemePieces();
         }
 
         // The pieces list failed while the list of themes came in: asked for again with each poll until it is here, and

@@ -288,6 +288,98 @@ test('withoutThePiecesListACustomThemeKeepsItsSavedPiecesOff', () => {
   assert.equal(page.root.hasAttribute('data-custom-picture'), true, 'the ambient glow still goes under the picture');
 });
 
+/* Timers the test runs by hand: { fn, ms, cleared } each. */
+function handTimers() {
+  const timers = [];
+  return {
+    timers: timers,
+    setTimeout: (fn, ms) => timers.push({ fn: fn, ms: ms, cleared: false }),
+    clearTimeout: (id) => {
+      if (timers[id - 1]) timers[id - 1].cleared = true;
+    }
+  };
+}
+
+/* Lets the page's promises run. */
+async function settle() {
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
+/* The panel's custom-theme loading, run against a fake page; fetch answers the pieces list. */
+function themesPage(theme, fetch, timers) {
+  const root = fakeHtml();
+  const context = vm.createContext({
+    Promise: Promise,
+    JSON: JSON,
+    document: { documentElement: root },
+    window: { ThemePalette: require('../../main/resources/web/theme-palette.js') },
+    themeKit: require('../../main/resources/web/theme-apply.js'),
+    themePieces: null,
+    themePiecesLoading: null,
+    themeLocalPicture: null,
+    themeLoadSeq: 0,
+    themeChoice: 'custom:' + theme.id,
+    themeActedOn: '',
+    customApplied: [],
+    customThemes: { list: null, me: null, limit: null, hidden: [], activeId: '', activeName: '', activeJson: '' },
+    themeShown: 'revival',
+    themeBase: 'revival',
+    fetch: fetch,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+    authFetch: () => Promise.resolve({ ok: true }),
+    readApiJson: () => Promise.resolve({ themes: [theme], me: { id: '1', isOwner: false }, limit: { max: 10, used: 1 } }),
+    getComputedStyle: () => ({ getPropertyValue: () => '12px' }),
+    setThemeBackdrop: () => {},
+    rebuildThemePicker: () => {},
+    syncThemePicker: () => {},
+    storeThemeChoice: () => {},
+    readStoredThemeBase: () => 'revival',
+    themeCreatorHoldsPage: () => false,
+    themeCreator: null,
+    plToast: () => {}
+  });
+  ['setBaseThemeAttribute', 'setCustomProperty', 'clearCustomTheme', 'applyCustomTheme', 'applyThemeChoice',
+    'reconcileThemeChoice', 'loadThemePieces', 'retryThemePieces', 'waitForThemePieces'].forEach((name) => {
+    vm.runInContext(panelFunction(name), context);
+  });
+  vm.runInContext('async ' + panelFunction('loadCustomThemes'), context);
+  return { root: root, context: context, load: () => vm.runInContext('loadCustomThemes()', context) };
+}
+
+test('aPiecesListThatHangsDoesNotHoldUpTheCustomThemes', async () => {
+  // theme-pieces.json never answers (a fetch has no time limit): after a short wait the list of custom themes is applied
+  // without it, the picture theme with its saved pieces off; when the pieces list comes after all, the theme is
+  // applied anew with it, so the picture's background pieces go
+  const theme = customTheme({ background: { url: PICTURE, dim: 40, blur: 0, fit: 'cover' } });
+  let answer = null;
+  const hand = handTimers();
+  const page = themesPage(theme, () => new Promise((resolve) => { answer = resolve; }), hand);
+  const loading = page.load();
+  await settle();
+  assert.equal(hand.timers.length, 1, 'a wait for the pieces list');
+  assert.ok(hand.timers[0].ms >= 1000 && hand.timers[0].ms <= 5000, 'a short one: ' + hand.timers[0].ms + ' ms');
+  assert.equal(page.root.getAttribute('data-custom-theme'), null, 'the list waits for the pieces a moment');
+  hand.timers[0].fn();
+  await loading;
+  assert.equal(page.root.getAttribute('data-custom-theme'), theme.id, 'then it is applied without them');
+  assert.equal(page.root.getAttribute('data-deco-off'), 'rays record', 'the saved pieces only');
+  assert.equal(page.context.themePieces, null);
+  // the late answer
+  answer({ ok: true, json: () => Promise.resolve(PIECES) });
+  await settle();
+  assert.deepEqual(page.context.themePieces, PIECES);
+  assert.equal(page.root.getAttribute('data-deco-off'), 'rays record sunrise', 'applied anew with the pieces list');
+
+  // a list that answers in time is waited for, and the wait ends with it
+  const quick = handTimers();
+  const inTime = themesPage(theme, () => Promise.resolve({ ok: true, json: () => Promise.resolve(PIECES) }), quick);
+  await inTime.load();
+  assert.equal(inTime.root.getAttribute('data-deco-off'), 'rays record sunrise', 'applied with its pieces the first time');
+  assert.equal(quick.timers.length, 1);
+  assert.equal(quick.timers[0].cleared, true, 'no wait left running');
+});
+
 test('aPiecesListThatFailedIsAskedForAgainByThePollAndThenApplied', async () => {
   // /api/themes answers but theme-pieces.json does not: the picture theme shows with only its saved pieces off. The
   // next poll asks for the list again and applies the theme anew with it, so the background pieces go.
@@ -296,7 +388,10 @@ test('aPiecesListThatFailedIsAskedForAgainByThePollAndThenApplied', async () => 
     () => Promise.resolve({ ok: true, json: () => Promise.resolve(PIECES) })];
   const asked = [];
   const theme = customTheme({ background: { url: PICTURE, dim: 40, blur: 0, fit: 'cover' } });
+  const hand = handTimers();
   const context = vm.createContext({
+    setTimeout: hand.setTimeout,
+    clearTimeout: hand.clearTimeout,
     Promise: Promise,
     JSON: JSON,
     document: { documentElement: root },
@@ -326,7 +421,7 @@ test('aPiecesListThatFailedIsAskedForAgainByThePollAndThenApplied', async () => 
     plToast: () => {}
   });
   ['setBaseThemeAttribute', 'setCustomProperty', 'clearCustomTheme', 'applyCustomTheme', 'applyThemeChoice',
-    'reconcileThemeChoice', 'loadThemePieces', 'retryThemePieces'].forEach((name) => {
+    'reconcileThemeChoice', 'loadThemePieces', 'retryThemePieces', 'waitForThemePieces'].forEach((name) => {
     vm.runInContext(panelFunction(name), context);
   });
   assert.match(PANEL, /async function loadCustomThemes\(/);
@@ -374,5 +469,6 @@ test('thePanelLoadsThePiecesListOnceAndAgainAfterAFailure', async () => {
   // the list of custom themes waits for it, so a theme is first applied with its pieces
   const load = panelFunction('loadCustomThemes');
   assert.match(load, /loadThemePieces\(\)/);
-  assert.ok(load.indexOf('await pieces') < load.indexOf('customThemes.list ='), 'pieces before the list is used');
+  const wait = load.indexOf('await waitForThemePieces(pieces)');
+  assert.ok(wait >= 0 && wait < load.indexOf('customThemes.list ='), 'pieces (or a short wait for them) before the list is used');
 });
