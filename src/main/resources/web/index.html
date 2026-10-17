@@ -8577,6 +8577,17 @@
             reconcileThemeChoice();
         }
 
+        // The pieces list failed while the list of themes came in: asked for again with each poll until it is here, and
+        // then the theme on show is applied anew with it (so a picture's background pieces go).
+        function retryThemePieces() {
+            if (!themeKit || themePieces || customThemes.list === null) return Promise.resolve();
+            return loadThemePieces().then(function (pieces) {
+                if (!pieces) return;
+                customThemes.activeJson = '';
+                reconcileThemeChoice();
+            });
+        }
+
         // After a refresh: apply a custom choice that was waiting for the list, or one that changed meanwhile; fall
         // back to the base theme when the one in use was deleted, hidden or made private.
         function reconcileThemeChoice() {
@@ -9807,6 +9818,7 @@
                 ensureWebSocket();
                 wnStart();
                 if (customThemes.list === null) loadCustomThemes(); // the first load failed: try again with the next poll
+                else retryThemePieces(); // the same for the pieces list
             } catch(e) {
                 if (e.message === 'unauthorized') {
                     authRequired = true;

@@ -104,4 +104,16 @@ public class ThemePiecesTest
         assertThrows(IllegalStateException.class, () -> ThemePieces.parse("not json"));
         assertThrows(IllegalStateException.class, () -> ThemePieces.parse(null));
     }
+
+    @Test
+    public void aMissingOrBrokenListFailsWithIllegalStateExceptionEveryTime()
+    {
+        // not an error from class loading (ExceptionInInitializerError, then NoClassDefFoundError): the documented exception, each time
+        for(int i = 0; i < 2; i++)
+        {
+            assertThrows(IllegalStateException.class, () -> ThemePieces.load("/web/no-such-pieces-list.json"));
+            assertThrows(IllegalStateException.class, () -> ThemePieces.load("/web/index.html"));
+        }
+        assertEquals(ThemePieces.ids("ember"), ThemePieces.load("/web/theme-pieces.json").get("ember").ids);
+    }
 }

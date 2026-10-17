@@ -251,6 +251,64 @@ test('withoutThePiecesListACustomThemeKeepsItsSavedPiecesOff', () => {
   assert.equal(page.root.hasAttribute('data-custom-picture'), true, 'the ambient glow still goes under the picture');
 });
 
+test('aPiecesListThatFailedIsAskedForAgainByThePollAndThenApplied', async () => {
+  // /api/themes answers but theme-pieces.json does not: the picture theme shows with only its saved pieces off. The
+  // next poll asks for the list again and applies the theme anew with it, so the background pieces go.
+  const root = fakeHtml();
+  const piecesAnswers = [() => Promise.reject(new Error('offline')),
+    () => Promise.resolve({ ok: true, json: () => Promise.resolve(PIECES) })];
+  const asked = [];
+  const theme = customTheme({ background: { url: PICTURE, dim: 40, blur: 0, fit: 'cover' } });
+  const context = vm.createContext({
+    Promise: Promise,
+    JSON: JSON,
+    document: { documentElement: root },
+    window: { ThemePalette: require('../../main/resources/web/theme-palette.js') },
+    themeKit: require('../../main/resources/web/theme-apply.js'),
+    themePieces: null,
+    themePiecesLoading: null,
+    themeLocalPicture: null,
+    themeLoadSeq: 0,
+    themeChoice: 'custom:' + theme.id,
+    themeActedOn: '',
+    customApplied: [],
+    customThemes: { list: null, me: null, limit: null, hidden: [], activeId: '', activeName: '', activeJson: '' },
+    themeShown: 'revival',
+    themeBase: 'revival',
+    fetch: (url) => { asked.push(url); return piecesAnswers.shift()(); },
+    authFetch: () => Promise.resolve({ ok: true }),
+    readApiJson: () => Promise.resolve({ themes: [theme], me: { id: '1', isOwner: false }, limit: { max: 10, used: 1 } }),
+    getComputedStyle: () => ({ getPropertyValue: () => '12px' }),
+    setThemeBackdrop: () => {},
+    rebuildThemePicker: () => {},
+    syncThemePicker: () => {},
+    storeThemeChoice: () => {},
+    readStoredThemeBase: () => 'revival',
+    themeCreatorHoldsPage: () => false,
+    plToast: () => {}
+  });
+  ['setBaseThemeAttribute', 'setCustomProperty', 'clearCustomTheme', 'applyCustomTheme', 'applyThemeChoice',
+    'reconcileThemeChoice', 'loadThemePieces', 'retryThemePieces'].forEach((name) => {
+    vm.runInContext(panelFunction(name), context);
+  });
+  assert.match(PANEL, /async function loadCustomThemes\(/);
+  vm.runInContext('async ' + panelFunction('loadCustomThemes'), context);
+  await vm.runInContext('loadCustomThemes()', context);
+  assert.equal(root.getAttribute('data-custom-theme'), theme.id);
+  assert.equal(root.getAttribute('data-deco-off'), 'rays record', 'the list failed: the saved pieces only');
+  assert.equal(context.themePieces, null);
+
+  await vm.runInContext('retryThemePieces()', context);
+  assert.deepEqual(asked, ['/web/theme-pieces.json', '/web/theme-pieces.json']);
+  assert.equal(root.getAttribute('data-deco-off'), 'rays record sunrise', 'the picture now has the background pieces off');
+
+  // once the list is here, the poll asks for nothing more
+  await vm.runInContext('retryThemePieces()', context);
+  assert.equal(asked.length, 2);
+  // and the poll is what calls it, while the list of themes is in but the pieces list is not
+  assert.match(panelFunction('loadGuilds'), /retryThemePieces\(\)/);
+});
+
 test('thePanelLoadsThePiecesListOnceAndAgainAfterAFailure', async () => {
   const answers = [() => Promise.reject(new Error('offline')), () => Promise.resolve({ ok: false }),
     () => Promise.resolve({ ok: true, json: () => Promise.resolve(PIECES) })];

@@ -17,7 +17,6 @@ package com.jagrosh.jmusicbot.theme;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,14 +32,17 @@ import org.json.JSONObject;
 /**
  * The decoration pieces of every built-in theme and its extra decoration color, from {@code /web/theme-pieces.json}
  * (the one list the panel, the creator and the mini-player read too): {@code { "<theme>": { "decoExtra": "#rrggbb",
- * "pieces": [ { "id", "label", "background" } ] } }}. Read once from the classpath; a list that is missing or broken
- * stops the first use with an {@link IllegalStateException}.
+ * "pieces": [ { "id", "label", "background" } ] } }}. Read from the classpath on first use and kept; a list that is
+ * missing or broken makes every use throw an {@link IllegalStateException} (it is read again each time, not kept).
  */
 public final class ThemePieces
 {
     private static final String RESOURCE = "/web/theme-pieces.json";
     private static final Pattern ID = Pattern.compile("[a-z0-9]+(-[a-z0-9]+)*");
     private static final Pattern COLOR = Pattern.compile("#[0-9a-f]{6}");
+
+    /** The list once it has been read; null before. */
+    private static volatile Map<String, Base> all;
 
     private ThemePieces()
     {
@@ -60,10 +62,35 @@ public final class ThemePieces
 
     private static Base of(String base)
     {
-        Base found = base == null ? null : Holder.ALL.get(base);
+        Map<String, Base> list = all;
+        if(list == null)
+        {
+            synchronized(ThemePieces.class)
+            {
+                if(all == null)
+                    all = load(RESOURCE);
+                list = all;
+            }
+        }
+        Base found = base == null ? null : list.get(base);
         if(found == null)
             throw new IllegalArgumentException("Not a built-in theme");
         return found;
+    }
+
+    /** The list in a classpath resource, read and checked; {@link IllegalStateException} when it is missing, unreadable or broken. */
+    static Map<String, Base> load(String resource)
+    {
+        try(InputStream in = ThemePieces.class.getResourceAsStream(resource))
+        {
+            if(in == null)
+                throw new IllegalStateException(resource + " is not on the classpath");
+            return parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        catch(IOException e)
+        {
+            throw new IllegalStateException("Could not read " + resource, e);
+        }
     }
 
     /** The list, parsed and checked: every one of {@link ThemeFile#BASES}, nothing else. */
@@ -110,20 +137,6 @@ public final class ThemePieces
         return Collections.unmodifiableMap(all);
     }
 
-    private static String read()
-    {
-        try(InputStream in = ThemePieces.class.getResourceAsStream(RESOURCE))
-        {
-            if(in == null)
-                throw new IllegalStateException(RESOURCE + " is not on the classpath");
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-        catch(IOException e)
-        {
-            throw new UncheckedIOException("Could not read " + RESOURCE, e);
-        }
-    }
-
     /** One built-in theme's entry. */
     static final class Base
     {
@@ -135,11 +148,5 @@ public final class ThemePieces
             this.ids = ids;
             this.decoExtra = decoExtra;
         }
-    }
-
-    /** Loaded on first use. */
-    private static final class Holder
-    {
-        static final Map<String, Base> ALL = parse(read());
     }
 }
