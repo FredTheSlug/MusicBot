@@ -357,7 +357,8 @@
 
     /*
      * The panel's CSS variables for a theme's colors: the slots as they are, plus the derived accent glow
-     * (accent at 32% alpha), accent gradient (accent to accent2) and the accent colors as decimal r/g/b.
+     * (accent at 32% alpha), accent gradient (accent to accent2), the accent colors as decimal r/g/b, and the
+     * extra decoration color (decoExtra, or the accent-light when the theme has none, as the built-in themes do).
      * Values are meant for element.style.setProperty, one variable at a time.
      */
     function cssVars(colors) {
@@ -380,6 +381,7 @@
             '--border-light': colors.borderLight,
             '--success': colors.success,
             '--glass': colors.glass,
+            '--deco-extra': colors.decoExtra || colors.accentLight,
             '--accent-r': String(accent.r),
             '--accent-g': String(accent.g),
             '--accent-b': String(accent.b),

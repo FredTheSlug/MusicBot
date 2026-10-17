@@ -10,12 +10,13 @@
  * - themeVars(css, themeId[, at]): the custom properties the theme's <html> has: :root / html and the theme block
  *   (guarded or not), each property from the declaration that wins in the browser with every piece on; with at (an
  *   @media list) the copies in that @media count too.
- * - decorationColours(css, themeId) -> [{ key, expr, vars }]: every colour in the theme's rules (selectors starting
+ * - decorationColours(css, themeId) -> [{ key, expr, vars, via }]: every colour in the theme's rules (selectors starting
  *   with html[data-theme="id"], or :root / html:not([data-theme]) for Nebula; custom-theme rules belong to no theme)
  *   and in the @keyframes those rules animate with. key = selector + "|" + property + "|" + n, where the selector is
  *   normalized (whitespace and combinators spaced one way, piece guards :not([data-deco-off~="..."]) removed, an
  *   @media / @supports condition in front) and n counts the colours in the declaration's value in order. A var() that
- *   holds one colour counts as one; a var() that holds more (a shadow, a gradient) is read through.
+ *   holds one colour counts as one; a var() that holds more (a shadow, a gradient) is read through (via: the
+ *   variables a colour was read through, [] for one written in the rule).
  *   - Declarations that end up with the same key are ranked as the browser ranks them with every piece on:
  *     !important, then specificity (each guard weighs one attribute), then document order.
  *   - Every variable is resolved at html. So a theme rule that sets a variable anywhere but the theme block (or its
@@ -23,6 +24,7 @@
  *   - The theme's accent triples are pinned as synthetic keys <block>|--accent-rgb|0 and <block>|--accent2-rgb|0
  *     (shared rules paint with rgba(var(--accent-r), ...)).
  *   Excluded: inside url(). Colours drawn inside pictures (data URIs, SVG files) are not colours of the stylesheet.
+ * - declarationColours(prop, value[, vars]): the colour expressions of one declaration, read the same way.
  * - snapshot(css, themeId) -> { key: "rgba(r,g,b,a)" }.
  * - compareToGolden(golden, css, themeId, { gone, added }): changed, gone and new colours (a new key counts unless it
  *   is a custom property or listed in added).
@@ -846,7 +848,7 @@ function inspect(css, themeId) {
     const key = rootBlock(themeId) + '|' + name + '-rgb|0';
     const expr = 'rgb(var(' + name + '-r), var(' + name + '-g), var(' + name + '-b))';
     refuseBelow(key, expr, [], base);
-    entries.push({ key: key, expr: expr, vars: base });
+    entries.push({ key: key, expr: expr, vars: base, via: [] });
   });
   const animated = new Set();
   all.forEach((d) => {
@@ -873,13 +875,22 @@ function inspect(css, themeId) {
     }));
   });
   decls.forEach((d, key) => {
-    d.tokens.forEach((t, n) => entries.push({ key: key + '|' + n, expr: t.expr, vars: d.vars }));
+    d.tokens.forEach((t, n) => entries.push({ key: key + '|' + n, expr: t.expr, vars: d.vars, via: t.via || [] }));
   });
   return { entries: entries, urls: notes.urls, unresolved: notes.unresolved };
 }
 
 function decorationColours(css, themeId) {
   return inspect(css, themeId).entries;
+}
+
+/*
+ * The colour expressions one declaration paints with, in order, as decorationColours reads them (none for a custom
+ * property or a property whose words are names; nothing inside url()). vars: the variables to read var()s through.
+ */
+function declarationColours(prop, value, vars) {
+  if (prop.startsWith('--') || NOT_COLOURS.test(prop)) return [];
+  return colourTokens(value, vars || {}, 0, { urls: [], unresolved: [] }).map((t) => t.expr);
 }
 
 /* { key: "rgba(r,g,b,a)" } for every decoration colour of a theme; throws on one it can't evaluate. */
@@ -1014,6 +1025,7 @@ module.exports = {
   themeOfSelector: themeOfSelector,
   themeVars: themeVars,
   decorationColours: decorationColours,
+  declarationColours: declarationColours,
   inspect: inspect,
   snapshot: snapshot,
   compareToGolden: compareToGolden,

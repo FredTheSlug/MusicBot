@@ -20,6 +20,7 @@ test('everyInlineScriptOfThePanelParses', () => {
   // a stray quote in one string breaks the whole panel, and no other test would notice
   const scripts = inlineScripts(PANEL);
   assert.ok(scripts.length >= 2, 'found the panel scripts');
+  assert.ok(scripts.some((code) => code.includes('function applyCustomTheme(')), 'the theme code is among them');
   scripts.forEach((code, i) => {
     assert.doesNotThrow(() => new vm.Script(code, { filename: 'index.html inline script ' + i }));
   });

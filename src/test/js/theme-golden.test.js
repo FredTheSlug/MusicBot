@@ -405,3 +405,342 @@ test('goldenCoversEveryDecoratedTheme', () => {
   assert.ok(count('panel', 'neon') >= 48, 'neon: ' + count('panel', 'neon'));
   assert.ok(Object.keys(pieces).every((id) => goldenOf('panel')[id] && goldenOf('mini')[id]));
 });
+
+// ---- the rewritten themes: colours from the slots, every decoration under one piece, motion that can stop
+// (Revival so far; each theme joins these as its decorations are rewritten)
+
+const ThemePalette = require('../../main/resources/web/theme-palette.js');
+const vm = require('node:vm');
+
+const PIECES = readJson(PIECES_FILE);
+
+function pieceIds(themeId) {
+  return PIECES[themeId].pieces.map((p) => p.id);
+}
+
+/* Every declaration of every style rule of the panel, once per selector, in document order. */
+function panelDeclarations() {
+  const out = [];
+  let order = 0;
+  Colors.parseCss(Colors.panelCss()).forEach((rule) => {
+    if (rule.type !== 'style') return;
+    rule.selectors.forEach((raw) => {
+      const selector = raw.trim().replace(/\s+/g, ' ');
+      const norm = Colors.normalizeSelector(selector);
+      rule.decls.forEach((decl) => out.push({
+        rule: rule, raw: selector, norm: norm, theme: Colors.themeOfSelector(norm), spec: Colors.specificity(selector),
+        decl: decl, order: ++order
+      }));
+    });
+  });
+  return out;
+}
+
+/* The piece guards in a selector: the ids of :not([data-deco-off~="id"]), and how often data-deco-off appears. */
+function guardsOf(selector) {
+  return {
+    ids: [...selector.matchAll(/:not\(\s*\[\s*data-deco-off\s*~=\s*["']?([^"'\]\s]+)["']?\s*\]\s*\)/g)].map((m) => m[1]),
+    mentions: (selector.match(/data-deco-off/g) || []).length
+  };
+}
+
+/* A selector's first compound and the rest (from the first space or combinator outside brackets). */
+function splitFirst(selector) {
+  let depth = 0;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i];
+    if (c === '"' || c === "'") {
+      i = selector.indexOf(c, i + 1);
+      continue;
+    }
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (depth === 0 && /[\s>+~]/.test(c)) return { head: selector.slice(0, i), rest: selector.slice(i) };
+  }
+  return { head: selector, rest: '' };
+}
+
+/* Does a string of attribute selectors and :not()s match an element with these attributes? */
+function attributesMatch(text, attrs) {
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '[') {
+      const end = text.indexOf(']', i);
+      const m = /^\s*([-\w]+)\s*(?:(~?=)\s*(?:"([^"]*)"|'([^']*)'|([-\w]+)))?\s*$/.exec(text.slice(i + 1, end));
+      if (!m) throw new Error('can\'t read ' + text);
+      const has = Object.prototype.hasOwnProperty.call(attrs, m[1]);
+      const want = m[3] !== undefined ? m[3] : m[4] !== undefined ? m[4] : m[5];
+      const ok = !m[2] ? has : m[2] === '=' ? has && attrs[m[1]] === want : has && attrs[m[1]].split(/\s+/).includes(want);
+      if (!ok) return false;
+      i = end + 1;
+    } else if (text.startsWith(':not(', i)) {
+      let depth = 0;
+      let end = i + 4;
+      for (; end < text.length; end++) {
+        if (text[end] === '(') depth++;
+        else if (text[end] === ')' && --depth === 0) break;
+      }
+      const inner = text.slice(i + 5, end).split(',').map((s) => s.trim());
+      if (inner.some((s) => attributesMatch(s, attrs))) return false;
+      i = end + 1;
+    } else {
+      throw new Error('can\'t read ' + text.slice(i));
+    }
+  }
+  return true;
+}
+
+/* Does a selector's <html> part match <html> with these attributes? (null for a selector that doesn't start there) */
+function htmlMatches(selector, attrs) {
+  const head = splitFirst(selector).head.replace(/::?[-\w]+$/, '');
+  const m = /^(html|:root)(?![-\w])/.exec(head);
+  if (!m) return null;
+  return attributesMatch(head.slice(m[0].length), attrs);
+}
+
+/* Paints something: a colour, generated content, or an animation. */
+function decorates(d, vars) {
+  if (Colors.declarationColours(d.decl.prop, d.decl.value, vars).length > 0) return true;
+  if (d.decl.prop === 'content') return true;
+  return /^animation(-name)?$/.test(d.decl.prop) && !/^none$/i.test(d.decl.value.trim());
+}
+
+test('revivalMatchesItsGolden', () => {
+  const allow = Colors.allowlist();
+  const problems = Colors.compareToGolden(goldenOf('panel').revival, Colors.panelCss(), 'revival', {
+    gone: Object.keys(allow.goneOnPurpose.panel.revival || {}),
+    added: Object.keys(allow.newOnPurpose.panel.revival || {})
+  });
+  assert.deepEqual(problems, []);
+});
+
+test('revivalDecorationsFollowTheThemesColours', () => {
+  // with another palette (a custom theme: its colours inline on <html>, and the custom-theme rules), every decoration
+  // colour changes, but for plain black and white (shadows, the masks' alpha, the selected text) and see-through ones
+  const css = Colors.panelCss();
+  const customRules = {};
+  panelDeclarations().filter((d) => d.rule.at.length === 0 &&
+    d.norm === 'html[data-custom-theme][data-theme="revival"]').forEach((d) => {
+    customRules[d.decl.prop] = d.decl.value;
+  });
+  const inline = ThemePalette.cssVars(ThemePalette.generate('#3b82f6', '#0b1020', 'dark'));
+  const block = 'html[data-theme="revival"]|';
+  const stuck = [];
+  let checked = 0;
+  for (const e of Colors.decorationColours(css, 'revival')) {
+    if (e.key.startsWith(block)) continue;
+    const before = Colors.evaluate(e.expr, e.vars);
+    if (before[3] === 0) continue;
+    if (before.slice(0, 3).every((v) => v === 0) || before.slice(0, 3).every((v) => v === 255)) continue;
+    checked++;
+    const after = Colors.evaluate(e.expr, Object.assign({}, e.vars, customRules, inline));
+    const readThroughASlot = e.via.some((name) => Object.prototype.hasOwnProperty.call(inline, name));
+    if (Colors.sameColour(Colors.format(before), after) && !readThroughASlot) stuck.push(e.key + ': ' + e.expr);
+  }
+  assert.ok(checked >= 80, 'checked ' + checked);
+  assert.deepEqual(stuck, [], 'colours a custom theme can\'t reach');
+});
+
+test('everyRevivalDecorationRuleIsUnderOnePiece', () => {
+  const ids = pieceIds('revival');
+  const vars = Colors.themeVars(Colors.panelCss(), 'revival');
+  const problems = [];
+  const used = new Set();
+  for (const d of panelDeclarations()) {
+    if (d.theme !== 'revival') continue;
+    const guards = guardsOf(d.raw);
+    guards.ids.forEach((id) => {
+      used.add(id);
+      if (!ids.includes(id)) problems.push(d.raw + ': ' + id + ' is not a Revival piece');
+    });
+    if (Colors.declarationColours(d.decl.prop, d.decl.value, vars).length === 0) continue;
+    const at = d.rule.at.length ? d.rule.at.join(' ') + ' ' : '';
+    if (guards.mentions !== 1 || guards.ids.length !== 1) {
+      problems.push(at + d.raw + ' { ' + d.decl.prop + ' }: ' + guards.ids.length + ' guards');
+    } else if (!d.raw.startsWith('html[data-theme="revival"]:not([data-deco-off~="' + guards.ids[0] + '"])')) {
+      problems.push(at + d.raw + ': the guard belongs right after html[data-theme="revival"]');
+    }
+  }
+  assert.deepEqual([...new Set(problems)], []);
+  assert.deepEqual([...used].sort(), [...ids].sort(), 'every piece has rules');
+});
+
+test('allPiecesOffLeavesNoDecoration', () => {
+  for (const themeId of ['revival']) {
+    const vars = Colors.themeVars(Colors.panelCss(), themeId);
+    const off = { 'data-theme': themeId, 'data-deco-off': pieceIds(themeId).join(' ') };
+    const on = { 'data-theme': themeId };
+    const still = [];
+    let decorations = 0;
+    for (const d of panelDeclarations()) {
+      if (d.theme !== themeId || !decorates(d, vars)) continue;
+      decorations++;
+      assert.equal(htmlMatches(d.raw, on), true, d.raw + ' applies with every piece on');
+      if (htmlMatches(d.raw, off)) still.push(d.raw + ' { ' + d.decl.prop + ': ' + d.decl.value + ' }');
+    }
+    assert.ok(decorations >= 60, themeId + ': ' + decorations);
+    assert.deepEqual(still, [], themeId + ': still on with every piece off');
+    // each piece alone switches off its own rules and nothing else
+    for (const id of pieceIds(themeId)) {
+      const one = { 'data-theme': themeId, 'data-deco-off': id };
+      const gone = panelDeclarations().filter((d) => d.theme === themeId && decorates(d, vars) && !htmlMatches(d.raw, one));
+      assert.ok(gone.length > 0, themeId + ' ' + id + ' switches something off');
+      gone.forEach((d) => assert.deepEqual(guardsOf(d.raw).ids, [id], d.raw));
+    }
+  }
+});
+
+/* The animations of these themes and the shared bgShift, and what doesn't stop them under each reduced-motion hook. */
+function motionProblems(themeIds) {
+  const all = panelDeclarations();
+  const isAnimation = (d) => d.decl.prop === 'animation' || d.decl.prop === 'animation-name';
+  const stops = (d) => isAnimation(d) && /^none$/i.test(d.decl.value.trim());
+  // where a declaration lands: the theme its html part names (null: any) and the element after it
+  const target = (d) => {
+    const parts = splitFirst(d.norm);
+    const m = /^(html|:root)(?![-\w])(.*?)(::[-\w]+)?$/.exec(parts.head);
+    if (!m) return { html: '', theme: null, subject: ' ' + d.norm };
+    const theme = /\[data-theme="([a-z-]+)"\]/.exec(m[2]);
+    return { html: m[2], theme: theme ? theme[1] : null, subject: (m[3] || '') + parts.rest };
+  };
+  const wins = (o, a) => (o.decl.important !== a.decl.important ? o.decl.important
+    : (o.spec[0] - a.spec[0] || o.spec[1] - a.spec[1] || o.spec[2] - a.spec[2] || o.order - a.order) > 0);
+  const animated = all.filter((d) => isAnimation(d) && !stops(d) &&
+    (themeIds.includes(d.theme) || (d.theme === null && /\bbgShift\b/.test(d.decl.value))));
+  const problems = [];
+  for (const a of animated) {
+    const t = target(a);
+    if (a.rule.at.length) problems.push(a.raw + ': an animation inside ' + a.rule.at.join(' '));
+    const covers = (o, hook) => {
+      const ot = target(o);
+      if (ot.subject !== t.subject || (ot.theme !== null && ot.theme !== t.theme)) return false;
+      const rest = ot.html.replace(/\[data-theme="[a-z-]+"\]/, '');
+      if (hook === 'attribute') return o.rule.at.length === 0 && rest === '[data-reduce-motion]';
+      return o.rule.at.length === 1 && o.rule.at[0] === '@media (prefers-reduced-motion:reduce)' && rest === '';
+    };
+    for (const hook of ['attribute', 'media']) {
+      const stoppers = all.filter((o) => stops(o) && covers(o, hook));
+      if (!stoppers.some((o) => wins(o, a))) {
+        problems.push((hook === 'attribute' ? 'html[data-reduce-motion]' : '@media (prefers-reduced-motion: reduce)') +
+          ' doesn\'t stop ' + a.raw + ' { ' + a.decl.prop + ': ' + a.decl.value + ' }');
+      }
+    }
+  }
+  return { animated: animated, problems: problems };
+}
+
+test('reducedMotionStopsEveryAnimatedPiece', () => {
+  const found = motionProblems(['revival']);
+  const names = new Set(found.animated.flatMap((d) => d.decl.value.match(/\b(revival[A-Z]\w*|bgShift)\b/g) || []));
+  assert.deepEqual([...names].sort(),
+    ['bgShift', 'revivalFloat', 'revivalGlowPulse', 'revivalRays', 'revivalRaysIn', 'revivalSpin', 'revivalSunrise']);
+  assert.deepEqual(found.problems, []);
+});
+
+/* The source of a function of the panel (from "function name(" to its closing brace). */
+function panelFunction(name) {
+  const html = fs.readFileSync(path.join(ROOT, 'src/main/resources/web/index.html'), 'utf8').replace(/\r/g, '');
+  const at = html.indexOf('function ' + name + '(');
+  assert.ok(at >= 0, name + ' not found');
+  let depth = 0;
+  for (let i = html.indexOf('{', at); i < html.length; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}' && --depth === 0) return html.slice(at, i + 1);
+  }
+  throw new Error(name + ' never closes');
+}
+
+function fakeRoot() {
+  const attrs = {};
+  const has = (n) => Object.prototype.hasOwnProperty.call(attrs, n);
+  return {
+    setAttribute: (n, v) => { attrs[n] = String(v); },
+    removeAttribute: (n) => { delete attrs[n]; },
+    hasAttribute: has,
+    toggleAttribute: (n, force) => {
+      const on = force === undefined ? !has(n) : !!force;
+      if (on) attrs[n] = '';
+      else delete attrs[n];
+      return on;
+    }
+  };
+}
+
+test('theReduceMotionSwitchSetsTheHookOnThePage', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'src/main/resources/web/index.html'), 'utf8').replace(/\r/g, '');
+  const head = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
+  // the tiny script in the head runs before the first paint, so nothing moves even for a moment
+  for (const [saved, system, expected] of [['1', false, true], ['0', true, false], [null, true, true], [null, false, false]]) {
+    const root = fakeRoot();
+    vm.runInNewContext(head, {
+      localStorage: { getItem: (k) => (k === 'jmusicbot_reduce_motion_v1' ? saved : null), setItem: () => {} },
+      document: { documentElement: root },
+      window: { matchMedia: () => ({ matches: system }) }
+    });
+    assert.equal(root.hasAttribute('data-reduce-motion'), expected, 'head script: saved ' + saved + ', system ' + system);
+  }
+  // the switch in the Panels menu, and the page as it starts
+  const root = fakeRoot();
+  const store = {};
+  const context = vm.createContext({
+    reduceMotion: null,
+    REDUCE_MOTION_STORAGE_KEY: 'jmusicbot_reduce_motion_v1',
+    localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
+    window: { matchMedia: () => ({ matches: false }) },
+    document: { documentElement: root },
+    themeBackdropData: null,
+    themeKit: null,
+    themeCreator: null
+  });
+  ['readReduceMotion', 'setReduceMotion', 'applyReduceMotionAttribute'].forEach((name) => {
+    vm.runInContext(panelFunction(name), context);
+  });
+  vm.runInContext('setReduceMotion(true)', context);
+  assert.equal(root.hasAttribute('data-reduce-motion'), true, 'on');
+  vm.runInContext('setReduceMotion(false)', context);
+  assert.equal(root.hasAttribute('data-reduce-motion'), false, 'off');
+  store.jmusicbot_reduce_motion_v1 = '1';
+  vm.runInContext('reduceMotion = null; applyReduceMotionAttribute()', context);
+  assert.equal(root.hasAttribute('data-reduce-motion'), true, 'from what was saved');
+  assert.match(panelFunction('initTheme'), /applyReduceMotionAttribute\(\)/, 'the page applies it as it starts');
+});
+
+test('revivalImagesCarryNoColour', () => {
+  // Revival's film grain and its logo's star are masks: what shows through them is painted with the theme's colours
+  const images = [];
+  for (const d of panelDeclarations()) {
+    if (d.theme !== 'revival') continue;
+    for (const m of d.decl.value.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'\s)]*))\s*\)/g)) {
+      const link = [m[1], m[2], m[3]].find((g) => g !== undefined);
+      assert.match(link, /^data:image\/svg\+xml,/, d.raw + ': a picture drawn here');
+      images.push({ selector: d.raw, prop: d.decl.prop, svg: decodeURIComponent(link) });
+    }
+  }
+  assert.ok(images.some((i) => /feTurbulence/.test(i.svg) && /::after$/.test(i.selector)), 'the grain');
+  assert.ok(images.some((i) => /<polygon/.test(i.svg) && /\.logo-icon::before$/.test(i.selector)), 'the star');
+  for (const image of images) {
+    const where = image.selector + ' { ' + image.prop + ' }';
+    assert.match(image.prop, /^(-webkit-)?mask(-image)?$/, where + ': a mask, not a picture');
+    assert.ok(!/<(feColorMatrix|feFlood|feComponentTransfer|feDiffuseLighting|feSpecularLighting|linearGradient|radialGradient)\b/i
+      .test(image.svg), where + ': nothing in it makes a colour');
+    assert.ok(!/\bstyle\s*=/.test(image.svg), where + ': no style attribute');
+    for (const m of image.svg.matchAll(/([-\w:]+)\s*=\s*(["'])([^"']*)\2/g)) {
+      assert.ok(!/^(fill|stroke|stop-color|flood-color|lighting-color|color)$/i.test(m[1]), where + ': ' + m[1]);
+      if (m[1] === 'xmlns') continue;
+      assert.throws(() => Colors.evaluate(m[3]), Error, where + ': ' + m[1] + '="' + m[3] + '" is a colour');
+    }
+  }
+});
+
+test('everyThemeBlockDefinesItsDecoExtra', () => {
+  const css = Colors.panelCss();
+  const own = new Set();
+  panelDeclarations().forEach((d) => {
+    if (d.rule.at.length === 0 && d.decl.prop === '--deco-extra' &&
+      (d.raw === ':root' || /^html\[data-theme="[a-z-]+"\]$/.test(d.raw))) own.add(d.raw === ':root' ? 'nebula' : d.theme);
+  });
+  for (const id of ThemeApply.BUILT_IN) {
+    assert.ok(own.has(id), id + ' sets --deco-extra in its own block');
+    assert.equal(Colors.themeVars(css, id)['--deco-extra'], PIECES[id].decoExtra, id);
+  }
+});

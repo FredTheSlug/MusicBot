@@ -19,6 +19,14 @@
                     document.documentElement.setAttribute('data-theme', t);
                 }
             } catch (e) {}
+            // Reduce motion (the Panels menu switch, else the system setting) before the first paint: the themes'
+            // animations hang off html[data-reduce-motion].
+            try {
+                var rm = localStorage.getItem('jmusicbot_reduce_motion_v1');
+                if (rm === '1' || (rm !== '0' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+                    document.documentElement.setAttribute('data-reduce-motion', '');
+                }
+            } catch (e) {}
         })();
     </script>
     <style>
@@ -37,6 +45,7 @@
             --bg-hover: #252a4a;
             --accent: #7c5cfc;
             --accent-light: #9b82fc;
+            --deco-extra: #9b82fc;
             --accent-glow: rgba(124, 92, 252, 0.3);
             --accent-gradient: linear-gradient(135deg, #7c5cfc, #e04cf0);
             --text-primary: #eef0f6;
@@ -149,6 +158,18 @@
         @keyframes bgShift {
             0% { transform: translate(0, 0); }
             100% { transform: translate(-2%, -2%); }
+        }
+
+        /* Reduce motion: the panel's switch (html[data-reduce-motion], set by script) or the system setting stops the
+           drifting glow; each theme stops its own animations next to its rules. */
+        html[data-reduce-motion] body::before {
+            animation: none !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            body::before {
+                animation: none !important;
+            }
         }
 
         .header {
@@ -2884,6 +2905,7 @@
             --bg-hover: #23424d;
             --accent: #2dd4bf;
             --accent-light: #5eead4;
+            --deco-extra: #5eead4;
             --accent-glow: rgba(45, 212, 191, 0.32);
             --accent-gradient: linear-gradient(135deg, #2dd4bf, #22d3ee);
             --text-primary: #ecf8f6;
@@ -2953,6 +2975,7 @@
             --bg-hover: #3d2a22;
             --accent: #f97316;
             --accent-light: #fb923c;
+            --deco-extra: #fde047;
             --accent-glow: rgba(249, 115, 22, 0.32);
             --accent-gradient: linear-gradient(135deg, #f97316, #ef4444);
             --text-primary: #faf5f0;
@@ -3066,6 +3089,7 @@
             --bg-hover: #3a161a;
             --accent: #f87171;
             --accent-light: #fca5a5;
+            --deco-extra: #fca5a5;
             --accent-glow: rgba(248, 113, 113, 0.34);
             --accent-gradient: linear-gradient(135deg, #ef4444 0%, #fb7185 55%, #e11d48 100%);
             --text-primary: #fef2f2;
@@ -3120,6 +3144,7 @@
             --bg-hover: #e2dcd4;
             --accent: #6d28d9;
             --accent-light: #7c3aed;
+            --deco-extra: #7c3aed;
             --accent-glow: rgba(109, 40, 217, 0.22);
             --accent-gradient: linear-gradient(135deg, #6d28d9, #db2777);
             --text-primary: #1c1917;
@@ -3189,6 +3214,7 @@
             --bg-hover: #1c1a17;
             --accent: #8b5cf6;
             --accent-light: #c4b5fd;
+            --deco-extra: #c4b5fd;
             --accent-glow: rgba(124, 58, 237, 0.24);
             --accent-gradient: linear-gradient(135deg, #7c3aed, #db2777);
             --text-primary: #fafaf9;
@@ -3256,6 +3282,7 @@
             --bg-hover: #283042;
             --accent: #38bdf8;
             --accent-light: #7dd3fc;
+            --deco-extra: #7dd3fc;
             --accent-glow: rgba(56, 189, 248, 0.3);
             --accent-gradient: linear-gradient(135deg, #38bdf8, #818cf8);
             --text-primary: #f1f5f9;
@@ -3334,6 +3361,7 @@
             --bg-hover: #243a2d;
             --accent: #34d399;
             --accent-light: #6ee7b7;
+            --deco-extra: #6ee7b7;
             --accent-glow: rgba(52, 211, 153, 0.32);
             --accent-gradient: linear-gradient(135deg, #34d399, #a3e635);
             --text-primary: #ecfdf5;
@@ -3375,6 +3403,7 @@
             --bg-hover: #3a4350;
             --accent: #34d399;
             --accent-light: #6ee7b7;
+            --deco-extra: #6ee7b7;
             --accent-glow: rgba(52, 211, 153, 0.28);
             --accent-gradient: linear-gradient(135deg, #34d399 0%, #94a3b8 100%);
             --text-primary: #f1f5f9;
@@ -3458,6 +3487,7 @@
             --bg-hover: #2e2645;
             --accent: #a78bfa;
             --accent-light: #c4b5fd;
+            --deco-extra: #c4b5fd;
             --accent-glow: rgba(167, 139, 250, 0.32);
             --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #22c55e 100%);
             --text-primary: #f3f0ff;
@@ -3513,6 +3543,7 @@
             --bg-hover: #1a1f26;
             --accent: #c42b20;
             --accent-light: #e85d52;
+            --deco-extra: #e85d52;
             --accent-glow: rgba(196, 43, 32, 0.28);
             --accent-gradient: linear-gradient(145deg, #1a2f42 0%, #8b1e18 55%, #c42b20 100%);
             --text-primary: #f2ebe3;
@@ -3659,6 +3690,7 @@
             --bg-hover: #263026;
             --accent: #22c55e;
             --accent-light: #86efac;
+            --deco-extra: #dc2626;
             --accent-glow: rgba(34, 197, 94, 0.38);
             --accent-gradient: linear-gradient(90deg, #15803d 0%, #ca8a04 50%, #dc2626 100%);
             --text-primary: #ecfdf4;
@@ -4085,6 +4117,7 @@
             --bg-hover: #2c2344;
             --accent: #8b5cf6;
             --accent-light: #c4b5fd;
+            --deco-extra: #22d3ee;
             --accent-glow: rgba(139, 92, 246, 0.36);
             --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #d946ef 55%, #22d3ee 100%);
             --text-primary: #f3eeff;
@@ -4279,6 +4312,7 @@
             --bg-hover: #1c333a;
             --accent: #22d3ee;
             --accent-light: #67e8f9;
+            --deco-extra: #67e8f9;
             --accent-glow: rgba(34, 211, 238, 0.34);
             --accent-gradient: linear-gradient(135deg, #06b6d4 0%, #22d3ee 50%, #4ade80 100%);
             --text-primary: #e8fbff;
@@ -4521,6 +4555,7 @@
             --bg-hover: #3a3020;
             --accent: #eab308;
             --accent-light: #fde047;
+            --deco-extra: #fde047;
             --accent-glow: rgba(234, 179, 8, 0.32);
             --accent-gradient: linear-gradient(135deg, #ca8a04 0%, #eab308 45%, #f59e0b 100%);
             --text-primary: #fffbeb;
@@ -4721,6 +4756,7 @@
             --bg-hover: #3a2458;
             --accent: #a3e635;
             --accent-light: #d9f99d;
+            --deco-extra: #d9f99d;
             --accent-glow: rgba(163, 230, 53, 0.38);
             --accent-gradient: linear-gradient(135deg, #84cc16 0%, #a3e635 45%, #c084fc 100%);
             --text-primary: #ffffff;
@@ -4946,7 +4982,10 @@
         /* ===================== Revival =====================
            Warm after-hours theme celebrating the bot's revival: terracotta and
            amber on warm charcoal, a sunrise bloom with slow sunburst rays, and
-           the Now Playing artwork as a vinyl label that spins while music plays. */
+           the Now Playing artwork as a vinyl label that spins while music plays.
+           Its decorations are pieces (theme-pieces.json) a custom theme can switch off one by one:
+           html[data-deco-off~="<id>"] drops a piece's rules, and the element shows the panel's own look.
+           Every decoration colour comes from the colour slots below, so a custom theme's colours reach them. */
         html[data-theme="revival"] {
             --bg-primary: #14100d;
             --bg-secondary: #1b1612;
@@ -4955,6 +4994,7 @@
             --bg-hover: #372d26;
             --accent: #e2825c;
             --accent-light: #f2a882;
+            --deco-extra: #f2a882;
             --accent-glow: rgba(226, 130, 92, 0.38);
             --accent-gradient: linear-gradient(135deg, #d4694a 0%, #e98a5f 48%, #f2b35e 100%);
             --text-primary: #f6efe5;
@@ -4985,32 +5025,84 @@
             --radius-dropdown: 16px;
             --rv-disc: 212px;
             --rv-label: 124px;
-            scrollbar-color: rgba(226, 130, 92, 0.45) transparent;
+            /* Revival's own tones, mixed from the slots (the percentages give Revival's original colours) */
+            --rv-amber: rgb(var(--accent2-r), var(--accent2-g), var(--accent2-b));
+            --rv-title: color-mix(in srgb, color-mix(in srgb, var(--accent-light) 64.4%, var(--rv-amber)) 57.6%, var(--text-primary));
+            --rv-muted: color-mix(in srgb, color-mix(in srgb, var(--rv-title) 80.4%, var(--rv-amber)) 94.7%, black);
+            --rv-dawn: color-mix(in srgb, color-mix(in srgb, var(--rv-amber) 78.4%, var(--text-primary)) 65.2%, white);
+            --rv-ink: color-mix(in srgb, color-mix(in srgb, var(--accent-light) 71.6%, var(--rv-amber)) 10.6%, black);
+            --rv-veil: color-mix(in srgb, var(--bg-primary) 70%, black);
+            /* the record stays black whatever the colours: black with a breath of the accent and the quiet text */
+            --rv-smoke: color-mix(in srgb, var(--accent) 20.5%, var(--text-tertiary));
+            --rv-vinyl: color-mix(in srgb, var(--rv-smoke) 10.2%, black);
+            --rv-groove: color-mix(in srgb, var(--rv-smoke) 12.3%, black);
+            --rv-ridge: color-mix(in srgb, var(--rv-smoke) 17.5%, black);
+            --rv-hub: color-mix(in srgb, var(--rv-smoke) 6.7%, black);
+            --rv-shade: color-mix(in srgb, var(--rv-smoke) 11.3%, black);
+            --rv-spindle: color-mix(in srgb, color-mix(in srgb, var(--rv-amber) 37.2%, var(--text-primary)) 29.4%, var(--text-secondary));
+            --rv-spindle-rim: color-mix(in srgb, color-mix(in srgb, var(--accent-light) 20%, var(--text-tertiary)) 78.6%, black);
+            /* Tones no mix of Revival's slots can give (redder, or lighter, than any of them), and the cream text (a
+               mix with mostly white, which would fade on a light palette): Revival's own values here; a custom theme
+               gets them from its colours (next rule). */
+            --rv-ember: #d4694a;
+            --rv-peach: #e98a5f;
+            --rv-cream: #fbf3e8;
+            --rv-lyric: #fff1e2;
+            --rv-lyric-glow: #ffdcbe;
+            --rv-glint: #ffe4c4;
         }
 
-        html[data-theme="revival"] ::selection {
-            background: rgba(226, 130, 92, 0.38);
+        html[data-custom-theme][data-theme="revival"] {
+            --rv-ember: color-mix(in srgb, var(--accent) 90%, black);
+            --rv-peach: color-mix(in srgb, var(--accent) 85%, var(--rv-amber));
+            --rv-cream: var(--text-primary);
+            --rv-lyric: var(--text-primary);
+            --rv-lyric-glow: color-mix(in srgb, var(--accent-light) 50%, var(--text-primary));
+            --rv-glint: color-mix(in srgb, var(--accent-light) 25%, white);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) {
+            scrollbar-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45) transparent;
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) ::selection {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.38);
             color: #ffffff;
         }
 
-        /* Sunrise bloom + film grain; plays a short rise whenever the theme is applied */
-        html[data-theme="revival"] body::before {
+        /* Sunrise bloom; plays a short rise whenever the theme is applied */
+        html[data-theme="revival"]:not([data-deco-off~="sunrise"]) body::before {
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             filter: none;
             background:
-                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.92 0 0 0 0 0.84 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,
-                radial-gradient(ellipse 85% 55% at 50% 118%, rgba(233, 138, 95, 0.42) 0%, rgba(212, 105, 74, 0.16) 40%, transparent 72%),
-                radial-gradient(ellipse 55% 35% at 50% 108%, rgba(242, 179, 94, 0.32) 0%, transparent 62%),
-                radial-gradient(circle at 12% 8%, rgba(242, 179, 94, 0.06) 0%, transparent 38%),
-                radial-gradient(circle at 88% 14%, rgba(212, 105, 74, 0.05) 0%, transparent 36%);
+                radial-gradient(ellipse 85% 55% at 50% 118%, color-mix(in srgb, var(--rv-peach) 42%, transparent) 0%, color-mix(in srgb, var(--rv-ember) 16%, transparent) 40%, transparent 72%),
+                radial-gradient(ellipse 55% 35% at 50% 108%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.32) 0%, transparent 62%),
+                radial-gradient(circle at 12% 8%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.06) 0%, transparent 38%),
+                radial-gradient(circle at 88% 14%, color-mix(in srgb, var(--rv-ember) 5%, transparent) 0%, transparent 36%);
+            animation: revivalSunrise 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+        }
+
+        /* ... and its film grain: the theme's text colour seen through a noise mask, over the bloom, under the page */
+        html[data-theme="revival"]:not([data-deco-off~="sunrise"])::after {
+            content: '';
+            position: fixed;
+            z-index: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            pointer-events: none;
+            background-color: color-mix(in srgb, var(--text-primary) 7%, transparent);
+            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px;
             animation: revivalSunrise 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
         }
 
         /* Sunburst rays fanning up from the horizon, turning very slowly */
-        html[data-theme="revival"] body::after {
+        html[data-theme="revival"]:not([data-deco-off~="rays"]) body::after {
             content: '';
             position: fixed;
             z-index: 0;
@@ -5020,7 +5112,7 @@
             height: 240vmax;
             pointer-events: none;
             transform: translate(-50%, -50%);
-            background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(242, 179, 94, 0.07) 0deg 2deg, transparent 4deg 15deg);
+            background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.07) 0deg 2deg, transparent 4deg 15deg);
             -webkit-mask-image: radial-gradient(circle closest-side, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 30%, transparent 58%);
             mask-image: radial-gradient(circle closest-side, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 30%, transparent 58%);
             animation: revivalRaysIn 3.2s ease-out both, revivalRays 300s linear infinite;
@@ -5056,10 +5148,10 @@
             50% { opacity: 0.5; }
         }
 
-        html[data-theme="revival"] .header {
-            background: linear-gradient(180deg, rgba(20, 16, 13, 0.94), rgba(20, 16, 13, 0.74));
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .header {
+            background: linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 94%, transparent), color-mix(in srgb, var(--bg-primary) 74%, transparent));
             border-bottom: 1px solid transparent;
-            border-image: linear-gradient(90deg, transparent, rgba(226, 130, 92, 0.55) 30%, rgba(242, 179, 94, 0.55) 70%, transparent) 1;
+            border-image: linear-gradient(90deg, transparent, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.55) 30%, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.55) 70%, transparent) 1;
         }
 
         html[data-theme="revival"] .logo {
@@ -5068,7 +5160,10 @@
             font-size: 1.15rem;
             line-height: 1.1;
             letter-spacing: -0.01em;
-            color: #fbf3e8;
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .logo {
+            color: var(--rv-cream);
         }
 
         /* Header is crowded below ~1280px, so the badge only shows on wide screens */
@@ -5078,7 +5173,7 @@
                 white-space: nowrap;
             }
 
-            html[data-theme="revival"] .logo::after {
+            html[data-theme="revival"]:not([data-deco-off~="badge"]) .logo::after {
                 content: 'revived';
                 font-family: 'Inter', sans-serif;
                 font-size: 0.6rem;
@@ -5087,39 +5182,39 @@
                 letter-spacing: 0.18em;
                 padding: 3px 9px;
                 border-radius: 999px;
-                border: 1px solid rgba(242, 179, 94, 0.35);
-                background: rgba(242, 179, 94, 0.08);
-                color: #f2b35e;
+                border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.35);
+                background: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.08);
+                color: var(--rv-amber);
             }
         }
 
         /* The ♫ logo becomes a slowly turning sunburst */
-        html[data-theme="revival"] .logo-icon {
+        html[data-theme="revival"]:not([data-deco-off~="logo"]) .logo-icon {
             position: relative;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(242, 179, 94, 0.3) 0%, rgba(226, 130, 92, 0.08) 55%, transparent 72%);
+            background: radial-gradient(circle, rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.3) 0%, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08) 55%, transparent 72%);
             box-shadow: none;
             color: transparent;
         }
 
-        html[data-theme="revival"] .logo-icon::before {
+        html[data-theme="revival"]:not([data-deco-off~="logo"]) .logo-icon::before {
             content: '';
             position: absolute;
             inset: 3px;
-            background: conic-gradient(from 0deg, #f2b35e, #e2825c, #f6d7a8, #e2825c, #f2b35e);
+            background: conic-gradient(from 0deg, var(--rv-amber), var(--accent), var(--rv-dawn), var(--accent), var(--rv-amber));
             -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpolygon points='50.0,2.0 53.9,35.5 74.0,8.4 60.6,39.4 91.6,26.0 64.5,46.1 98.0,50.0 64.5,53.9 91.6,74.0 60.6,60.6 74.0,91.6 53.9,64.5 50.0,98.0 46.1,64.5 26.0,91.6 39.4,60.6 8.4,74.0 35.5,53.9 2.0,50.0 35.5,46.1 8.4,26.0 39.4,39.4 26.0,8.4 46.1,35.5'/%3E%3Ccircle cx='50' cy='50' r='15'/%3E%3C/svg%3E") center / contain no-repeat;
             mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpolygon points='50.0,2.0 53.9,35.5 74.0,8.4 60.6,39.4 91.6,26.0 64.5,46.1 98.0,50.0 64.5,53.9 91.6,74.0 60.6,60.6 74.0,91.6 53.9,64.5 50.0,98.0 46.1,64.5 26.0,91.6 39.4,60.6 8.4,74.0 35.5,53.9 2.0,50.0 35.5,46.1 8.4,26.0 39.4,39.4 26.0,8.4 46.1,35.5'/%3E%3Ccircle cx='50' cy='50' r='15'/%3E%3C/svg%3E") center / contain no-repeat;
             animation: revivalSpin 30s linear infinite;
         }
 
-        html[data-theme="revival"] .card {
-            background-color: rgba(33, 27, 23, 0.9);
-            background-image: linear-gradient(180deg, rgba(233, 138, 95, 0.07) 0%, rgba(233, 138, 95, 0) 30%);
-            border: 1px solid rgba(242, 179, 94, 0.11);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .card {
+            background-color: color-mix(in srgb, var(--bg-card) 90%, transparent);
+            background-image: linear-gradient(180deg, color-mix(in srgb, var(--rv-peach) 7%, transparent) 0%, transparent 30%);
+            border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.11);
         }
 
-        html[data-theme="revival"] .card:hover {
-            border-color: rgba(242, 179, 94, 0.2);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .card:hover {
+            border-color: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.2);
         }
 
         html[data-theme="revival"] .card-title,
@@ -5132,55 +5227,65 @@
             font-size: 1.05rem;
             letter-spacing: 0.005em;
             text-transform: none;
-            color: #f3c9a5;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             padding-right: 2px;
         }
 
-        html[data-theme="revival"] .card-title::before {
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .card-title,
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .pane-header-row .card-title,
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .pane-header-with-actions .card-title,
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .playlist-header .card-title {
+            color: var(--rv-title);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="sparkles"]) .card-title::before {
             content: '✦';
             display: inline-block;
             margin-right: 0.45em;
             font-style: normal;
             font-size: 0.75em;
             color: var(--accent);
-            text-shadow: 0 0 10px rgba(226, 130, 92, 0.7);
+            text-shadow: 0 0 10px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.7);
             transform: translateY(-0.1em);
         }
 
+        /* The drag bar is a thin line: the warm glow on it is a decoration, its shape is the theme's */
         html[data-theme="revival"] .layout-pane.card > .pane-drag-bar {
-            background: linear-gradient(90deg, transparent, rgba(226, 130, 92, 0.65), rgba(242, 179, 94, 0.65), transparent);
             border-bottom: none;
             min-height: 3px;
             padding-top: 0;
             padding-bottom: 0;
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .layout-pane.card > .pane-drag-bar {
+            background: linear-gradient(90deg, transparent, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.65), rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.65), transparent);
             opacity: 0.7;
         }
 
-        html[data-theme="revival"] .layout-pane.card > .pane-drag-bar:hover {
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .layout-pane.card > .pane-drag-bar:hover {
             opacity: 1;
-            box-shadow: 0 0 14px rgba(226, 130, 92, 0.45);
+            box-shadow: 0 0 14px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
         }
 
         /* ---- Now Playing: the artwork is the label of a spinning record ---- */
-        html[data-theme="revival"] .np-glow {
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .np-glow {
             width: 420px;
             height: 160px;
             top: -70px;
             filter: blur(70px);
         }
 
-        html[data-theme="revival"] .np-glow.active {
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .np-glow.active {
             animation: revivalGlowPulse 6s ease-in-out infinite;
         }
 
-        html[data-theme="revival"] #nowPlayingContent {
+        html[data-theme="revival"]:not([data-deco-off~="record"]) #nowPlayingContent {
             position: relative;
         }
 
-        html[data-theme="revival"] #nowPlayingContent:has(> .np-artwork)::before {
+        html[data-theme="revival"]:not([data-deco-off~="record"]) #nowPlayingContent:has(> .np-artwork)::before {
             content: '';
             position: absolute;
             z-index: 0;
@@ -5191,14 +5296,14 @@
             margin-left: calc(var(--rv-disc) / -2);
             border-radius: 50%;
             background:
-                conic-gradient(from 20deg, transparent 0deg 25deg, rgba(255, 228, 196, 0.13) 45deg, transparent 65deg 205deg, rgba(255, 228, 196, 0.09) 225deg, transparent 245deg),
-                repeating-radial-gradient(circle, #15110f 0 1.5px, #1e1915 1.5px 3px),
-                #120e0c;
-            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(242, 179, 94, 0.12), 0 0 60px rgba(226, 130, 92, 0.18);
+                conic-gradient(from 20deg, transparent 0deg 25deg, color-mix(in srgb, var(--rv-glint) 13%, transparent) 45deg, transparent 65deg 205deg, color-mix(in srgb, var(--rv-glint) 9%, transparent) 225deg, transparent 245deg),
+                repeating-radial-gradient(circle, var(--rv-groove) 0 1.5px, var(--rv-ridge) 1.5px 3px),
+                var(--rv-vinyl);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12), 0 0 60px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.18);
         }
 
         /* Spindle */
-        html[data-theme="revival"] #nowPlayingContent:has(> .np-artwork)::after {
+        html[data-theme="revival"]:not([data-deco-off~="record"]) #nowPlayingContent:has(> .np-artwork)::after {
             content: '';
             position: absolute;
             z-index: 2;
@@ -5208,27 +5313,27 @@
             height: 10px;
             margin-left: -5px;
             border-radius: 50%;
-            background: radial-gradient(circle, #0c0908 0 40%, #d9c4ad 46%, #8a7563 100%);
-            box-shadow: 0 0 0 2px rgba(20, 16, 13, 0.6);
+            background: radial-gradient(circle, var(--rv-hub) 0 40%, var(--rv-spindle) 46%, var(--rv-spindle-rim) 100%);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-shade) 60%, transparent);
         }
 
-        html[data-theme="revival"] .np-artwork {
+        html[data-theme="revival"]:not([data-deco-off~="record"]) .np-artwork {
             position: relative;
             z-index: 1;
             width: var(--rv-label);
             margin: calc((var(--rv-disc) - var(--rv-label)) / 2) auto calc((var(--rv-disc) - var(--rv-label)) / 2 + 18px);
             border-radius: 50%;
-            box-shadow: 0 0 0 3px rgba(18, 14, 12, 0.9), 0 0 0 4px rgba(242, 179, 94, 0.35);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-vinyl) 90%, transparent), 0 0 0 4px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.35);
             animation: revivalSpin 6s linear infinite;
             animation-play-state: paused;
         }
 
         /* YouTube thumbnails are letterboxed 4:3; crop the black bars off the label */
-        html[data-theme="revival"] .np-artwork[src*="i.ytimg.com"] {
+        html[data-theme="revival"]:not([data-deco-off~="record"]) .np-artwork[src*="i.ytimg.com"] {
             object-view-box: inset(12.5% 0);
         }
 
-        html[data-theme="revival"] #nowPlayingCard:has(.visualizer.active) .np-artwork {
+        html[data-theme="revival"]:not([data-deco-off~="record"]) #nowPlayingCard:has(.visualizer.active) .np-artwork {
             animation-play-state: running;
         }
 
@@ -5236,12 +5341,15 @@
             font-family: var(--rv-serif);
             font-weight: 600;
             letter-spacing: -0.015em;
-            color: #fbf3e8;
-            text-shadow: 0 2px 18px rgba(226, 130, 92, 0.25);
         }
 
-        html[data-theme="revival"] .track-author {
-            color: #e7b98f;
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .track-title {
+            color: var(--rv-cream);
+            text-shadow: 0 2px 18px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .track-author {
+            color: var(--rv-muted);
         }
 
         html[data-theme="revival"] .visualizer {
@@ -5253,76 +5361,95 @@
         html[data-theme="revival"] .viz-bar {
             width: 4px;
             border-radius: 3px;
-            background: linear-gradient(0deg, #d4694a, #f2b35e);
-            box-shadow: 0 0 10px rgba(242, 179, 94, 0.45);
         }
 
-        html[data-theme="revival"] .progress-bar-bg {
-            background: rgba(242, 179, 94, 0.12);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .viz-bar {
+            background: linear-gradient(0deg, var(--rv-ember), var(--rv-amber));
+            box-shadow: 0 0 10px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.45);
         }
 
-        html[data-theme="revival"] .progress-bar-fill {
-            box-shadow: 0 0 12px rgba(242, 179, 94, 0.55);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .progress-bar-bg {
+            background: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.12);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .progress-bar-fill {
+            box-shadow: 0 0 12px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.55);
         }
 
         html[data-theme="revival"] .progress-times {
             font-variant-numeric: tabular-nums;
         }
 
-        html[data-theme="revival"] .ctrl-btn {
-            border: 1px solid rgba(242, 179, 94, 0.18);
-            color: #f6efe5;
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .ctrl-btn {
+            border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.18);
+            color: var(--text-primary);
         }
 
-        html[data-theme="revival"] .ctrl-btn:hover {
-            border-color: rgba(242, 179, 94, 0.4);
-            box-shadow: 0 0 16px rgba(226, 130, 92, 0.25);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .ctrl-btn:hover {
+            border-color: rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.4);
+            box-shadow: 0 0 16px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
         }
 
-        html[data-theme="revival"] .ctrl-btn-primary {
+        /* The panel's own hover colour of a switched-on repeat or shuffle button (the guard above weighs more than it) */
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .ctrl-btn.repeat-active:hover,
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .ctrl-btn.shuffle-active:hover {
+            color: var(--accent-light);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .ctrl-btn-primary {
             background: var(--accent-gradient);
             border-color: transparent;
-            color: #1a120d;
-            box-shadow: 0 6px 22px rgba(226, 130, 92, 0.45);
+            color: var(--rv-ink);
+            box-shadow: 0 6px 22px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
         }
 
         html[data-theme="revival"] .btn {
-            color: #1a120d;
             font-weight: 700;
-            box-shadow: 0 6px 22px rgba(226, 130, 92, 0.4);
         }
 
-        html[data-theme="revival"] .search-input:focus {
-            border-color: rgba(226, 130, 92, 0.6);
-            box-shadow: 0 0 0 3px rgba(226, 130, 92, 0.18);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .btn {
+            color: var(--rv-ink);
+            box-shadow: 0 6px 22px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.4);
         }
 
-        html[data-theme="revival"] .queue-item:hover,
-        html[data-theme="revival"] .history-item:hover,
-        html[data-theme="revival"] .search-result-item:hover {
-            background: rgba(226, 130, 92, 0.09);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .search-input:focus {
+            border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.6);
+            box-shadow: 0 0 0 3px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.18);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .queue-item:hover,
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .history-item:hover,
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .search-result-item:hover {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.09);
         }
 
         html[data-theme="revival"] .queue-index,
         html[data-theme="revival"] .history-index {
             font-family: var(--rv-serif);
             font-style: italic;
-            color: #e7b98f;
         }
 
-        html[data-theme="revival"] .empty-state .icon {
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .queue-index,
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .history-index {
+            color: var(--rv-muted);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .empty-state .icon {
             color: var(--accent);
             opacity: 0.85;
-            text-shadow: 0 0 24px rgba(226, 130, 92, 0.55);
+            text-shadow: 0 0 24px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.55);
             animation: revivalFloat 5s ease-in-out infinite;
         }
 
         /* ---- Lyrics: the current line gets warm, glowing karaoke type ---- */
         html[data-theme="revival"] .lyrics-scroll {
-            background: rgba(14, 11, 9, 0.45);
-            border: 1px solid rgba(242, 179, 94, 0.08);
             scrollbar-width: thin;
-            scrollbar-color: rgba(226, 130, 92, 0.6) transparent;
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .lyrics-scroll {
+            background: color-mix(in srgb, var(--rv-veil) 45%, transparent);
+            border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.08);
+            scrollbar-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.6) transparent;
         }
 
         html[data-theme="revival"] .lyrics-line.active {
@@ -5330,28 +5457,31 @@
             font-style: italic;
             font-weight: 500;
             font-size: 1.22rem;
-            color: #fff1e2;
-            background: radial-gradient(ellipse at center, rgba(226, 130, 92, 0.16), transparent 70%);
+        }
+
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .lyrics-line.active {
+            color: var(--rv-lyric);
+            background: radial-gradient(ellipse at center, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.16), transparent 70%);
             box-shadow: none;
-            text-shadow: 0 0 18px rgba(242, 179, 94, 0.55), 0 0 2px rgba(255, 220, 190, 0.6);
+            text-shadow: 0 0 18px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.55), 0 0 2px color-mix(in srgb, var(--rv-lyric-glow) 60%, transparent);
         }
 
-        html[data-theme="revival"] .layout-col.layout-col-over {
-            background: rgba(226, 130, 92, 0.06);
-            box-shadow: inset 0 0 0 2px rgba(226, 130, 92, 0.4);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .layout-col.layout-col-over {
+            background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06);
+            box-shadow: inset 0 0 0 2px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.4);
         }
 
-        html[data-theme="revival"] .layout-pane.pane-drop-target {
-            box-shadow: 0 0 0 2px rgba(226, 130, 92, 0.55), 0 0 28px rgba(242, 179, 94, 0.25);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .layout-pane.pane-drop-target {
+            box-shadow: 0 0 0 2px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.55), 0 0 28px rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.25);
         }
 
-        html[data-theme="revival"] .login-overlay {
-            background: radial-gradient(ellipse at 50% 120%, rgba(226, 130, 92, 0.25), rgba(20, 16, 13, 0.92) 60%);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .login-overlay {
+            background: radial-gradient(ellipse at 50% 120%, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25), color-mix(in srgb, var(--bg-primary) 92%, transparent) 60%);
         }
 
-        html[data-theme="revival"] .login-box {
-            border: 1px solid rgba(242, 179, 94, 0.22);
-            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 60px rgba(226, 130, 92, 0.15);
+        html[data-theme="revival"]:not([data-deco-off~="glows"]) .login-box {
+            border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.22);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 60px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.15);
         }
 
         html[data-theme="revival"] .login-box h2 {
@@ -5361,45 +5491,42 @@
         }
 
         @media (max-width: 640px) {
-            html[data-theme="revival"] {
+            html[data-theme="revival"]:not([data-deco-off~="record"]) {
                 --rv-disc: 184px;
                 --rv-label: 108px;
             }
         }
 
+        /* Reduce motion (the panel's switch, or the system setting): none of Revival's pieces move */
+        html[data-reduce-motion][data-theme="revival"] body::before,
+        html[data-reduce-motion][data-theme="revival"]::after,
+        html[data-reduce-motion][data-theme="revival"] body::after,
+        html[data-reduce-motion][data-theme="revival"] .logo-icon::before,
+        html[data-reduce-motion][data-theme="revival"] .np-glow.active,
+        html[data-reduce-motion][data-theme="revival"] .np-artwork,
+        html[data-reduce-motion][data-theme="revival"] .empty-state .icon {
+            animation: none !important;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             html[data-theme="revival"] body::before,
+            html[data-theme="revival"]::after,
             html[data-theme="revival"] body::after,
             html[data-theme="revival"] .logo-icon::before,
             html[data-theme="revival"] .np-glow.active,
             html[data-theme="revival"] .np-artwork,
             html[data-theme="revival"] .empty-state .icon {
-                animation: none;
+                animation: none !important;
             }
         }
 
         /*
-         * Custom themes (script sets html[data-custom-theme] while one is on, and also data-custom-plain when its
-         * "special effects" are off or it has a background picture). Keep this block after every built-in theme:
-         * where specificity ties, the later rule wins.
+         * Custom themes (script sets html[data-custom-theme] while one is on). Keep this block after every built-in
+         * theme: where specificity ties, the later rule wins.
          * The page color follows the theme's own (Grove sets a fixed one on body).
          */
         html[data-custom-theme] body {
             background-color: var(--bg-primary);
-        }
-
-        /* Plain: none of the base theme's decorative layers (page layers, header strips, Grove's card picture). */
-        html[data-custom-theme][data-custom-plain] body::before,
-        html[data-custom-theme][data-custom-plain] body::after,
-        html[data-custom-theme][data-custom-plain] .header::before,
-        html[data-custom-theme][data-custom-plain] .header::after,
-        html[data-custom-theme][data-custom-plain] .layout-pane.card::before {
-            display: none;
-        }
-
-        /* Grove makes its cards see-through to show that picture; without it they get the theme's card color. */
-        html[data-custom-theme][data-custom-plain][data-theme="grove"] .layout-pane.card {
-            background: var(--bg-card);
         }
         /*
          * The guided theme creator. It has colors of its own (the --tc-* ones) and not the theme's: the page behind it is
@@ -6447,9 +6574,15 @@
             return reduceMotion;
         }
 
+        // html[data-reduce-motion] stops the themes' animations (the stylesheet follows the system setting by itself too).
+        function applyReduceMotionAttribute() {
+            document.documentElement.toggleAttribute('data-reduce-motion', readReduceMotion());
+        }
+
         function setReduceMotion(on) {
             reduceMotion = !!on;
             try { localStorage.setItem(REDUCE_MOTION_STORAGE_KEY, reduceMotion ? '1' : '0'); } catch (e) {}
+            applyReduceMotionAttribute();
             if (themeBackdropData && themeKit.canAnimate(themeBackdropData.url, themeLocalPicture)) renderThemeBackdrop();
             if (themeCreator) themeCreator.refresh(); // its own pictures (step 3, the mini-player preview) follow too
         }
@@ -6468,7 +6601,7 @@
                 row.setAttribute('aria-checked', readReduceMotion() ? 'true' : 'false');
             });
             menu.appendChild(row);
-            menu.appendChild(plEl('div', 'panels-menu-hint', 'Animated theme pictures stay on their first frame.'));
+            menu.appendChild(plEl('div', 'panels-menu-hint', 'Theme animations stop; animated theme pictures stay on their first frame.'));
         }
 
         /** Offers the Windows desktop app; hidden on other systems and inside the app itself. */
@@ -8082,6 +8215,7 @@
         }
 
         function initTheme() {
+            applyReduceMotionAttribute();
             themeChoice = readStoredThemeChoice();
             applyThemeChoice(themeChoice);
             var sel = document.getElementById('themeSelect');

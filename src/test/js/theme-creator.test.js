@@ -93,19 +93,13 @@ function seeded(seed) {
 
 // ---- the lists must not drift from the stylesheet and the server
 
-test('basesWithSpecialEffectsAreTheOnesWithLayersTheStylesheetCanSwitchOff', () => {
-  // the targets the "plain" rule hides are the ones that count as special effects
-  const plain = /((?:html\[data-custom-theme\]\[data-custom-plain\] [^,{]+,\s*)+)html\[data-custom-theme\]\[data-custom-plain\] ([^,{]+) \{\s*display: none;/.exec(INDEX);
-  assert.ok(plain, 'plain rule not found');
-  const targets = [...(plain[1] + 'html[data-custom-theme][data-custom-plain] ' + plain[2])
-    .matchAll(/data-custom-plain\] ([^,{\s]+)/g)].map((m) => m[1]);
-  assert.ok(targets.length >= 5, targets.join(' '));
-  const layered = new Set();
-  for (const m of INDEX.matchAll(/html\[data-theme="([a-z-]+)"\] ([^,{\s]+)/g)) {
-    if (targets.includes(m[2])) layered.add(m[1]);
-  }
-  assert.deepEqual([...C.DECORATED_BASES].sort(), [...layered].sort());
-  for (const base of ThemeApply.BUILT_IN) assert.equal(C.hasDecorations(base), layered.has(base), base);
+test('basesWithSpecialEffectsAreTheOnesWithPanelPieces', () => {
+  // theme-pieces.json lists every theme's pieces; the six without panel decorations have only the mini-player's glow
+  const pieces = JSON.parse(fs.readFileSync(path.join(__dirname, '../../main/resources/web/theme-pieces.json'), 'utf8'));
+  const decorated = Object.keys(pieces).filter((id) => pieces[id].pieces.some((p) => p.id !== 'glow'));
+  assert.deepEqual([...C.DECORATED_BASES].sort(), decorated.sort());
+  for (const base of ThemeApply.BUILT_IN) assert.equal(C.hasDecorations(base), decorated.includes(base), base);
+  assert.ok(!INDEX.includes('data-custom-plain]'), 'the stylesheet has no "plain" rule any more: pieces switch off');
 });
 
 test('theElevenBasesWithEffectsAreTheOnesTheBriefNames', () => {

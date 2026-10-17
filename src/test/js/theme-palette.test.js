@@ -412,10 +412,17 @@ test('cssVarsHasExactlyThePanelVariables', () => {
     '--accent', '--accent-b', '--accent-g', '--accent-glow', '--accent-gradient', '--accent-light', '--accent-r',
     '--accent2-b', '--accent2-g', '--accent2-r',
     '--bg-card', '--bg-elevated', '--bg-hover', '--bg-primary', '--bg-secondary',
-    '--border', '--border-light', '--glass', '--success',
+    '--border', '--border-light', '--deco-extra', '--glass', '--success',
     '--text-primary', '--text-secondary', '--text-tertiary'
   ]);
   for (const value of Object.values(cssVars(AURORA))) assert.equal(typeof value, 'string');
+});
+
+test('cssVarsHasDecoExtra', () => {
+  // the extra decoration colour: the theme's own when it has one, else its accent-light (as the built-in themes do)
+  assert.equal(cssVars(Object.assign({}, AURORA, { decoExtra: '#dc2626' }))['--deco-extra'], '#dc2626');
+  assert.equal(cssVars(AURORA)['--deco-extra'], AURORA.accentLight);
+  assert.equal(cssVars(Object.assign({}, AURORA, { decoExtra: '' }))['--deco-extra'], AURORA.accentLight);
 });
 
 test('cssVarsGlowIgnoresAnAlphaOnTheAccent', () => {
