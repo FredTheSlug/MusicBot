@@ -4162,7 +4162,8 @@
             --radius-login-box: 8px;
             --col-radius: 4px;
             --col-resize-radius: 2px;
-            --card-shadow: 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14), 0 12px 40px rgba(0, 0, 0, 0.35);
+            /* The card's shadow only (the panel's .card paints it): its violet ring is the glows piece's */
+            --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
             --bg-shift-duration: 16s;
             /* The current lyric line: a violet-white no mix of the slots gives; a custom theme uses its text colour */
             --cipher-lyric: #f5e1ff;
@@ -4216,7 +4217,7 @@
 
         html[data-theme="cipher"]:not([data-deco-off~="glows"]) .card {
             border: 1px solid rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.16);
-            box-shadow: var(--card-shadow);
+            box-shadow: 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14), var(--card-shadow);
             background-image: linear-gradient(180deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05) 0%, transparent 42%);
         }
 
@@ -4688,7 +4689,8 @@
             --radius-login-box: 20px;
             --col-radius: 18px;
             --col-resize-radius: 12px;
-            --card-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
+            /* The card's shadow only (the panel's .card paints it): its gold ring is the gilded piece's */
+            --card-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
             --bg-shift-duration: 20s;
         }
 
@@ -4745,7 +4747,7 @@
         }
 
         html[data-theme="victory"]:not([data-deco-off~="gilded"]) .card {
-            box-shadow: var(--card-shadow);
+            box-shadow: var(--card-shadow), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
             background-image: linear-gradient(165deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06) 0%, transparent 38%);
         }
 
@@ -4920,7 +4922,8 @@
             --radius-login-box: 18px;
             --col-radius: 14px;
             --col-resize-radius: 10px;
-            --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
+            /* The card's shadow only (the panel's .card paints it): its lime ring is the glows piece's */
+            --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
             --bg-shift-duration: 16s;
             /* Tones no mix of the slots gives: the violet at the foot of a card, and the brighter lime of a rail under
                the pointer; a custom theme gets them from its colours (next rule) */
@@ -4968,7 +4971,7 @@
 
         html[data-theme="neon"]:not([data-deco-off~="glows"]) .card {
             border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.16);
-            box-shadow: var(--card-shadow), 0 0 48px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05);
+            box-shadow: var(--card-shadow), 0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1), 0 0 48px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05);
             background-image: linear-gradient(160deg, rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.05) 0%, transparent 36%, color-mix(in srgb, var(--neon-violet) 6%, transparent) 100%);
         }
 
@@ -4994,15 +4997,13 @@
             color: var(--text-primary);
         }
 
-        html[data-theme="neon"] .layout-pane.card > .pane-drag-bar {
+        /* A drag bar is a 4px lime rail; with the rails off it is the panel's own drag bar */
+        html[data-theme="neon"]:not([data-deco-off~="rails"]) .layout-pane.card > .pane-drag-bar {
+            background: var(--accent);
             border-bottom: none;
             min-height: 4px;
             padding-top: 0;
             padding-bottom: 0;
-        }
-
-        html[data-theme="neon"]:not([data-deco-off~="rails"]) .layout-pane.card > .pane-drag-bar {
-            background: var(--accent);
             box-shadow: 0 0 12px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
         }
 
@@ -5190,7 +5191,8 @@
             --card-radius: 18px;
             --card-padding: 24px;
             --card-padding-compact: 18px;
-            --card-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 236, 214, 0.05);
+            /* The card's shadow only: its cream top highlight is the glows piece's */
+            --card-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
             --pane-drag-radius: 16px;
             --lyrics-scroll-radius: 14px;
             --track-title-size: 1.6rem;
@@ -5386,6 +5388,7 @@
             background-color: color-mix(in srgb, var(--bg-card) 90%, transparent);
             background-image: linear-gradient(180deg, color-mix(in srgb, var(--rv-peach) 7%, transparent) 0%, transparent 30%);
             border: 1px solid rgba(var(--accent2-r), var(--accent2-g), var(--accent2-b), 0.11);
+            box-shadow: var(--card-shadow), inset 0 1px 0 color-mix(in srgb, color-mix(in srgb, var(--rv-glint) 70%, white) 5%, transparent);
         }
 
         html[data-theme="revival"]:not([data-deco-off~="glows"]) .card:hover {

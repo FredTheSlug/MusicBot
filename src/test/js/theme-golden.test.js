@@ -33,7 +33,8 @@ function goldenOf(kind) {
 /*
  * Golden keys gone on purpose and new decoration keys added on purpose are listed, each with the reason it was
  * reviewed, in src/test/resources/theme-golden/allowlist.json (read by this test and by scripts/theme-golden.js), and
- * so are the cascade flips a piece guard causes on purpose (cascadeFlipsAreRestoredOrListed).
+ * so are theme variables whose colour turned plain on purpose (a decoration colour taken out of a variable a shared rule
+ * paints with) and the cascade flips a piece guard causes on purpose (cascadeFlipsAreRestoredOrListed).
  */
 const ALLOWLIST_FILE = 'src/test/resources/theme-golden/allowlist.json';
 
@@ -275,6 +276,31 @@ test('aNewDecorationIsReportedUnlessListedAsNew', () => {
     .join('\n'), /can't evaluate: html\[data-theme="x"\] \.card::after\|color\|0/);
 });
 
+test('aThemeVariableMayTurnPlainOnPurpose', () => {
+  // a decoration colour taken out of a theme variable a shared rule paints with (an accent ring out of --card-shadow,
+  // into the piece's own rule): the variable's colour changes, but only where listed, and only to plain black or white
+  const css = (shadow) => 'html[data-theme="x"] { --accent: #222222; --card-shadow: ' + shadow + '; }';
+  const golden = Colors.snapshot(css('0 0 0 1px rgba(34, 34, 34, 0.14), 0 12px 40px rgba(0, 0, 0, 0.35)'), 'x');
+  const key = 'html[data-theme="x"]|--card-shadow|';
+  const plain = css('0 12px 40px rgba(0, 0, 0, 0.35)');
+  assert.deepEqual(Colors.compareToGolden(golden, plain, 'x'), [
+    'changed: ' + key + '0: was rgba(34,34,34,0.14), now rgba(0,0,0,0.35) (rgba(0, 0, 0, 0.35))',
+    'gone: ' + key + '1 (was rgba(0,0,0,0.35))'
+  ]);
+  const listed = { changed: [key + '0'], gone: [key + '1'] };
+  assert.deepEqual(Colors.compareToGolden(golden, plain, 'x', listed), []);
+  assert.deepEqual(Colors.compareToGolden(golden, css('0 12px 40px rgba(255, 0, 0, 0.35)'), 'x', listed),
+    ['changed to a colour: ' + key + '0: now rgba(255,0,0,0.35); only plain black, white or nothing may be listed']);
+  assert.deepEqual(Colors.compareToGolden(golden, css('0 0 0 1px rgba(34, 34, 34, 0.14), 0 12px 40px rgba(0, 0, 0, 0.35)'),
+    'x', { changed: [key + '0'] }), ['listed as changed but the same: ' + key + '0']);
+  const card = 'html[data-theme="x"] .card|color|0';
+  const ruleGolden = Colors.snapshot('html[data-theme="x"] .card { color: #111111; }', 'x');
+  assert.deepEqual(Colors.compareToGolden(ruleGolden, 'html[data-theme="x"] .card { color: #000000; }', 'x',
+    { changed: [card] }), ['listed as changed but not a variable of the theme block: ' + card]);
+  assert.deepEqual(Colors.compareToGolden(golden, plain, 'x', { changed: [key + '0', key + '7'], gone: [key + '1'] }),
+    ['listed as changed but not golden: ' + key + '7']);
+});
+
 test('theAccentTriplesArePinned', () => {
   // shared rules paint with rgba(var(--accent-r), var(--accent-g), var(--accent-b), a): the numbers are a colour too
   const golden = Colors.snapshot(SAMPLE, 'x');
@@ -295,7 +321,7 @@ test('theAccentTriplesArePinned', () => {
 
 test('theAllowlistsAreOneReviewedFileTheScriptReadsToo', () => {
   const allow = readJson(ALLOWLIST_FILE);
-  assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose', 'flipsOnPurpose']);
+  assert.deepEqual(Object.keys(allow), ['goneOnPurpose', 'newOnPurpose', 'changedOnPurpose', 'flipsOnPurpose']);
   for (const list of Object.values(allow)) {
     assert.deepEqual(Object.keys(list), ['panel', 'mini']);
     for (const kind of ['panel', 'mini']) {
@@ -429,29 +455,28 @@ function capitalized(id) {
   return camel(id)[0].toUpperCase() + camel(id).slice(1);
 }
 
-/* Every declaration of every style rule of a stylesheet, once per selector, in document order. */
-function declarationsOf(css) {
-  const out = [];
-  let order = 0;
-  Colors.parseCss(css).forEach((rule) => {
-    if (rule.type !== 'style') return;
-    rule.selectors.forEach((raw) => {
-      const selector = raw.trim().replace(/\s+/g, ' ');
-      const norm = Colors.normalizeSelector(selector);
-      rule.decls.forEach((decl) => out.push({
-        rule: rule, raw: selector, norm: norm, theme: Colors.themeOfSelector(norm), spec: Colors.specificity(selector),
-        decl: decl, order: ++order
-      }));
-    });
-  });
-  return out;
+/* Every declaration of the panel's stylesheet (Colors.declarations: selector normalized, spaced with its guards). */
+function panelDeclarations() {
+  return Colors.declarations(Colors.panelCss());
 }
 
-let panelDecls = null;
+/* A theme's own rules: those starting at html[data-theme="x"], and its custom-theme rules html[data-custom-theme][...]. */
+function ownedBy(d, themeId) {
+  return d.theme === themeId || Colors.customThemeOf(d.selector) === themeId;
+}
 
-function panelDeclarations() {
-  if (!panelDecls) panelDecls = declarationsOf(Colors.panelCss());
-  return panelDecls;
+/* The blocks a theme's variables may be set in: the theme block, and the custom-theme block over it. */
+function bareBlocks(themeId) {
+  return ['html[data-theme="' + themeId + '"]', 'html[data-custom-theme][data-theme="' + themeId + '"]',
+    'html[data-theme="' + themeId + '"][data-custom-theme]'];
+}
+
+/* The <html> a rule of a theme is seen on, with some pieces off (custom-theme rules: with a custom theme on). */
+function htmlOf(d, themeId, off) {
+  const attrs = { 'data-theme': themeId };
+  if (off !== undefined) attrs['data-deco-off'] = off;
+  if (Colors.customThemeOf(d.selector) === themeId) attrs['data-custom-theme'] = 'x';
+  return attrs;
 }
 
 /* Paints something: a colour, generated content, or an animation. */
@@ -461,14 +486,20 @@ function decorates(d, vars) {
   return /^animation(-name)?$/.test(d.decl.prop) && !/^none$/i.test(d.decl.value.trim());
 }
 
+/* The allowlists of one theme, as compareToGolden takes them. */
+function allowedFor(themeId) {
+  const allow = Colors.allowlist();
+  return {
+    gone: Object.keys(allow.goneOnPurpose.panel[themeId] || {}),
+    added: Object.keys(allow.newOnPurpose.panel[themeId] || {}),
+    changed: Object.keys(allow.changedOnPurpose.panel[themeId] || {})
+  };
+}
+
 for (const themeId of REWRITTEN) {
   test(camel(themeId) + 'MatchesItsGolden', () => {
-    const allow = Colors.allowlist();
-    const problems = Colors.compareToGolden(goldenOf('panel')[themeId], Colors.panelCss(), themeId, {
-      gone: Object.keys(allow.goneOnPurpose.panel[themeId] || {}),
-      added: Object.keys(allow.newOnPurpose.panel[themeId] || {})
-    });
-    assert.deepEqual(problems, []);
+    assert.deepEqual(Colors.compareToGolden(goldenOf('panel')[themeId], Colors.panelCss(), themeId, allowedFor(themeId)),
+      []);
   });
 }
 
@@ -479,7 +510,7 @@ for (const themeId of REWRITTEN) {
     const css = Colors.panelCss();
     const customRules = {};
     panelDeclarations().filter((d) => d.rule.at.length === 0 &&
-      d.norm === 'html[data-custom-theme][data-theme="' + themeId + '"]').forEach((d) => {
+      d.selector === 'html[data-custom-theme][data-theme="' + themeId + '"]').forEach((d) => {
       customRules[d.decl.prop] = d.decl.value;
     });
     const inline = ThemePalette.cssVars(ThemePalette.generate('#3b82f6', '#0b1020', 'dark'));
@@ -507,25 +538,33 @@ for (const themeId of REWRITTEN) {
  */
 const MINI_ONLY = { cipher: ['prompt'], neon: ['title'] };
 
-/* Where a theme's decorations aren't each under exactly one of its pieces, right after html[data-theme="x"]. */
-function pieceGuardProblems(themeId) {
-  const ids = pieceIds(themeId);
-  const vars = Colors.themeVars(Colors.panelCss(), themeId);
+/*
+ * Where a theme's decorations (its custom-theme rules' too) aren't each under exactly one of its pieces, right after its
+ * html part; and variables set anywhere but its bare blocks.
+ */
+function pieceGuardProblems(css, themeId, ids) {
+  const vars = Colors.themeVars(css, themeId);
+  const blocks = bareBlocks(themeId);
   const problems = [];
   const used = new Set();
-  for (const d of panelDeclarations()) {
-    if (d.theme !== themeId) continue;
-    const guards = Colors.guardsOf(d.raw);
+  for (const d of Colors.declarations(css)) {
+    if (!ownedBy(d, themeId)) continue;
+    const at = d.rule.at.length ? d.rule.at.join(' ') + ' ' : '';
+    const guards = Colors.guardsOf(d.spaced);
     guards.ids.forEach((id) => {
       used.add(id);
-      if (!ids.includes(id)) problems.push(d.raw + ': ' + id + ' is not a piece of ' + themeId);
+      if (!ids.includes(id)) problems.push(d.spaced + ': ' + id + ' is not a piece of ' + themeId);
     });
+    if (d.decl.prop.startsWith('--')) {
+      if (!blocks.includes(d.selector)) problems.push(at + d.spaced + ' { ' + d.decl.prop + ' }: a variable below html');
+      continue;
+    }
     if (guards.mentions === 0 && !decorates(d, vars)) continue;
-    const at = d.rule.at.length ? d.rule.at.join(' ') + ' ' : '';
+    const head = Colors.splitFirst(d.selector).head.replace(/::?[-\w]+$/, '');
     if (guards.mentions !== 1 || guards.ids.length !== 1) {
-      problems.push(at + d.raw + ' { ' + d.decl.prop + ' }: ' + guards.ids.length + ' guards');
-    } else if (!d.raw.startsWith('html[data-theme="' + themeId + '"]:not([data-deco-off~="' + guards.ids[0] + '"])')) {
-      problems.push(at + d.raw + ': the guard belongs right after html[data-theme="' + themeId + '"]');
+      problems.push(at + d.spaced + ' { ' + d.decl.prop + ' }: ' + guards.ids.length + ' guards');
+    } else if (!blocks.includes(head) || !d.spaced.startsWith(head + ':not([data-deco-off~="' + guards.ids[0] + '"])')) {
+      problems.push(at + d.spaced + ': the guard belongs right after ' + head);
     }
   }
   return { problems: [...new Set(problems)], used: used };
@@ -533,7 +572,7 @@ function pieceGuardProblems(themeId) {
 
 for (const themeId of REWRITTEN) {
   test('every' + capitalized(themeId) + 'DecorationRuleIsUnderOnePiece', () => {
-    const found = pieceGuardProblems(themeId);
+    const found = pieceGuardProblems(Colors.panelCss(), themeId, pieceIds(themeId));
     assert.deepEqual(found.problems, []);
     const miniOnly = MINI_ONLY[themeId] || [];
     assert.deepEqual([...found.used].sort(), pieceIds(themeId).filter((id) => !miniOnly.includes(id)).sort(),
@@ -548,7 +587,7 @@ for (const themeId of REWRITTEN) {
  * margin*, padding*, gap, row-gap, column-gap), flex layout (flex-wrap, align-content, justify-content),
  * scrollbar-width, and a border taken away (border, border-top/right/bottom/left: none or 0). Nothing on a
  * pseudo-element: in a decorated theme that is a decoration's own layer, all of it the piece's. Besides the shape: the
- * theme block's variables, and animation: none where motion is reduced.
+ * variables of its bare blocks (the theme block, the custom-theme block), and animation: none where motion is reduced.
  */
 const SHAPE = new RegExp('^(font|font-[a-z-]+|letter-spacing|word-spacing|line-height|text-transform|text-align|' +
   'text-overflow|white-space|overflow(-[xy])?|border(-(top|bottom)-(left|right))?-radius|(min-|max-)?(width|height)|' +
@@ -558,50 +597,56 @@ const BORDER_TAKEN_AWAY = /^border(-(top|right|bottom|left))?$/;
 function isShape(d, themeId) {
   const prop = d.decl.prop;
   const value = d.decl.value.trim();
-  if (prop.startsWith('--')) return d.norm === 'html[data-theme="' + themeId + '"]';
+  if (prop.startsWith('--')) return bareBlocks(themeId).includes(d.selector);
   if (/^animation(-name)?$/.test(prop) && /^none$/i.test(value)) {
-    return /\[data-reduce-motion\]/.test(Colors.splitFirst(d.norm).head) ||
+    return /\[data-reduce-motion\]/.test(Colors.splitFirst(d.selector).head) ||
       d.rule.at.join(' ') === '@media (prefers-reduced-motion:reduce)';
   }
-  if (Colors.subjectOf(d.norm).pseudo) return false;
+  if (Colors.subjectOf(d.selector).pseudo) return false;
   return SHAPE.test(prop) || (BORDER_TAKEN_AWAY.test(prop) && /^(none|0)$/i.test(value));
 }
 
 /*
  * Layout effects of a piece that the shape rule alone would let pass (they are shape properties), pinned to their
  * piece: [piece, normalized selector, properties]. Signal's caption sits in a gutter under the header's content: with
- * the caption off the header is the panel's own, no empty gap. Victory's gold rule takes the header border's place:
- * with the rule off the border is back.
+ * the caption off the header is the panel's own, no empty gap; its HUD rule under a pane's header has room around it
+ * that goes with it. Victory's gold rule takes the header border's place: with the rule off the border is back.
+ * Neon's drag bar is a 4px lime rail: with the rails off it is the panel's own drag bar.
  */
 const LAYOUT_EFFECTS = {
-  signal: [['caption', 'html[data-theme="signal"] .header',
-    ['min-height', 'padding-bottom', 'align-items', 'padding-top']]],
-  victory: [['rule', 'html[data-theme="victory"] .header', ['border-bottom']]]
+  signal: [
+    ['caption', 'html[data-theme="signal"] .header', ['min-height', 'padding-bottom', 'align-items', 'padding-top']],
+    ['hud', 'html[data-theme="signal"] .pane-header-row', ['padding-bottom', 'margin-bottom']],
+    ['hud', 'html[data-theme="signal"] .pane-header-with-actions', ['padding-bottom', 'margin-bottom']]
+  ],
+  victory: [['rule', 'html[data-theme="victory"] .header', ['border-bottom']]],
+  neon: [['rails', 'html[data-theme="neon"] .layout-pane.card > .pane-drag-bar',
+    ['border-bottom', 'min-height', 'padding-top', 'padding-bottom']]]
 };
 
 /*
- * What keeps a theme's pieces from switching off cleanly: a declaration under a guard that isn't one piece's, doesn't
- * apply with every piece on, applies with every piece off, or doesn't follow its own piece alone; an unguarded one
- * that isn't the theme's shape; a pinned layout effect that isn't under its piece. Every declaration of a guarded rule
- * counts (its layout effects too).
+ * What keeps a theme's pieces from switching off cleanly (its custom-theme rules' too): a declaration under a guard
+ * that isn't one piece's, doesn't apply with every piece on, applies with every piece off, or doesn't follow its own
+ * piece alone; an unguarded one that isn't the theme's shape; a pinned layout effect that isn't under its piece. Every
+ * declaration of a guarded rule counts (its layout effects too).
  */
 function piecesOffProblems(decls, themeId, ids, effects) {
-  const on = { 'data-theme': themeId };
-  const off = { 'data-theme': themeId, 'data-deco-off': ids.join(' ') };
   const problems = [];
   let guarded = 0;
   for (const d of decls) {
-    if (d.theme !== themeId) continue;
+    if (!ownedBy(d, themeId)) continue;
     const at = d.rule.at.length ? d.rule.at.join(' ') + ' ' : '';
-    const where = at + d.raw + ' { ' + d.decl.prop + ': ' + d.decl.value + ' }';
-    const guards = Colors.guardsOf(d.raw);
+    const where = at + d.spaced + ' { ' + d.decl.prop + ': ' + d.decl.value + ' }';
+    const guards = Colors.guardsOf(d.spaced);
     if (guards.mentions > 0) {
       guarded++;
       if (guards.mentions !== 1 || guards.ids.length !== 1) problems.push(where + ': under ' + guards.mentions + ' guards');
-      if (Colors.htmlMatches(d.raw, on) !== true) problems.push(where + ': off with every piece on');
-      if (Colors.htmlMatches(d.raw, off) !== false) problems.push(where + ': still on with every piece off');
+      if (Colors.htmlMatches(d.spaced, htmlOf(d, themeId)) !== true) problems.push(where + ': off with every piece on');
+      if (Colors.htmlMatches(d.spaced, htmlOf(d, themeId, ids.join(' '))) !== false) {
+        problems.push(where + ': still on with every piece off');
+      }
       for (const id of ids) {
-        const alone = Colors.htmlMatches(d.raw, { 'data-theme': themeId, 'data-deco-off': id });
+        const alone = Colors.htmlMatches(d.spaced, htmlOf(d, themeId, id));
         if (alone === guards.ids.includes(id)) {
           problems.push(where + ': ' + id + ' alone ' + (alone ? 'leaves it on' : 'switches it off'));
         }
@@ -612,11 +657,11 @@ function piecesOffProblems(decls, themeId, ids, effects) {
   }
   for (const [piece, selector, props] of effects || []) {
     for (const prop of props) {
-      const found = decls.filter((d) => d.theme === themeId && d.norm === selector && d.decl.prop === prop);
+      const found = decls.filter((d) => ownedBy(d, themeId) && d.selector === selector && d.decl.prop === prop);
       if (found.length === 0) problems.push(selector + ' { ' + prop + ' }: pinned to ' + piece + ' but not there');
       found.forEach((d) => {
-        const ids2 = Colors.guardsOf(d.raw).ids;
-        if (ids2.length !== 1 || ids2[0] !== piece) problems.push(d.raw + ' { ' + prop + ' }: belongs to ' + piece);
+        const ids2 = Colors.guardsOf(d.spaced).ids;
+        if (ids2.length !== 1 || ids2[0] !== piece) problems.push(d.spaced + ' { ' + prop + ' }: belongs to ' + piece);
       });
     }
   }
@@ -641,9 +686,14 @@ test('thePiecesOffCheckSeesALeftover', () => {
     'html[data-theme="x"] .card { --pad: 8px; }',
     'html[data-reduce-motion][data-theme="x"] .card { animation: none !important; }',
     'html[data-theme="x"] .badge { animation: none; }',
-    'html[data-theme="x"]:not([data-deco-off~="a"]):not([data-deco-off~="b"]) .logo { color: red; }'
+    'html[data-theme="x"]:not([data-deco-off~="a"]):not([data-deco-off~="b"]) .logo { color: red; }',
+    'html[data-custom-theme][data-theme="x"] { --glow: var(--accent); }',
+    'html[data-custom-theme][data-theme="x"] .track-title { text-shadow: 0 0 12px var(--accent); }',
+    'html[data-custom-theme][data-theme="x"] .card { --pad: 2px; }',
+    'html[data-custom-theme][data-theme="x"]:not([data-deco-off~="b"]) .logo { color: blue; }',
+    'html[data-custom-theme][data-theme="y"] .logo { color: green; }'
   ].join('\n');
-  const found = piecesOffProblems(declarationsOf(css), 'x', ['a', 'b'],
+  const found = piecesOffProblems(Colors.declarations(css), 'x', ['a', 'b'],
     [['a', 'html[data-theme="x"] .header', ['padding-bottom', 'border-bottom']]]);
   assert.deepEqual(found.problems, [
     'html[data-theme="x"] .header { position: relative }: not under a piece, and not the theme\'s shape',
@@ -652,10 +702,86 @@ test('thePiecesOffCheckSeesALeftover', () => {
     'html[data-theme="x"] .card { --pad: 8px }: not under a piece, and not the theme\'s shape',
     'html[data-theme="x"] .badge { animation: none }: not under a piece, and not the theme\'s shape',
     'html[data-theme="x"]:not([data-deco-off~="a"]):not([data-deco-off~="b"]) .logo { color: red }: under 2 guards',
+    'html[data-custom-theme][data-theme="x"] .track-title { text-shadow: 0 0 12px var(--accent) }: not under a piece, ' +
+      'and not the theme\'s shape',
+    'html[data-custom-theme][data-theme="x"] .card { --pad: 2px }: not under a piece, and not the theme\'s shape',
     'html[data-theme="x"] .header { padding-bottom }: belongs to a',
     'html[data-theme="x"] .header { border-bottom }: belongs to a'
   ]);
-  assert.equal(found.guarded, 4);
+  assert.equal(found.guarded, 5);
+});
+
+test('aCustomThemeRuleIsCheckedForPiecesToo', () => {
+  // a rule that only shows on a custom theme over Neon is still Neon's: it can't paint without a piece
+  const probe = '\nhtml[data-custom-theme][data-theme="neon"] .track-title { text-shadow: 0 0 12px var(--accent); }\n';
+  const css = Colors.panelCss() + probe;
+  const where = 'html[data-custom-theme][data-theme="neon"] .track-title';
+  assert.deepEqual(pieceGuardProblems(css, 'neon', pieceIds('neon')).problems, [where + ' { text-shadow }: 0 guards']);
+  assert.deepEqual(piecesOffProblems(Colors.declarations(css), 'neon', pieceIds('neon'), LAYOUT_EFFECTS.neon).problems,
+    [where + ' { text-shadow: 0 0 12px var(--accent) }: not under a piece, and not the theme\'s shape']);
+  const guarded = probe.replace('[data-theme="neon"]', '[data-theme="neon"]:not([data-deco-off~="glows"])');
+  assert.deepEqual(pieceGuardProblems(Colors.panelCss() + guarded, 'neon', pieceIds('neon')).problems, []);
+  assert.deepEqual(pieceGuardProblems(Colors.panelCss() + '\nhtml[data-custom-theme][data-theme="neon"] .logo { --x: red; }\n',
+    'neon', pieceIds('neon')).problems, ['html[data-custom-theme][data-theme="neon"] .logo { --x }: a variable below html']);
+});
+
+/* Plain black, plain white, or nothing: a colour no theme gives a piece. */
+function neutral(c) {
+  const rgb = Colors.format(c).match(/\d+/g).slice(0, 3).map(Number);
+  return c[3] === 0 || rgb.every((v) => v === 0) || rgb.every((v) => v === 255);
+}
+
+/*
+ * The theme block's own colour variables (not a slot a custom theme sets, and not neutral) that a rule reads without a
+ * piece guard (a shared rule, or the theme's own): a colour that stays whatever the pieces, and in a custom theme in
+ * the built-in theme's colours.
+ */
+function ownColourReads(css, themeId) {
+  const slots = new Set(Object.keys(ThemePalette.cssVars(ThemePalette.generate('#3b82f6', '#0b1020', 'dark'))));
+  const own = new Set();
+  const decls = Colors.declarations(css);
+  for (const d of decls) {
+    if (d.selector !== 'html[data-theme="' + themeId + '"]' || !d.decl.prop.startsWith('--') || slots.has(d.decl.prop)) {
+      continue;
+    }
+    const vars = Colors.themeVars(css, themeId, d.rule.at);
+    const colours = Colors.declarationColours('background', d.decl.value, vars);
+    if (colours.some((e) => !neutral(Colors.evaluate(e, vars)))) own.add(d.decl.prop);
+  }
+  const vars = Colors.themeVars(css, themeId);
+  const states = [{ 'data-theme': themeId }, { 'data-theme': themeId, 'data-custom-theme': 'x' },
+    { 'data-theme': themeId, 'data-reduce-motion': '' }];
+  const problems = [];
+  for (const d of decls) {
+    if (d.decl.prop.startsWith('--') || Colors.guardsOf(d.spaced).mentions > 0) continue;
+    if (!ownedBy(d, themeId)) {
+      if (d.theme !== null || Colors.customThemeOf(d.selector) !== null) continue;
+      const m = Colors.htmlMatches(d.selector, states[0]);
+      if (m !== null && !states.some((s) => Colors.htmlMatches(d.selector, s))) continue;
+    }
+    const read = [...Colors.variablesRead(d.decl.value, vars)].filter((name) => own.has(name));
+    if (read.length) {
+      problems.push((d.rule.at.length ? d.rule.at.join(' ') + ' ' : '') + d.selector + ' { ' + d.decl.prop + ' } reads ' +
+        read.join(', '));
+    }
+  }
+  return problems;
+}
+
+test('onlyAPieceReadsTheThemesOwnColourVariables', () => {
+  // an accent ring kept in --card-shadow is painted by the panel's own .card rule, whatever the pieces
+  for (const themeId of REWRITTEN) assert.deepEqual(ownColourReads(Colors.panelCss(), themeId), [], themeId);
+  const sheet = [
+    'html[data-theme="x"] { --accent: #222222; --ring: 0 0 0 1px var(--accent); --shade: 0 4px 8px rgba(0, 0, 0, 0.3);',
+    '  --pale: rgba(255, 255, 255, 0.1); --glint: color-mix(in srgb, var(--accent) 10%, white); }',
+    '.card { box-shadow: var(--ring), var(--shade); }',
+    '.tile { box-shadow: var(--shade), inset 0 1px 0 var(--pale); border-color: var(--accent); }',
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .card { box-shadow: var(--ring), 0 0 2px var(--glint); }',
+    'html[data-theme="x"] .badge { color: var(--glint); }',
+    'html[data-theme="y"] .card { color: var(--glint); }'
+  ].join('\n');
+  assert.deepEqual(ownColourReads(sheet, 'x'), ['.card { box-shadow } reads --ring',
+    'html[data-theme="x"] .badge { color } reads --glint']);
 });
 
 test('cascadeFlipsAreRestoredOrListed', () => {
@@ -692,23 +818,42 @@ test('theFlipCheckCatchesTheRepeatButtonHover', () => {
 });
 
 test('theFlipCheckReadsSubjectsAndFamilies', () => {
+  // T, guarded under a: (0,2,1) without its guard, (0,3,1) with it. Every panel rule below lies in that band (or ties
+  // (0,2,1) and comes later), so it beat T before and loses to it now, unless it isn't T's element or property.
+  const t = 'html[data-theme="x"]:not([data-deco-off~="a"]) .ctrl-btn { color: #111111; border: 1px solid #222222; }';
   const sheet = [
-    '.ctrl-btn.repeat-active:hover { color: var(--accent-light); }',
-    'button[aria-pressed="true"] { color: red; }',
-    '.card .ctrl-btn:hover { border-color: blue; }',
-    '.ctrl-btn::after { color: green; }',
-    'html[data-theme="x"]:not([data-deco-off~="a"]) .ctrl-btn { color: #111111; border: 1px solid #222222; }',
-    'html[data-theme="x"] .ctrl-btn.repeat-active:hover { color: #333333; }',
-    '.lyrics-line.tappable:hover:focus { background: blue; }',
-    'html[data-theme="x"]:not([data-deco-off~="a"]) .lyrics-line.active { background: #444444; }'
+    t,
+    '.ctrl-btn.repeat-active:hover { color: var(--accent-light); }', // (0,3,0): a flip
+    'nav button[aria-pressed="true"]:hover { color: red; }', // (0,2,2), a button named by its tag alone: not .ctrl-btn
+    'div.card .ctrl-btn::after { color: green; }', // (0,2,2), the ::after layer: another element
+    '.card .ctrl-btn:hover { border-color: blue; }', // (0,3,0), border family: a flip
+    '.ctrl-btn.is-on:hover { color: var(--accent); }', // (0,3,0): given back under b, not a, so not restored
+    'html[data-theme="x"]:not([data-deco-off~="b"]) .ctrl-btn.is-on:hover { color: var(--accent); }',
+    '.ctrl-btn.is-lit:hover { color: var(--accent); }', // (0,3,0): given back under a, restored
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .ctrl-btn.is-lit:hover { color: var(--accent); }',
+    '@media (max-width: 640px) { .ctrl-btn.small:hover { color: blue; } }', // given back outside its @media: not restored
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .ctrl-btn.small:hover { color: blue; }',
+    '@media (max-width: 640px) { .ctrl-btn.tiny:hover { color: blue; } }', // given back in its @media: restored
+    '@media (max-width: 640px) { html[data-theme="x"]:not([data-deco-off~="a"]) .ctrl-btn.tiny:hover { color: blue; } }',
+    'html[data-custom-theme] .ctrl-btn { color: red; }', // (0,2,1), later: on a custom theme, a flip; given back
+    'html[data-theme="x"][data-custom-theme]:not([data-deco-off~="a"]) .ctrl-btn { color: red; }',
+    'html:not([data-theme]) .ctrl-btn { color: pink; }', // (0,2,1), later, but never with theme x on
+    '.lyrics-line.tappable:hover:focus { background: blue; }', // (0,4,0) against the line's (0,3,1)..(0,4,1): a flip
+    'html[data-theme="x"]:not([data-deco-off~="a"]) .lyrics-line.active { background: #444444; }',
+    'html[data-theme="x"] #deck .ctrl-btn { color: #333333; }' // (1,2,1): above every guard, it still wins
   ].join('\n');
   const keys = Colors.cascadeFlips(sheet, ['x']).map((f) => f.key + (f.restored ? ' (restored)' : ''));
+  const T = 'html[data-theme="x"] .ctrl-btn|';
   assert.deepEqual(keys, [
-    'html[data-theme="x"] .ctrl-btn|color <- .ctrl-btn.repeat-active:hover|color',
-    'html[data-theme="x"] .ctrl-btn|border <- .card .ctrl-btn:hover|border-color',
+    T + 'color <- .ctrl-btn.repeat-active:hover|color',
+    T + 'color <- .ctrl-btn.is-on:hover|color',
+    T + 'color <- .ctrl-btn.is-lit:hover|color (restored)',
+    T + 'color <- @media (max-width:640px) .ctrl-btn.small:hover|color',
+    T + 'color <- @media (max-width:640px) .ctrl-btn.tiny:hover|color (restored)',
+    T + 'color <- html[data-custom-theme] .ctrl-btn|color (restored)',
+    T + 'border <- .card .ctrl-btn:hover|border-color',
     'html[data-theme="x"] .lyrics-line.active|background <- .lyrics-line.tappable:hover:focus|background'
-  ], 'a tag alone is another element, ::after another layer; an unguarded theme rule of (0,4,1) still wins; an ' +
-    'active line can be a tappable one');
+  ]);
   assert.equal(Colors.propertyFamily('border-bottom-color'), 'border');
   assert.equal(Colors.propertyFamily('border-top-left-radius'), 'border-radius');
   assert.equal(Colors.propertyFamily('background-image'), 'background');
@@ -723,9 +868,9 @@ function motionProblems(themeIds) {
   const stops = (d) => isAnimation(d) && /^none$/i.test(d.decl.value.trim());
   // where a declaration lands: the theme its html part names (null: any) and the element after it
   const target = (d) => {
-    const parts = Colors.splitFirst(d.norm);
+    const parts = Colors.splitFirst(d.selector);
     const m = /^(html|:root)(?![-\w])(.*?)(::[-\w]+)?$/.exec(parts.head);
-    if (!m) return { html: '', theme: null, subject: ' ' + d.norm };
+    if (!m) return { html: '', theme: null, subject: ' ' + d.selector };
     const theme = /\[data-theme="([a-z-]+)"\]/.exec(m[2]);
     return { html: m[2], theme: theme ? theme[1] : null, subject: (m[3] || '') + parts.rest };
   };
@@ -736,7 +881,7 @@ function motionProblems(themeIds) {
   const problems = [];
   for (const a of animated) {
     const t = target(a);
-    if (a.rule.at.length) problems.push(a.raw + ': an animation inside ' + a.rule.at.join(' '));
+    if (a.rule.at.length) problems.push(a.spaced + ': an animation inside ' + a.rule.at.join(' '));
     const covers = (o, hook) => {
       const ot = target(o);
       if (ot.subject !== t.subject || (ot.theme !== null && ot.theme !== t.theme)) return false;
@@ -748,7 +893,7 @@ function motionProblems(themeIds) {
       const stoppers = all.filter((o) => stops(o) && covers(o, hook));
       if (!stoppers.some((o) => wins(o, a))) {
         problems.push((hook === 'attribute' ? 'html[data-reduce-motion]' : '@media (prefers-reduced-motion: reduce)') +
-          ' doesn\'t stop ' + a.raw + ' { ' + a.decl.prop + ': ' + a.decl.value + ' }');
+          ' doesn\'t stop ' + a.spaced + ' { ' + a.decl.prop + ': ' + a.decl.value + ' }');
       }
     }
   }
@@ -764,7 +909,7 @@ test('neonTextUsesTheTextSlot', () => {
   const given = ['.ctrl-btn.repeat-active:hover', '.ctrl-btn.shuffle-active:hover'];
   const neon = panelDeclarations().filter((d) => d.theme === 'neon');
   const colours = neon.filter((d) => d.decl.prop === 'color');
-  const subject = (d) => d.norm.replace(/^html\[data-theme="neon"\] /, '');
+  const subject = (d) => d.selector.replace(/^html\[data-theme="neon"\] /, '');
   assert.deepEqual(colours.map(subject).sort(), text.concat(given).sort());
   const light = ThemePalette.generate('#3b82f6', '#f8fafc', 'light');
   const vars = Object.assign({}, Colors.themeVars(Colors.panelCss(), 'neon'), ThemePalette.cssVars(light));
@@ -780,7 +925,7 @@ test('neonTextUsesTheTextSlot', () => {
   assert.equal(new Set(colours.filter((d) => text.includes(subject(d))).map((d) => d.rule)).size, 8, 'the 8 rules');
   const white = /#fff(fff)?\b|(^|[^-\w])white\b|rgba?\(\s*255\s*,\s*255\s*,\s*255\b/i;
   assert.deepEqual(neon.filter((d) => !d.decl.prop.startsWith('--') && white.test(d.decl.value))
-    .map((d) => d.raw + ' { ' + d.decl.prop + ' }'), [], 'no white of its own but its text slot');
+    .map((d) => d.spaced + ' { ' + d.decl.prop + ' }'), [], 'no white of its own but its text slot');
 });
 
 test('reducedMotionStopsEveryAnimatedPiece', () => {
@@ -799,8 +944,8 @@ test('revivalImagesCarryNoColour', () => {
     if (d.theme !== 'revival') continue;
     for (const m of d.decl.value.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'\s)]*))\s*\)/g)) {
       const link = [m[1], m[2], m[3]].find((g) => g !== undefined);
-      assert.match(link, /^data:image\/svg\+xml,/, d.raw + ': a picture drawn here');
-      images.push({ selector: d.raw, prop: d.decl.prop, svg: decodeURIComponent(link) });
+      assert.match(link, /^data:image\/svg\+xml,/, d.spaced + ': a picture drawn here');
+      images.push({ selector: d.spaced, prop: d.decl.prop, svg: decodeURIComponent(link) });
     }
   }
   assert.ok(images.some((i) => /feTurbulence/.test(i.svg) && /::after$/.test(i.selector)), 'the grain');
@@ -824,7 +969,7 @@ test('everyThemeBlockDefinesItsDecoExtra', () => {
   const own = new Set();
   panelDeclarations().forEach((d) => {
     if (d.rule.at.length === 0 && d.decl.prop === '--deco-extra' &&
-      (d.raw === ':root' || /^html\[data-theme="[a-z-]+"\]$/.test(d.raw))) own.add(d.raw === ':root' ? 'nebula' : d.theme);
+      (d.spaced === ':root' || /^html\[data-theme="[a-z-]+"\]$/.test(d.spaced))) own.add(d.spaced === ':root' ? 'nebula' : d.theme);
   });
   for (const id of ThemeApply.BUILT_IN) {
     assert.ok(own.has(id), id + ' sets --deco-extra in its own block');

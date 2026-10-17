@@ -26,11 +26,13 @@
  *   Excluded: inside url(). Colours drawn inside pictures (data URIs, SVG files) are not colours of the stylesheet.
  * - declarationColours(prop, value[, vars]): the colour expressions of one declaration, read the same way.
  * - snapshot(css, themeId) -> { key: "rgba(r,g,b,a)" }.
- * - compareToGolden(golden, css, themeId, { gone, added }): changed, gone and new colours (a new key counts unless it
- *   is a custom property or listed in added).
+ * - compareToGolden(golden, css, themeId, { gone, added, changed }): changed, gone and new colours (a new key counts
+ *   unless it is a custom property or listed in added; a key listed in changed may differ only as a variable of the
+ *   theme block whose colour turned plain black, white or see-through: a decoration colour taken out of a variable a
+ *   shared rule paints with, the colours of the theme's own rules still pinned by their keys).
  * - checkSheet(kind[, css]): compareToGolden for every theme of the golden file of 'panel' or 'mini', with the reviewed
- *   allowlists of src/test/resources/theme-golden/allowlist.json:
- *   { "goneOnPurpose" | "newOnPurpose" | "flipsOnPurpose": { "panel" | "mini": { "<theme>": { "<key>": "<why>" } } } }.
+ *   allowlists of src/test/resources/theme-golden/allowlist.json: { "goneOnPurpose" | "newOnPurpose" |
+ *   "changedOnPurpose" | "flipsOnPurpose": { "panel" | "mini": { "<theme>": { "<key>": "<why>" } } } }.
  *
  * Pieces (selectors as written, guards and all):
  * - guardsOf(selector) -> { ids, mentions }: the ids of its :not([data-deco-off~="id"]) guards, and how often
@@ -38,13 +40,18 @@
  * - splitFirst(selector) -> { head, rest }: its first compound and the rest. htmlMatches(selector, attrs): does its
  *   <html> part match <html> with these attributes (null for a selector that doesn't start at html / :root)?
  *   attributesMatch(text, attrs) does the same for a string of [attribute] selectors and :not()s.
- * - cascadeFlips(css, themeIds) -> [{ theme, piece, key, restored }]: a guard weighs one attribute, so a guarded theme
- *   declaration T can beat a rule S that beat it before. S is any unguarded rule that applies while the theme is on
- *   (shared, or the theme's own), styling what can be the same element (their last compounds share a class or id name,
- *   or one is named by a tag alone that the other has; same pseudo-element) in the same property family
- *   (propertyFamily). It flips when S beats T without its guard and T with it beats S. The theme restores S with a
- *   rule under T's piece that has S's selector behind the theme's html part (in S's @media), S's property and value,
- *   and beats T. key: "<T> <- <S>", each where|property (where = [@media ] normalized selector).
+ * - customThemeOf(selector): the theme a custom-theme rule (html[data-custom-theme][data-theme="id"] ...) builds on.
+ * - cascadeFlips(css, themeIds) -> [{ theme, piece, key, restored }]: a guard weighs one attribute, so a guarded
+ *   declaration T of the theme (or of its custom-theme rules) can beat a rule S that beat it before. S is any unguarded
+ *   rule that applies while the theme is on (shared, the theme's own, or only with a custom theme or reduced motion on),
+ *   styling what can be the same element (their last compounds share a class or id name, or one is named by a tag
+ *   alone that the other has; same pseudo-element) in the same property family (propertyFamily). It flips when S beats
+ *   T without its guard and T with it beats S. The theme restores S with a rule under T's piece whose html part has
+ *   T's attributes and S's own (if S starts at html), followed by the rest of S's selector, in S's @media, with S's
+ *   property and value, beating T. key: "<T> <- <S>", each where|property (where = [@media ] normalized selector).
+ *   Not caught: a rule that names the same element only by other classes (".controls .ctrl-btn-primary:hover" against
+ *   a guarded ".ctrl-btn", when the primary button carries both): elements are matched by the names the selectors
+ *   share, not by what the page's elements carry.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -668,6 +675,14 @@ function themeOfSelector(selector) {
   return null;
 }
 
+/* The built-in theme a custom-theme rule (html[data-custom-theme][data-theme="id"] ...) builds on, or null. */
+function customThemeOf(selector) {
+  const first = compounds(selector)[0] || '';
+  if (!/^html(?![-\w])/.test(first) || !first.includes('[data-custom-theme]')) return null;
+  const m = /\[data-theme="([a-z0-9-]+)"\]/.exec(first);
+  return m ? m[1] : null;
+}
+
 function themeBlock(themeId) {
   return 'html[data-theme="' + themeId + '"]';
 }
@@ -703,10 +718,12 @@ function rulesOf(css) {
 const flattened = new WeakMap();
 
 /*
- * Every declaration of every style rule, once per selector: { rule, selector, spaced, spec, decl, order } (selector:
- * normalized, guards removed; spaced: normalized with its guards; spec: with its guards).
+ * Every declaration of every style rule of a stylesheet (its text, or its parsed rules), once per selector, in document
+ * order: { rule, selector, spaced, theme, spec, decl, order } (selector: normalized, guards removed; spaced: normalized
+ * with its guards; theme: themeOfSelector(selector); spec: with its guards).
  */
-function declarations(rules) {
+function declarations(css) {
+  const rules = rulesOf(css);
   if (!flattened.has(rules)) {
     const out = [];
     let order = 0;
@@ -716,8 +733,9 @@ function declarations(rules) {
         const spaced = spaceSelector(raw);
         const selector = spaced.replace(GUARD, '').replace(/\s+/g, ' ').trim();
         const spec = specificity(spaced);
+        const theme = themeOfSelector(selector);
         rule.decls.forEach((decl) => out.push({
-          rule: rule, selector: selector, spaced: spaced, spec: spec, decl: decl, order: ++order
+          rule: rule, selector: selector, spaced: spaced, theme: theme, spec: spec, decl: decl, order: ++order
         }));
       });
     });
@@ -903,6 +921,17 @@ function decorationColours(css, themeId) {
   return inspect(css, themeId).entries;
 }
 
+/* The variables a value reads, through the ones they read in turn (an undefined one without a fallback included). */
+function variablesRead(value, vars) {
+  const used = new Set();
+  try {
+    substitute(value, vars, 0, used);
+  } catch (e) {
+    // what it read up to there is enough to know
+  }
+  return used;
+}
+
 /*
  * The colour expressions one declaration paints with, in order, as decorationColours reads them (none for a custom
  * property or a property whose words are names; nothing inside url()). vars: the variables to read var()s through.
@@ -931,14 +960,21 @@ function propertyOf(key) {
   return parts[parts.length - 2];
 }
 
+/* Plain black, plain white, or nothing to see: no theme's colour. */
+function isPlain(colour) {
+  const c = parseFormatted(format(colour));
+  return c[3] === 0 || (c[0] === 0 && c[1] === 0 && c[2] === 0) || (c[0] === 255 && c[1] === 255 && c[2] === 255);
+}
+
 /*
  * What differs between a theme's golden colours and a stylesheet, one line each: a key that is gone (unless listed in
- * allow.gone), a colour that changed or can't be evaluated, a new key that isn't a custom property (unless listed in
- * allow.added), and a listed key that doesn't fit its list.
+ * allow.gone), a colour that changed (unless listed in allow.changed, see the top of this file) or can't be evaluated,
+ * a new key that isn't a custom property (unless listed in allow.added), and a listed key that doesn't fit its list.
  */
 function compareToGolden(golden, css, themeId, allow) {
   const goneOk = new Set((allow && allow.gone) || []);
   const newOk = new Set((allow && allow.added) || []);
+  const changedOk = new Set((allow && allow.changed) || []);
   const current = new Map(decorationColours(css, themeId).map((e) => [e.key, e]));
   const isGolden = (key) => Object.prototype.hasOwnProperty.call(golden, key);
   const evaluated = (e) => {
@@ -961,8 +997,18 @@ function compareToGolden(golden, css, themeId, allow) {
       return;
     }
     const result = evaluated(now);
-    if (result.error) problems.push(result.error);
-    else if (!sameColour(was, result.colour)) {
+    if (result.error) {
+      problems.push(result.error);
+    } else if (changedOk.has(key)) {
+      if (!key.startsWith(rootBlock(themeId) + '|--')) {
+        problems.push('listed as changed but not a variable of the theme block: ' + key);
+      } else if (sameColour(was, result.colour)) {
+        problems.push('listed as changed but the same: ' + key);
+      } else if (!isPlain(result.colour)) {
+        problems.push('changed to a colour: ' + key + ': now ' + format(result.colour) +
+          '; only plain black, white or nothing may be listed');
+      }
+    } else if (!sameColour(was, result.colour)) {
       problems.push('changed: ' + key + ': was ' + was + ', now ' + format(result.colour) + ' (' + now.expr + ')');
     }
   });
@@ -977,6 +1023,11 @@ function compareToGolden(golden, css, themeId, allow) {
   });
   goneOk.forEach((key) => {
     if (!isGolden(key)) problems.push('listed as gone but not golden: ' + key);
+  });
+  changedOk.forEach((key) => {
+    if (!isGolden(key)) problems.push('listed as changed but not golden: ' + key);
+    else if (goneOk.has(key)) problems.push('listed as changed and as gone: ' + key);
+    else if (!current.has(key)) problems.push('listed as changed but gone: ' + key);
   });
   newOk.forEach((key) => {
     if (isGolden(key)) problems.push('listed as new but golden: ' + key);
@@ -1113,6 +1164,41 @@ function sameValue(a, b) {
   return a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
 }
 
+/*
+ * A normalized selector's html part as its attributes and pseudo-classes, sorted, and what follows them (a
+ * pseudo-element of html itself included): { html: [...], rest }, or null for a selector that doesn't start at html.
+ */
+function htmlAndRest(selector) {
+  const parts = splitFirst(selector);
+  const m = /^(html|:root)(?![-\w])/.exec(parts.head);
+  if (!m) return null;
+  let head = parts.head.slice(m[0].length);
+  const element = /::[-\w]+$/.exec(head);
+  if (element) head = head.slice(0, element.index);
+  const simple = [];
+  let i = 0;
+  while (i < head.length) {
+    let end = i + 1;
+    if (head[i] === '[') {
+      end = closing(head, i);
+    } else if (head[i] === ':') {
+      end = skipName(head, i + 1);
+      if (head[end] === '(') end = closing(head, end);
+    }
+    simple.push(head.slice(i, end));
+    i = end;
+  }
+  return { html: simple.sort(), rest: (element ? element[0] : '') + parts.rest };
+}
+
+/* Where a rule giving S back to a theme rule T sits: T's html part with S's own, then the rest of S. */
+function restoredAt(t, s) {
+  const own = htmlAndRest(t.selector);
+  const other = htmlAndRest(s.selector);
+  const html = new Set(own.html.concat(other ? other.html : []));
+  return [...html].sort().join('') + '|' + (other ? other.rest : ' ' + s.selector);
+}
+
 /* See the top of this file. */
 function cascadeFlips(css, themeIds) {
   const all = declarations(rulesOf(css));
@@ -1135,24 +1221,29 @@ function cascadeFlips(css, themeIds) {
       const theme = themeOfSelector(d.selector);
       const ids = guardsOf(d.spaced).ids;
       if (ids.length > 0) {
-        if (theme === themeId) guarded.push(d);
+        if (theme === themeId || customThemeOf(d.selector) === themeId) guarded.push(d);
       } else if ((theme === null || theme === themeId) && applies(d)) {
         unguarded.push(d);
       }
     });
+    const places = new Map();
+    const placeOf = (d) => {
+      const own = htmlAndRest(d.selector);
+      if (!places.has(d)) places.set(d, own ? own.html.join('') + '|' + own.rest : null);
+      return places.get(d);
+    };
     guarded.forEach((t) => {
       const family = propertyFamily(t.decl.prop);
       const tSubject = subject(t);
       const before = [t.decl.important ? 1 : 0].concat(specificity(t.selector), [t.order]);
       const now = rankOf(t);
       const piece = guardsOf(t.spaced).ids;
-      const head = splitFirst(t.selector).head.replace(/::?[-\w]+$/, '');
       unguarded.forEach((s) => {
         if (propertyFamily(s.decl.prop) !== family || !sameSubject(tSubject, subject(s))) return;
         const rank = rankOf(s);
         if (compareRank(rank, before) <= 0 || compareRank(now, rank) <= 0) return;
-        const wanted = themeOfSelector(s.selector) === themeId ? s.selector : head + ' ' + s.selector;
-        const restored = guarded.some((r) => r.selector === wanted && atKey(r.rule.at) === atKey(s.rule.at) &&
+        const wanted = restoredAt(t, s);
+        const restored = guarded.some((r) => placeOf(r) === wanted && atKey(r.rule.at) === atKey(s.rule.at) &&
           r.decl.prop === s.decl.prop && sameValue(r.decl.value, s.decl.value) &&
           guardsOf(r.spaced).ids.join(' ') === piece.join(' ') && compareRank(rankOf(r), now) > 0);
         out.push({
@@ -1202,15 +1293,17 @@ function checkSheet(kind, css) {
   const allow = allowlist();
   const gone = allow.goneOnPurpose[kind];
   const added = allow.newOnPurpose[kind];
+  const changed = allow.changedOnPurpose[kind];
   const sheet = css === undefined ? (kind === 'mini' ? miniCss() : panelCss()) : css;
   const problems = [];
   Object.keys(golden).forEach((theme) => {
     compareToGolden(golden[theme], sheet, theme, {
       gone: Object.keys(gone[theme] || {}),
-      added: Object.keys(added[theme] || {})
+      added: Object.keys(added[theme] || {}),
+      changed: Object.keys(changed[theme] || {})
     }).forEach((p) => problems.push(theme + ': ' + p));
   });
-  Object.keys(gone).concat(Object.keys(added)).forEach((theme) => {
+  Object.keys(gone).concat(Object.keys(added), Object.keys(changed)).forEach((theme) => {
     if (!golden[theme]) problems.push(theme + ': in the allowlist but has no golden colours');
   });
   return problems;
@@ -1224,6 +1317,9 @@ module.exports = {
   normalizeSelector: normalizeSelector,
   specificity: specificity,
   themeOfSelector: themeOfSelector,
+  customThemeOf: customThemeOf,
+  declarations: declarations,
+  variablesRead: variablesRead,
   themeVars: themeVars,
   decorationColours: decorationColours,
   declarationColours: declarationColours,
