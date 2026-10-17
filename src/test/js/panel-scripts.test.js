@@ -244,6 +244,55 @@ test('applyCustomThemeSetsDecoOff', () => {
   assert.equal(PANEL.includes('theme.effects'), false);
 });
 
+test('theCreatorPreviewSetsDecoOff', () => {
+  // the creator's live preview goes through applyCustomTheme like a saved theme: its pieces reach <html data-deco-off>
+  const TC = require('../../main/resources/web/theme-creator.js');
+  const root = fakeHtml();
+  const backdrops = [];
+  const context = vm.createContext({
+    document: { documentElement: root },
+    window: { ThemePalette: require('../../main/resources/web/theme-palette.js'), ThemeCreator: TC },
+    themeKit: require('../../main/resources/web/theme-apply.js'),
+    themePieces: PIECES,
+    themeLocalPicture: null,
+    customApplied: [],
+    customThemes: { list: null, activeId: '', activeName: '', activeJson: '' },
+    themeShown: 'nebula',
+    themeBase: '',
+    themeCreator: null,
+    clearTimeout: clearTimeout,
+    getComputedStyle: () => ({ getPropertyValue: () => '12px' }),
+    setThemeBackdrop: (back) => backdrops.push(back)
+  });
+  ['setBaseThemeAttribute', 'setCustomProperty', 'clearCustomTheme', 'applyCustomTheme', 'tcPreviewNow'].forEach((name) => {
+    vm.runInContext(panelFunction(name), context);
+  });
+  const preview = (state) => {
+    context.s = { state: state, blobUrl: '', aside: '', previewTimer: 0 };
+    vm.runInContext('themeCreator = s; tcPreviewNow(s)', context);
+  };
+  // Fred's case: Revival with Nebula's colors, the record on and the rays off
+  const fred = TC.useColoursFrom(TC.setPiece(TC.startState('revival'), 'rays', false, PIECES), 'nebula');
+  preview(fred);
+  assert.equal(root.getAttribute('data-theme'), 'revival');
+  assert.equal(root.getAttribute('data-deco-off'), 'rays');
+  assert.equal(root.props['--accent'], TC.BASE_PALETTES.nebula.colors.accent);
+  assert.equal(root.props['--deco-extra'], TC.BASE_PALETTES.nebula.colors.decoExtra);
+  assert.equal(context.themeShown, 'nebula', 'the rest of the page keeps believing in the real theme');
+  // a picture: the background pieces go on the page, the saved list stays as it is
+  const withPicture = Object.assign({}, fred, { picture: 'saved', savedPictureUrl: PICTURE });
+  preview(withPicture);
+  assert.equal(root.getAttribute('data-deco-off'), 'rays sunrise');
+  assert.equal(root.hasAttribute('data-custom-picture'), true);
+  assert.equal(backdrops[backdrops.length - 1].url, PICTURE);
+  assert.deepEqual(withPicture.decorationsOff, ['rays']);
+  // every piece on, no picture: no attribute
+  preview(TC.allPieces(fred, true, PIECES));
+  assert.equal(root.hasAttribute('data-deco-off'), false);
+  preview(TC.allPieces(fred, false, PIECES));
+  assert.equal(root.getAttribute('data-deco-off'), PIECES.revival.pieces.map((p) => p.id).join(' '));
+});
+
 test('withoutThePiecesListACustomThemeKeepsItsSavedPiecesOff', () => {
   const page = themePage(null);
   page.apply(customTheme({ background: { url: PICTURE, dim: 40, blur: 0, fit: 'cover' } }));
@@ -285,6 +334,7 @@ test('aPiecesListThatFailedIsAskedForAgainByThePollAndThenApplied', async () => 
     storeThemeChoice: () => {},
     readStoredThemeBase: () => 'revival',
     themeCreatorHoldsPage: () => false,
+    themeCreator: null,
     plToast: () => {}
   });
   ['setBaseThemeAttribute', 'setCustomProperty', 'clearCustomTheme', 'applyCustomTheme', 'applyThemeChoice',

@@ -14,10 +14,14 @@
 }(typeof window !== 'undefined' ? window : this, function () {
     'use strict';
 
-    /* The 15 color slots of a theme, and the 14 of its mini-player version (no glass). */
+    /*
+     * The 16 color slots of a theme, and the 15 of its mini-player version (no glass). The last, decoExtra, is the extra
+     * decoration color: what the decorations use where no other slot fits (Rasta's red, Cipher's cyan, Ember's flame
+     * cores), always opaque. The server has the same lists (ThemeFile.COLOR_SLOTS and MINI_SLOTS).
+     */
     var SLOTS = Object.freeze(['bgPrimary', 'bgSecondary', 'bgCard', 'bgElevated', 'bgHover',
         'accent', 'accentLight', 'accent2', 'textPrimary', 'textSecondary', 'textTertiary',
-        'border', 'borderLight', 'success', 'glass']);
+        'border', 'borderLight', 'success', 'glass', 'decoExtra']);
     var MINI_SLOTS = Object.freeze(SLOTS.filter(function (slot) { return slot !== 'glass'; }));
 
     /* WCAG contrast bars: main text on the page and on cards, secondary text on cards. */
@@ -240,10 +244,11 @@
     var ACCENT2_HUE_SHIFT = 35;
 
     /*
-     * The 15 color slots from a main (accent) color and a background color. The accent is kept as given;
+     * The 16 color slots from a main (accent) color and a background color. The accent is kept as given;
      * the background becomes bgPrimary; the other surfaces step away from it (lighter in 'dark' mode, darker
      * in 'light', or the other way when the background has no room); text is near-white / near-black and then
-     * fixed, so the result always meets the readability bars.
+     * fixed, so the result always meets the readability bars. The extra decoration color is the accent-light, as it
+     * is for every built-in theme that has no color of its own for it.
      */
     function generate(accentHex, backgroundHex, mode) {
         var accent = parseHex(accentHex);
@@ -298,7 +303,8 @@
             border: toHex(overlay, lightTheme ? 0.08 : 0.07),
             borderLight: toHex(overlay, 0.12),
             success: success,
-            glass: toHex(surfacesOut.bgSecondary, 0.88)
+            glass: toHex(surfacesOut.bgSecondary, 0.88),
+            decoExtra: toHex(accentLight)
         };
     }
 
@@ -346,7 +352,7 @@
 
     /* ---- Deriving other forms ---- */
 
-    /* The mini-player version's 14 slots: the theme's colors without glass (a copy). */
+    /* The mini-player version's 15 slots: the theme's colors without glass (a copy). */
     function mini(colors) {
         var out = {};
         for (var i = 0; i < MINI_SLOTS.length; i++) {

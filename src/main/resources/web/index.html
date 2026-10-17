@@ -6091,6 +6091,31 @@
         }
         .tc-swatches.four .tc-swatch { aspect-ratio: 3 / 2; border-radius: 10px; }
         .tc-swatch[aria-pressed="true"] { border-color: var(--tc-text); box-shadow: 0 0 0 2px var(--tc-bg), 0 0 0 4px var(--tc-accent); }
+        /* "Use colors from": a chip per built-in theme, its name beside a strip of its background and main colors */
+        .tc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .tc-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 10px 5px 6px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 999px;
+            background: var(--tc-bg2);
+            color: var(--tc-text);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .tc-chip:hover { border-color: var(--tc-accent); }
+        .tc-chip[aria-pressed="true"] { border-color: var(--tc-accent); background: var(--tc-bg3); box-shadow: inset 0 0 0 1px var(--tc-accent); }
+        .tc-chip-sw {
+            flex-shrink: 0;
+            width: 26px;
+            height: 14px;
+            border: 1px solid var(--tc-line2);
+            border-radius: 7px;
+            background: linear-gradient(90deg, var(--sw-bg) 0 40%, var(--sw-accent) 40% 70%, var(--sw-accent2) 70%);
+        }
         .tc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
         .tc-seg { display: inline-flex; border: 1px solid var(--tc-line2); border-radius: 10px; overflow: hidden; }
         .tc-seg button { padding: 7px 18px; border: none; background: var(--tc-bg2); color: var(--tc-text2); font-weight: 600; cursor: pointer; }
@@ -6207,6 +6232,7 @@
         }
         .tc-switch[aria-checked="true"] .tc-switch-track { background: var(--tc-primary); border-color: transparent; }
         .tc-switch[aria-checked="true"] .tc-switch-track::after { background: #fff; transform: translateX(16px); }
+        .tc-pieces .tc-switch { margin-top: 8px; padding: 10px 12px; }
 
         /*
          * step 5: the mini-player. The preview is drawn like the real one (desktop/ui/mini-player/mini.css) from the
@@ -7225,7 +7251,7 @@
             if (themeOrNull && themeOrNull.mine !== true) return;
             var TC = window.ThemeCreator;
             var editing = !!themeOrNull;
-            var state = editing ? TC.fromTheme(themeOrNull) : TC.startState(tcStartBase());
+            var state = editing ? TC.fromTheme(themeOrNull, themePieces) : TC.startState(tcStartBase());
             var s = themeCreator = {
                 state: state,
                 editing: editing,
@@ -7255,6 +7281,15 @@
             document.addEventListener('drop', tcKeepFilesOut, true);
             tcShowStep(s, s.step);
             tcPreviewNow(s);
+            // the pieces list isn't here yet: its switches (and a picture's background pieces) come when it is
+            if (!themePieces) loadThemePieces().then(function () { tcPiecesArrived(s); });
+        }
+
+        // The pieces list came in while this creator is open: the preview gets the pieces, the step its switches.
+        function tcPiecesArrived(s) {
+            if (themeCreator !== s || !themePieces) return;
+            tcPreviewNow(s);
+            s.refresh();
         }
 
         // ---- the window ----
@@ -7443,7 +7478,7 @@
             s.startKey = entry.key;
             s.flag = null;
             s.fixMessage = '';
-            tcCommit(s, entry.theme ? TC.chooseTheme(s.state, entry.theme) : TC.chooseBase(s.state, entry.base));
+            tcCommit(s, entry.theme ? TC.chooseTheme(s.state, entry.theme, themePieces) : TC.chooseBase(s.state, entry.base, themePieces));
         }
 
         // ---- "Readable" and what to do when it is not (steps 2 and 4) ----
@@ -7564,6 +7599,29 @@
             backGroup.appendChild(backRow);
             s.body.appendChild(backGroup);
 
+            // All the colors of a built-in theme in one click; the starting theme's shape and decorations stay.
+            var fromGroup = tcGroup('Use colors from', 'Take all the colors of a built-in theme. The shape, font and decorations of the theme you started from stay.');
+            var chipList = plEl('div', 'tc-chips');
+            var chips = themeKit.BUILT_IN.map(function (id) {
+                var theme = TC.BASE_PALETTES[id];
+                var chip = tcChoice('tc-chip', function () {
+                    s.flag = null;
+                    s.fixMessage = '';
+                    tcCommit(s, TC.useColoursFrom(s.state, id));
+                });
+                var sw = plEl('span', 'tc-chip-sw');
+                sw.setAttribute('aria-hidden', 'true');
+                sw.style.setProperty('--sw-bg', theme.colors.bgPrimary);
+                sw.style.setProperty('--sw-accent', theme.colors.accent);
+                sw.style.setProperty('--sw-accent2', theme.colors.accent2);
+                chip.appendChild(sw);
+                chip.appendChild(plEl('span', '', theme.label));
+                chipList.appendChild(chip);
+                return { id: id, el: chip };
+            });
+            fromGroup.appendChild(chipList);
+            s.body.appendChild(fromGroup);
+
             var status = tcStatus(s, { clearer: function (hex) { return TC.setMain(s.state, hex); } });
             var statusGroup = plEl('div', 'tc-group');
             statusGroup.appendChild(status.el);
@@ -7584,6 +7642,7 @@
                     tcPress(b, backSuggested[i] === st.pageColor);
                 });
                 backInput.value = st.pageColor;
+                chips.forEach(function (c) { tcPress(c.el, TC.colorsAreFrom(s.state, c.id)); });
                 status.update();
                 backGroup.classList.toggle('tc-flag', !!(s.flag && s.flag.bgPrimary));
             };
@@ -7714,9 +7773,9 @@
             });
             fitGroup.appendChild(fitList);
             picked.appendChild(fitGroup);
-            var effects = plEl('div', 'tc-note');
-            effects.appendChild(plEl('div', '', 'While a picture is on, the theme\'s special effects are off, so they don\'t fight with it.'));
-            picked.appendChild(effects);
+            var piecesNote = plEl('div', 'tc-note');
+            piecesNote.appendChild(plEl('div', '', 'While a picture is on, the decorations that paint the page background are off, so they don\'t fight with it.'));
+            picked.appendChild(piecesNote);
             s.body.appendChild(picked);
 
             return function () {
@@ -7739,7 +7798,8 @@
                 blur.input.value = String(st.blur);
                 blur.out.textContent = st.blur === 0 ? 'None' : st.blur + ' px';
                 fits.forEach(function (f) { tcPress(f.el, f.fit === st.fit); });
-                effects.hidden = !TC.hasDecorations(st.base);
+                var view = TC.piecesView(st, themePieces);
+                piecesNote.hidden = !(view && view.pictureNote);
             };
         }
 
@@ -7847,7 +7907,7 @@
 
             var colorsGroup = tcGroup('Colors', 'Changing the colors on the Colors step starts these over.');
             var grid = plEl('div', 'tc-colors');
-            var rows = TC.COLOR_CHOICES.map(function (choice) {
+            var rows = TC.fineTuneColors(s.state.base).map(function (choice) {
                 var row = plEl('label', 'tc-color-row');
                 row.title = choice.hint;
                 row.appendChild(plEl('span', 'tc-color-name', choice.label));
@@ -7884,22 +7944,8 @@
             fontGroup.appendChild(fontGrid);
             inner.appendChild(fontGroup);
 
-            // Only for a base that has special effects: for any other, "off" would take away even its plain glow.
-            var effectsSwitch = null;
-            var effectsText = null;
-            if (TC.hasDecorations(s.state.base)) {
-                effectsSwitch = plEl('button', 'tc-switch');
-                effectsSwitch.type = 'button';
-                effectsSwitch.setAttribute('role', 'switch');
-                var words = plEl('span');
-                words.appendChild(plEl('span', 'tc-opt-name', 'Keep special effects'));
-                effectsText = plEl('span', 'tc-hint');
-                words.appendChild(effectsText);
-                effectsSwitch.appendChild(words);
-                effectsSwitch.appendChild(plEl('span', 'tc-switch-track'));
-                effectsSwitch.addEventListener('click', function () { tcCommit(s, TC.setEffects(s.state, !s.state.effects)); });
-                inner.appendChild(effectsSwitch);
-            }
+            var pieces = tcPieces(s);
+            inner.appendChild(pieces.el);
 
             return function () {
                 var st = s.state;
@@ -7911,13 +7957,74 @@
                 corners.input.value = String(st.radiusScale);
                 corners.out.textContent = st.radiusScale === 100 ? 'As designed' : st.radiusScale + '%';
                 fonts.forEach(function (f) { tcPress(f.el, f.font === st.font); });
-                if (effectsSwitch) {
-                    var withPicture = st.picture !== 'none';
-                    effectsSwitch.setAttribute('aria-checked', !withPicture && st.effects ? 'true' : 'false');
-                    effectsSwitch.disabled = withPicture;
-                    effectsText.textContent = withPicture
-                        ? 'Off while you use a background picture.'
-                        : 'The flames, patterns and glows that come with this theme.';
+                pieces.update();
+            };
+        }
+
+        // The starting theme's decoration pieces: a switch each (labels from theme-pieces.json, as text), and "All on" /
+        // "All off" when there is more than one. While a picture is on, the pieces that paint the page background show
+        // off and can't be switched. Without the pieces list there are no switches; they are drawn when it comes.
+        function tcPieces(s) {
+            var TC = window.ThemeCreator;
+            var group = tcGroup('Decorations', TC.TEXT.PIECES_HINT);
+            group.classList.add('tc-pieces');
+            var allRow = plEl('div', 'tc-row');
+            // the button pressed is then disabled (nothing more to do), so the focus goes to the other one
+            var allOn = tcBtn('All on', '', function () {
+                tcCommit(s, TC.allPieces(s.state, true, themePieces));
+                allOff.focus({ preventScroll: true });
+            });
+            var allOff = tcBtn('All off', '', function () {
+                tcCommit(s, TC.allPieces(s.state, false, themePieces));
+                allOn.focus({ preventScroll: true });
+            });
+            allRow.appendChild(allOn);
+            allRow.appendChild(allOff);
+            group.appendChild(allRow);
+            var list = plEl('div');
+            group.appendChild(list);
+            var drawn = '';       // the starting theme and pieces the switches below were made for
+            var switches = [];
+            function draw(view) {
+                list.textContent = '';
+                switches = view.pieces.map(function (piece) {
+                    var sw = plEl('button', 'tc-switch');
+                    sw.type = 'button';
+                    sw.setAttribute('role', 'switch');
+                    var words = plEl('span');
+                    words.appendChild(plEl('span', 'tc-opt-name', piece.label));
+                    var hint = plEl('span', 'tc-hint');
+                    words.appendChild(hint);
+                    sw.appendChild(words);
+                    sw.appendChild(plEl('span', 'tc-switch-track'));
+                    var entry = { id: piece.id, el: sw, hint: hint, on: piece.on };
+                    sw.addEventListener('click', function () { tcCommit(s, TC.setPiece(s.state, entry.id, !entry.on, themePieces)); });
+                    list.appendChild(sw);
+                    return entry;
+                });
+            }
+            return {
+                el: group,
+                update: function () {
+                    var view = TC.piecesView(s.state, themePieces);
+                    group.hidden = !view;
+                    if (!view) return;
+                    var key = s.state.base + ':' + view.pieces.map(function (piece) { return piece.id; }).join(' ');
+                    if (key !== drawn) {
+                        drawn = key;
+                        draw(view);
+                    }
+                    view.pieces.forEach(function (piece, i) {
+                        var sw = switches[i];
+                        sw.on = piece.on;
+                        sw.el.setAttribute('aria-checked', piece.on ? 'true' : 'false');
+                        sw.el.disabled = piece.forced;
+                        sw.hint.textContent = piece.hint;
+                        sw.hint.hidden = !piece.hint;
+                    });
+                    allRow.hidden = view.pieces.length < 2;
+                    allOn.disabled = view.allOn;
+                    allOff.disabled = view.allOff;
                 }
             };
         }
@@ -8585,6 +8692,7 @@
                 if (!pieces) return;
                 customThemes.activeJson = '';
                 reconcileThemeChoice();
+                if (themeCreator) tcPiecesArrived(themeCreator);
             });
         }
 

@@ -194,14 +194,15 @@
 
     /*
      * May this theme from the server be shown and applied? It needs a proper id, a known base theme, a name and
-     * all 15 colors as #rrggbb(aa), and the extra decoration color as #rrggbb when it has one (a server from before
-     * it sends none; ThemePalette.cssVars then uses the accent-light). Values the page puts into CSS are checked here
-     * as well as on the server.
+     * the other 15 colors as #rrggbb(aa), and the extra decoration color as #rrggbb when it has one (a server from
+     * before it sends none; ThemePalette.cssVars then uses the accent-light). Values the page puts into CSS are checked
+     * here as well as on the server.
      */
     function usable(theme) {
         if (!isObject(theme) || typeof theme.id !== 'string' || !THEME_ID.test(theme.id) || typeof theme.name !== 'string') return false;
         if (!isBuiltIn(theme.base) || !isObject(theme.colors) || !palette || !palette.SLOTS) return false;
         for (var i = 0; i < palette.SLOTS.length; i++) {
+            if (palette.SLOTS[i] === 'decoExtra') continue; // optional, checked below
             var color = theme.colors[palette.SLOTS[i]];
             if (typeof color !== 'string' || !COLOR.test(color)) return false;
         }
@@ -309,6 +310,7 @@
         mineLabel: mineLabel,
         customId: customId,
         usable: usable,
+        piecesOf: piecesOf,
         decoOffFor: decoOffFor,
         groupThemes: groupThemes,
         resolveChoice: resolveChoice

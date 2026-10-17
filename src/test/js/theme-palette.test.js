@@ -5,7 +5,7 @@ const P = require('../../main/resources/web/theme-palette.js');
 const { contrast, generate, readability, fixReadability, suggestBackgrounds, surprise, mini, cssVars, suggestDim, onAccent } = P;
 
 const SLOTS = ['bgPrimary', 'bgSecondary', 'bgCard', 'bgElevated', 'bgHover', 'accent', 'accentLight', 'accent2',
-  'textPrimary', 'textSecondary', 'textTertiary', 'border', 'borderLight', 'success', 'glass'];
+  'textPrimary', 'textSecondary', 'textTertiary', 'border', 'borderLight', 'success', 'glass', 'decoExtra'];
 const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/;
 
 // Small seeded generator (mulberry32) so the "random" tests are the same on every run.
@@ -45,7 +45,8 @@ const AURORA = {
   bgPrimary: '#0a1114', bgSecondary: '#0f181c', bgCard: '#152228', bgElevated: '#1a2e35', bgHover: '#23424d',
   accent: '#2dd4bf', accentLight: '#5eead4', accent2: '#22d3ee',
   textPrimary: '#ecf8f6', textSecondary: '#7a9d9a', textTertiary: '#4a6b67',
-  border: '#ffffff12', borderLight: '#ffffff1f', success: '#34d399', glass: '#0f181ce0'
+  border: '#ffffff12', borderLight: '#ffffff1f', success: '#34d399', glass: '#0f181ce0',
+  decoExtra: '#5eead4'
 };
 
 test('contrastKnownValues', () => {
@@ -198,6 +199,20 @@ test('generateGivesAllSlotsInTheAllowedFormat', () => {
     const c = generate('#2dd4bf', mode === 'dark' ? '#0a1114' : '#f4f2ef', mode);
     assert.deepEqual(Object.keys(c).sort(), SLOTS.slice().sort());
     for (const slot of SLOTS) assert.match(c[slot], HEX, slot + ' ' + c[slot]);
+  }
+});
+
+test('theSlotsAreTheSixteenWithTheExtraDecorationColorLast', () => {
+  assert.deepEqual([...P.SLOTS], SLOTS);
+  assert.deepEqual([...P.MINI_SLOTS], SLOTS.filter((s) => s !== 'glass'));
+});
+
+test('generateGivesTheExtraDecorationColorAsTheLightMainColor', () => {
+  // a generated palette has no color of its own for the decorations: they take its accent-light, opaque
+  for (const [accent, page, mode] of [['#2dd4bf', '#0a1114', 'dark'], ['#7c3aed', '#f4f2ef', 'light'], ['#fde047', '#101010', 'dark']]) {
+    const c = generate(accent, page, mode);
+    assert.equal(c.decoExtra, c.accentLight, accent);
+    assert.match(c.decoExtra, /^#[0-9a-f]{6}$/, accent);
   }
 });
 
@@ -366,7 +381,7 @@ test('miniDropsGlass', () => {
   const m = mini(AURORA);
   assert.equal('glass' in m, false);
   assert.deepEqual(Object.keys(m).sort(), SLOTS.filter(s => s !== 'glass').sort());
-  assert.equal(Object.keys(m).length, 14);
+  assert.equal(Object.keys(m).length, 15);
   for (const slot of Object.keys(m)) assert.equal(m[slot], AURORA[slot], slot);
   // A copy: changing it leaves the theme alone.
   m.accent = '#000000';
@@ -376,7 +391,7 @@ test('miniDropsGlass', () => {
 test('miniIgnoresUnknownSlots', () => {
   const m = mini(Object.assign({}, AURORA, { sneaky: '#123456' }));
   assert.equal('sneaky' in m, false);
-  assert.equal(Object.keys(m).length, 14);
+  assert.equal(Object.keys(m).length, 15);
 });
 
 test('cssVarsDerivesGlowGradientAndRgb', () => {

@@ -336,9 +336,10 @@ function custom(extra) {
   }, extra);
 }
 
-test('CUSTOM_SLOTS are the 14 colors of a mini-player version (the theme\'s 15 without glass)', () => {
+test('CUSTOM_SLOTS are the 14 colors of a mini-player version (the theme\'s 16 without glass and the extra decoration color)', () => {
+  // the mini-player version also carries the extra decoration color (decoExtra), which this mini-player doesn't use yet
   assert.equal(CUSTOM_SLOTS.length, 14);
-  assert.deepEqual(CUSTOM_SLOTS, ThemePalette.MINI_SLOTS);
+  assert.deepEqual(CUSTOM_SLOTS, ThemePalette.MINI_SLOTS.filter((slot) => slot !== 'decoExtra'));
 });
 
 test('customVars turns a mini palette into the 16 variables plus the color on the accent', () => {

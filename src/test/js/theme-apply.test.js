@@ -293,7 +293,8 @@ test('aThemeIsUsableOnlyWithValidIdBaseAndColors', () => {
   ]) {
     assert.equal(ThemeApply.usable(bad), false, JSON.stringify(bad));
   }
-  for (const slot of ThemePalette.SLOTS) {
+  // the 15 a theme always has (the extra decoration color, which older servers don't send, is checked below)
+  for (const slot of ThemePalette.SLOTS.filter((s) => s !== 'decoExtra')) {
     const missing = Object.assign({}, COLORS);
     delete missing[slot];
     assert.equal(ThemeApply.usable(theme({ colors: missing })), false, 'missing ' + slot);
@@ -442,7 +443,8 @@ test('decoOffForIsPure', () => {
 test('theExtraDecorationColorIsCheckedWhenItIsThere', () => {
   assert.equal(ThemeApply.usable(theme()), true, 'a theme from an older server has none');
   assert.equal(ThemeApply.usable(theme({ colors: Object.assign({}, COLORS, { decoExtra: '#dc2626' }) })), true);
-  for (const value of ['red', '#12345', 'url(//evil.example/x.gif)', '#112233; color: red', '', 5, null]) {
+  assert.ok(ThemePalette.SLOTS.includes('decoExtra'), 'one of the 16 slots');
+  for (const value of ['red', '#12345', '#dc262680', 'url(//evil.example/x.gif)', '#112233; color: red', '', 5, null]) {
     assert.equal(ThemeApply.usable(theme({ colors: Object.assign({}, COLORS, { decoExtra: value }) })), false, String(value));
   }
 });

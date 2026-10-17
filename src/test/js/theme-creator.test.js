@@ -60,23 +60,35 @@ const SLOT_VARS = {
   bgPrimary: '--bg-primary', bgSecondary: '--bg-secondary', bgCard: '--bg-card', bgElevated: '--bg-elevated',
   bgHover: '--bg-hover', accent: '--accent', accentLight: '--accent-light', textPrimary: '--text-primary',
   textSecondary: '--text-secondary', textTertiary: '--text-tertiary', border: '--border', borderLight: '--border-light',
-  success: '--success', glass: '--glass'
+  success: '--success', glass: '--glass', decoExtra: '--deco-extra'
 };
 
 const PICTURE = '/theme-images/' + '9f2c'.repeat(8) + '.webp';
 const BLOB = 'blob:https://music.example.org/3f2b8c1e-7a4d-4e59-9b0c-2d6f1a8e4c70';
 
+/* theme-pieces.json as the panel has it (themePieces): every built-in theme's decoration pieces. */
+const PIECES = JSON.parse(fs.readFileSync(path.join(__dirname, '../../main/resources/web/theme-pieces.json'), 'utf8'));
+const idsOf = (base) => PIECES[base].pieces.map((p) => p.id);
+
+/* A theme's 16 colors as the server sends them (the extra decoration color last, here its accent-light). */
 const COLORS = {
   bgPrimary: '#0b0d14', bgSecondary: '#10131c', bgCard: '#161a26', bgElevated: '#1c2131', bgHover: '#262c42',
   accent: '#7c5cff', accentLight: '#a08bff', accent2: '#22d3ee', textPrimary: '#eef0f8',
   textSecondary: '#9aa0b8', textTertiary: '#646a82', border: '#ffffff12', borderLight: '#ffffff1f',
-  success: '#34d399', glass: '#10131ce0'
+  success: '#34d399', glass: '#10131ce0', decoExtra: '#a08bff'
 };
+
+/* The 15 colors of a theme saved before the extra decoration color. */
+function oldColors() {
+  const colors = Object.assign({}, COLORS);
+  delete colors.decoExtra;
+  return colors;
+}
 
 function savedTheme(extra) {
   return Object.assign({
     id: 'k3j9x0q2m7ab', name: 'Midnight Drive', owner: { id: '1', name: 'fred' }, visibility: 'public',
-    hiddenByOwner: false, mine: true, version: 3, base: 'ember', effects: false, colors: Object.assign({}, COLORS),
+    hiddenByOwner: false, mine: true, version: 3, base: 'ember', decorationsOff: ['edge'], colors: Object.assign({}, COLORS),
     radiusScale: 80, font: 'Outfit', background: { url: PICTURE, dim: 45, blur: 4, fit: 'contain' },
     mini: { colors: P.mini(COLORS), useImage: true, dim: 55 }
   }, extra);
@@ -111,16 +123,31 @@ test('theElevenBasesWithEffectsAreTheOnesTheBriefNames', () => {
   assert.equal(C.hasDecorations(undefined), false);
 });
 
-test('theStartingPalettesAreTheBuiltInThemesOfTheStylesheet', () => {
+test('startingPalettesStillMatchTheStylesheet', () => {
   assert.deepEqual(Object.keys(C.BASE_PALETTES), [...ThemeApply.BUILT_IN]);
   const root = cssVars(cssBlock(':root'));
   for (const id of ThemeApply.BUILT_IN) {
     const vars = Object.assign({}, root, id === 'nebula' ? {} : cssVars(cssBlock('html[data-theme="' + id + '"]')));
     const expected = {};
-    for (const slot of Object.keys(SLOT_VARS)) expected[slot] = cssColor(vars[SLOT_VARS[slot]]);
-    expected.accent2 = '#' + hex2(+vars['--accent2-r']) + hex2(+vars['--accent2-g']) + hex2(+vars['--accent2-b']);
+    for (const slot of P.SLOTS) {
+      if (slot !== 'accent2') expected[slot] = cssColor(vars[SLOT_VARS[slot]]);
+      else expected.accent2 = '#' + hex2(+vars['--accent2-r']) + hex2(+vars['--accent2-g']) + hex2(+vars['--accent2-b']);
+    }
+    // the extra decoration color too: the theme block's own --deco-extra
+    assert.match(vars['--deco-extra'], /^#[0-9a-f]{6}$/i, id + ' --deco-extra');
     assert.deepEqual(C.BASE_PALETTES[id].colors, expected, id);
     assert.equal(C.BASE_PALETTES[id].font, /^'([^']+)'/.exec(vars['--font-family'])[1], id + ' font');
+  }
+});
+
+test('baseDecoExtraTable', () => {
+  // Rasta's red, Cipher's cyan and Ember's flame-core yellow have no slot of their own; every other theme uses its accent-light
+  const own = { rasta: '#dc2626', cipher: '#22d3ee', ember: '#fde047' };
+  for (const id of ThemeApply.BUILT_IN) {
+    const colors = C.BASE_PALETTES[id].colors;
+    assert.equal(colors.decoExtra, own[id] || colors.accentLight, id);
+    assert.equal(colors.decoExtra, PIECES[id].decoExtra, id + ': the same as the pieces list the server fills it from');
+    assert.match(colors.decoExtra, /^#[0-9a-f]{6}$/, id + ': never see-through');
   }
 });
 
@@ -143,9 +170,12 @@ test('theCreatorKnowsTheSameBasesFontsFitsAndSlotsAsTheServer', () => {
   assert.deepEqual([...ThemeApply.BUILT_IN], javaList('BASES'));
   assert.deepEqual(C.FONTS, javaList('FONTS'));
   assert.deepEqual(C.FITS, javaList('FITS'));
-  // the server's 16th, the extra decoration color, it fills in from the starting theme when it isn't sent
-  assert.deepEqual([...P.SLOTS], javaList('COLOR_SLOTS').filter((slot) => slot !== 'decoExtra'));
-  assert.deepEqual(javaList('COLOR_SLOTS').slice(-1), ['decoExtra']);
+  // all 16, the extra decoration color last, and the mini-player version's 15 (no glass)
+  assert.deepEqual([...P.SLOTS], javaList('COLOR_SLOTS'));
+  assert.deepEqual([...P.MINI_SLOTS], javaList('COLOR_SLOTS').filter((slot) => slot !== 'glass'));
+  assert.equal(P.SLOTS.length, 16);
+  assert.equal(P.MINI_SLOTS.length, 15);
+  assert.deepEqual(P.SLOTS.slice(-1), ['decoExtra']);
   assert.equal(C.MAX_NAME, 40);
   assert.equal(C.MAX_PICTURE_BYTES, 8 * 1024 * 1024);
   const nameLimit = /MAX_NAME = (\d+)/.exec(THEME_FILE);
@@ -197,12 +227,15 @@ test('nextAlwaysWorksOnEveryStepButTheLastWhereItSaves', () => {
 
 // ---- starting a theme
 
-test('startingFromABuiltInTakesItsColorsFontAndEffects', () => {
+test('startingFromABuiltInTakesItsColorsFontAndEveryPiece', () => {
   const s = C.startState('ember');
   assert.equal(s.base, 'ember');
   assert.deepEqual(s.colors, C.BASE_PALETTES.ember.colors);
+  assert.equal(s.colors.decoExtra, '#fde047', "the starting theme's own extra decoration color");
+  assert.equal(s.decoExtraSetByHand, false);
   assert.equal(s.font, C.BASE_PALETTES.ember.font);
-  assert.equal(s.effects, true);
+  assert.deepEqual(s.decorationsOff, [], 'every piece on');
+  assert.equal('effects' in s, false);
   assert.equal(s.radiusScale, 100);
   assert.equal(s.mainColor, C.BASE_PALETTES.ember.colors.accent);
   assert.equal(s.pageColor, C.BASE_PALETTES.ember.colors.bgPrimary);
@@ -219,29 +252,27 @@ test('startingFromABuiltInTakesItsColorsFontAndEffects', () => {
 
 test('startingFromACommunityThemeTakesItsLookButNotItsPictureNameOrItsOwnMiniPlayerColors', () => {
   const theirs = Object.assign(P.mini(COLORS), { accent: '#ff7a00', accentLight: '#ff9a40' });
-  const s = C.startFromTheme(savedTheme({ mine: false, owner: { id: '9', name: 'sam' }, mini: { colors: theirs, useImage: true, dim: 70 } }));
+  const s = C.startFromTheme(savedTheme({ mine: false, owner: { id: '9', name: 'sam' }, mini: { colors: theirs, useImage: true, dim: 70 } }), PIECES);
   assert.equal(s.base, 'ember');
   assert.deepEqual(s.colors, COLORS);
   assert.equal(s.font, 'Outfit');
   assert.equal(s.radiusScale, 80);
-  assert.equal(s.effects, true, 'its picture forced effects off; without the picture they are back');
+  assert.deepEqual(s.decorationsOff, ['edge'], 'its pieces');
   assert.equal(s.picture, 'none');
   assert.deepEqual(s.mini, { colors: P.mini(COLORS), useImage: false, dim: 40 }, 'its look, made into a mini-player version of our own');
   assert.equal(s.id, null);
   assert.equal(s.name, '');
-  assert.equal(C.startFromTheme(savedTheme({ background: null, effects: false })).effects, false);
-  assert.equal(C.startFromTheme(savedTheme({ background: null, effects: true })).effects, true);
 });
 
 test('editingFillsTheStateFromTheSavedTheme', () => {
-  const s = C.fromTheme(savedTheme());
+  const s = C.fromTheme(savedTheme(), PIECES);
   assert.equal(s.id, 'k3j9x0q2m7ab');
   assert.equal(s.version, 3);
   assert.equal(s.name, 'Midnight Drive');
   assert.equal(s.visibility, 'public');
   assert.equal(s.hiddenByOwner, false);
   assert.equal(s.base, 'ember');
-  assert.equal(s.effects, true, 'the server stores false for a theme with a picture; that is not a choice');
+  assert.deepEqual(s.decorationsOff, ['edge'], 'the pieces it has off; its picture does not change them');
   assert.deepEqual(s.colors, COLORS);
   assert.equal(s.mainColor, '#7c5cff');
   assert.equal(s.pageColor, '#0b0d14');
@@ -257,51 +288,162 @@ test('editingFillsTheStateFromTheSavedTheme', () => {
   assert.deepEqual(s.mini, { colors: P.mini(COLORS), useImage: true, dim: 55 });
 });
 
-test('removingThePictureOfAnEmberThemeBringsItsEffectsBack', () => {
-  // saved with a picture, so the server holds effects:false
-  const saved = savedTheme({ base: 'ember', effects: false });
-  const s = C.fromTheme(saved);
-  assert.equal(C.buildValues(s).effects, false, 'while the picture is on, effects are off');
-  const without = C.withoutPicture(s);
-  assert.equal(C.buildValues(without).effects, true);
-  const req = C.saveRequest(without);
-  assert.equal(req.removeBackground, true);
-  assert.equal(req.values.effects, true);
-  // the person can still switch them off afterwards
-  assert.equal(C.buildValues(C.setEffects(without, false)).effects, false);
+test('piecesStartFromTheSavedTheme', () => {
+  // the pieces the theme has off, as saved: ids its starting theme doesn't have dropped, each once, in their order
+  const saved = savedTheme({ base: 'revival', decorationsOff: ['rays', 'flames', 'rays', 'record'], background: null });
+  const s = C.fromTheme(saved, PIECES);
+  assert.deepEqual(s.decorationsOff, ['rays', 'record']);
+  assert.deepEqual(C.buildValues(s).decorationsOff, ['rays', 'record'], 'saved again as it was');
+  const view = C.piecesView(s, PIECES);
+  assert.deepEqual(view.pieces.map((p) => p.id), idsOf('revival'), "one switch per piece of the starting theme, in the list's order");
+  assert.deepEqual(view.pieces.map((p) => p.label), PIECES.revival.pieces.map((p) => p.label));
+  assert.deepEqual(view.pieces.filter((p) => !p.on).map((p) => p.id), ['rays', 'record']);
+  assert.equal(view.pieces.some((p) => p.forced), false, 'no picture, nothing forced');
+  // starting from it, or choosing it as the start, takes its pieces as well
+  assert.deepEqual(C.startFromTheme(saved, PIECES).decorationsOff, ['rays', 'record']);
+  assert.deepEqual(C.chooseTheme(C.startState('nebula'), saved, PIECES).decorationsOff, ['rays', 'record']);
+  // a theme with every piece on
+  assert.deepEqual(C.fromTheme(savedTheme({ decorationsOff: [] }), PIECES).decorationsOff, []);
+  // the state it came from is a copy: switching a piece doesn't touch the theme it was opened from
+  C.setPiece(s, 'logo', false, PIECES);
+  assert.deepEqual(saved.decorationsOff, ['rays', 'flames', 'rays', 'record']);
+  // without the pieces list: no switches, and the list is saved as it came (the server keeps the base's ids)
+  const blind = C.fromTheme(saved, null);
+  assert.equal(C.piecesView(blind, null), null);
+  assert.deepEqual(C.buildValues(blind).decorationsOff, ['rays', 'flames', 'record']);
+  assert.equal(C.setPiece(blind, 'logo', false, null), blind, 'nothing to switch without the list');
+  assert.equal(C.allPieces(blind, true, null), blind);
 });
 
-test('aThemeSavedWithoutAPictureAndWithEffectsOffKeepsThemOff', () => {
-  const s = C.fromTheme(savedTheme({ background: null, mini: null, base: 'neon', effects: false }));
-  assert.equal(s.effects, false);
-  assert.equal(C.buildValues(s).effects, false);
+test('setPieceSwitchesOnePieceAndKeepsTheOrder', () => {
+  let s = C.startState('revival');
+  s = C.setPiece(s, 'rays', false, PIECES);
+  s = C.setPiece(s, 'glows', false, PIECES);
+  assert.deepEqual(s.decorationsOff, ['rays', 'glows']);
+  assert.deepEqual(C.setPiece(s, 'rays', true, PIECES).decorationsOff, ['glows']);
+  assert.equal(C.setPiece(s, 'rays', false, PIECES).decorationsOff.length, 2, 'off twice is off once');
+  for (const bad of ['flames', 'nope', '', null, undefined, '__proto__', 'a b']) {
+    assert.equal(C.setPiece(s, bad, false, PIECES), s, String(bad) + ' is not a piece of Revival');
+  }
+  // the six themes with nothing on the page have the mini-player's glow
+  assert.deepEqual(C.setPiece(C.startState('nebula'), 'glow', false, PIECES).decorationsOff, ['glow']);
 });
 
-test('aThemeServedWithItsPiecesReopensWithTheEffectsSwitchToMatch', () => {
-  // the server sends the pieces that are off (decorationsOff) and no effects flag any more; until the creator has a
-  // switch per piece, none off reads as effects on and any off as effects off, so a theme saved with effects off
-  // (every piece off) opens and saves again as it was
-  const served = (extra) => {
-    const t = savedTheme(Object.assign({ background: null, mini: null }, extra));
-    delete t.effects;
-    return t;
-  };
-  const allOff = served({ base: 'ember', decorationsOff: ['flames', 'edge', 'fire'] });
-  assert.equal(C.fromTheme(allOff).effects, false);
-  assert.equal(C.buildValues(C.fromTheme(allOff)).effects, false);
-  assert.equal(C.startFromTheme(allOff).effects, false);
-  assert.equal(C.fromTheme(served({ decorationsOff: [] })).effects, true);
-  // a picture still says nothing about the switch
-  assert.equal(C.fromTheme(Object.assign(served({ decorationsOff: ['flames'] }), { background: savedTheme().background })).effects, true);
+test('allOnAllOff', () => {
+  const s = C.startState('revival');
+  const off = C.allPieces(s, false, PIECES);
+  assert.deepEqual(off.decorationsOff, idsOf('revival'));
+  let view = C.piecesView(off, PIECES);
+  assert.equal(view.pieces.every((p) => !p.on), true);
+  assert.equal(view.allOff, true);
+  assert.equal(view.allOn, false);
+  const on = C.allPieces(C.setPiece(off, 'record', true, PIECES), true, PIECES);
+  assert.deepEqual(on.decorationsOff, []);
+  view = C.piecesView(on, PIECES);
+  assert.equal(view.pieces.every((p) => p.on), true);
+  assert.equal(view.allOn, true);
+  assert.equal(view.allOff, false);
+  assert.deepEqual(s.decorationsOff, [], 'the state it was given is left alone');
+  assert.deepEqual(C.allPieces(C.startState('dawn'), false, PIECES).decorationsOff, ['glow']);
+  // with a picture the saved list still follows the buttons
+  const picture = C.withNewPicture(s, 30);
+  assert.deepEqual(C.allPieces(picture, false, PIECES).decorationsOff, idsOf('revival'));
+  assert.deepEqual(C.allPieces(C.allPieces(picture, false, PIECES), true, PIECES).decorationsOff, []);
+});
+
+test('pictureForcesBackgroundPiecesOff', () => {
+  // Fred's case: Revival with the record on and the rays off, then a picture
+  const s = C.setPiece(C.startState('revival'), 'rays', false, PIECES);
+  const picture = C.withNewPicture(s, 30);
+  // the saved list does not change: a picture is not a choice about the pieces
+  assert.deepEqual(picture.decorationsOff, ['rays']);
+  assert.deepEqual(C.buildValues(picture).decorationsOff, ['rays']);
+  // the switches: the background pieces show off and can't be switched while the picture is on
+  const view = C.piecesView(picture, PIECES);
+  const byId = Object.fromEntries(view.pieces.map((p) => [p.id, p]));
+  for (const piece of PIECES.revival.pieces) {
+    assert.equal(byId[piece.id].forced, piece.background === true, piece.id);
+    if (piece.background) assert.equal(byId[piece.id].on, false, piece.id + ' shows off');
+  }
+  assert.equal(byId.record.on, true, 'the record stays');
+  assert.equal(byId.logo.on, true);
+  assert.equal(view.pictureNote, true);
+  assert.equal(view.pieces.find((p) => p.forced).hint, C.TEXT.PIECE_PICTURE_OFF);
+  // the preview: the page gets the saved list plus the background pieces
+  const t = C.previewTheme(picture, BLOB);
+  assert.deepEqual(t.decorationsOff, ['rays']);
+  const local = ThemeApply.localPicture(BLOB, false);
+  assert.equal(ThemeApply.decoOffFor(t, !!ThemeApply.backdrop(t.background, local), PIECES), 'rays sunrise');
+  // the picture goes: the pieces are as they were saved
+  const without = C.withoutPicture(picture);
+  assert.deepEqual(without.decorationsOff, ['rays']);
+  assert.equal(C.piecesView(without, PIECES).pieces.find((p) => p.id === 'sunrise').on, true);
+  assert.equal(C.piecesView(without, PIECES).pictureNote, false);
+  // a saved picture counts too, and a theme without background pieces has nothing to force
+  assert.equal(C.piecesView(C.fromTheme(savedTheme({ base: 'cipher', decorationsOff: [] }), PIECES), PIECES)
+    .pieces.find((p) => p.id === 'grid').forced, true);
+  const ember = C.piecesView(C.withNewPicture(C.startState('ember'), 30), PIECES);
+  assert.equal(ember.pieces.some((p) => p.forced), false);
+  assert.equal(ember.pictureNote, false);
+});
+
+test('theSixThemesWithoutDecorationsShowTheirMiniPlayerGlow', () => {
+  for (const base of ThemeApply.BUILT_IN) {
+    const view = C.piecesView(C.startState(base), PIECES);
+    assert.equal(view.miniOnly, !C.hasDecorations(base), base);
+    if (view.miniOnly) {
+      assert.deepEqual(view.pieces.map((p) => p.id), ['glow'], base);
+      assert.equal(view.pieces[0].hint, C.TEXT.PIECE_MINI_ONLY, base);
+    }
+  }
+  assert.match(C.TEXT.PIECE_MINI_ONLY, /mini-player/);
+});
+
+test('changingTheStartingThemeKeepsOnlyThePiecesOffThatItHas', () => {
+  let s = C.setPiece(C.setPiece(C.startState('revival'), 'glows', false, PIECES), 'rays', false, PIECES);
+  assert.deepEqual(s.decorationsOff, ['glows', 'rays']);
+  assert.deepEqual(C.chooseBase(s, 'neon', PIECES).decorationsOff, ['glows'], 'Neon has glows too, not rays');
+  assert.deepEqual(C.chooseBase(s, 'nebula', PIECES).decorationsOff, []);
+  // a community theme's own list is what counts when starting from it
+  assert.deepEqual(C.chooseTheme(s, savedTheme({ base: 'ember', decorationsOff: ['fire'] }), PIECES).decorationsOff, ['fire']);
+  // without the list the ids stay as they are (the server keeps the ones the new base has)
+  assert.deepEqual(C.chooseBase(s, 'neon', null).decorationsOff, ['glows', 'rays']);
+});
+
+test('anOldThemeReopensWithItsPiecesOffAndSavesInTheNewForm', () => {
+  // saved before the pieces: effects false and 15 colors (no extra decoration color), a 14-color mini-player version
+  const old = savedTheme({ base: 'ember', effects: false, colors: oldColors(), background: null,
+    mini: { colors: P.mini(oldColors()), useImage: false, dim: 40 } });
+  delete old.decorationsOff;
+  const s = C.fromTheme(old, PIECES);
+  assert.deepEqual(s.decorationsOff, idsOf('ember'), 'effects off is every piece of its starting theme off');
+  assert.equal(s.colors.decoExtra, '#fde047', "the extra decoration color is the starting theme's own");
+  assert.equal(s.decoExtraSetByHand, false);
+  assert.equal(C.miniFollows(s), true, 'its mini-player version still follows the theme');
+  const v = C.buildValues(s);
+  assert.equal('effects' in v, false);
+  assert.deepEqual(v.decorationsOff, idsOf('ember'));
+  assert.deepEqual(Object.keys(v.colors), javaList('COLOR_SLOTS'));
+  assert.equal(v.colors.decoExtra, '#fde047');
+  assert.equal(Object.keys(v.mini.colors).length, 15);
+  assert.equal(v.mini.colors.decoExtra, '#fde047');
+  // effects on, or no flag at all: every piece on
+  const on = Object.assign({}, old, { effects: true });
+  assert.deepEqual(C.fromTheme(on, PIECES).decorationsOff, []);
+  const none = Object.assign({}, old);
+  delete none.effects;
+  assert.deepEqual(C.fromTheme(none, PIECES).decorationsOff, []);
+  // the server's conversion, whatever the picture: effects false is every piece off
+  assert.deepEqual(C.fromTheme(Object.assign({}, old, { background: savedTheme().background }), PIECES).decorationsOff, idsOf('ember'));
 });
 
 test('editingAThemeWithoutAPictureOrMini', () => {
-  const s = C.fromTheme(savedTheme({ background: null, mini: null, effects: true }));
+  const s = C.fromTheme(savedTheme({ background: null, mini: null }), PIECES);
   assert.equal(s.picture, 'none');
   assert.equal(s.hadPicture, false);
   assert.equal(s.savedPictureUrl, '');
   assert.equal(s.mini, null);
-  assert.equal(s.effects, true);
+  assert.deepEqual(s.decorationsOff, ['edge']);
 });
 
 test('editingAHiddenThemeKeepsItPrivate', () => {
@@ -417,28 +559,124 @@ test('changingColorsKeepsEverythingElseTheCreatorHasDone', () => {
 });
 
 test('chooseBaseStartsTheLookOverButKeepsThePictureNameAndMini', () => {
-  let s = C.fromTheme(savedTheme());
-  s = C.chooseBase(s, 'dawn');
+  let s = C.fromTheme(savedTheme(), PIECES);
+  s = C.chooseBase(s, 'dawn', PIECES);
   assert.equal(s.base, 'dawn');
   assert.deepEqual(s.colors, C.BASE_PALETTES.dawn.colors);
   assert.equal(s.font, C.BASE_PALETTES.dawn.font);
   assert.equal(s.radiusScale, 100);
-  assert.equal(s.effects, true);
+  assert.deepEqual(s.decorationsOff, [], "Dawn has no piece called edge");
   assert.equal(s.mode, 'light');
   assert.equal(s.id, 'k3j9x0q2m7ab');
   assert.equal(s.name, 'Midnight Drive');
   assert.equal(s.picture, 'saved');
   assert.equal(s.dim, 45);
   assert.ok(s.mini);
-  assert.equal(C.chooseBase(s, 'nope').base, 'nebula');
+  assert.equal(C.chooseBase(s, 'nope', PIECES).base, 'nebula');
 });
 
 test('chooseThemeStartsFromACommunityThemesLook', () => {
-  const s = C.chooseTheme(C.startState('nebula'), savedTheme({ mine: false, background: null, effects: true }));
+  const s = C.chooseTheme(C.startState('nebula'), savedTheme({ mine: false, background: null }), PIECES);
   assert.equal(s.base, 'ember');
   assert.deepEqual(s.colors, COLORS);
   assert.equal(s.font, 'Outfit');
   assert.equal(s.radiusScale, 80);
+  assert.deepEqual(s.decorationsOff, ['edge']);
+});
+
+// ---- colors from any theme, and the extra decoration color
+
+test('useColoursFromFillsEverySlot', () => {
+  // Fred's case: Revival's shape and decorations, Nebula's colors
+  const s = C.setPiece(C.withNewPicture(C.setCorners(C.startState('revival'), 60), 30), 'rays', false, PIECES);
+  const u = C.useColoursFrom(s, 'nebula');
+  assert.deepEqual(u.colors, C.BASE_PALETTES.nebula.colors, 'all 16, the extra decoration color too');
+  assert.deepEqual(Object.keys(u.colors), [...P.SLOTS]);
+  assert.notEqual(u.colors, C.BASE_PALETTES.nebula.colors, 'a copy, so tweaks never change the table');
+  assert.equal(u.mainColor, C.BASE_PALETTES.nebula.colors.accent);
+  assert.equal(u.pageColor, C.BASE_PALETTES.nebula.colors.bgPrimary);
+  assert.equal(u.mode, 'dark');
+  // everything else stays: the starting theme, its font and corners, the pieces, the picture
+  assert.equal(u.base, 'revival');
+  assert.equal(u.font, s.font);
+  assert.equal(u.radiusScale, 60);
+  assert.deepEqual(u.decorationsOff, ['rays']);
+  assert.equal(u.picture, 'new');
+  assert.deepEqual(u.mini.colors, P.mini(u.colors), 'a following mini-player version follows');
+  for (const id of ThemeApply.BUILT_IN) {
+    const from = C.useColoursFrom(s, id);
+    assert.deepEqual(from.colors, C.BASE_PALETTES[id].colors, id);
+    assert.equal(from.mode, id === 'dawn' ? 'light' : 'dark', id);
+  }
+  assert.equal(C.useColoursFrom(C.startState('ember'), 'rasta').colors.decoExtra, '#dc2626', "Rasta's red comes along");
+  for (const bad of ['nope', '', null, undefined, '__proto__', 'constructor']) assert.equal(C.useColoursFrom(s, bad), s, String(bad));
+  assert.deepEqual(s.colors, C.BASE_PALETTES.revival.colors, 'the state it was given is left alone');
+  // the chip of the theme whose colors are on shows as chosen
+  assert.equal(C.colorsAreFrom(u, 'nebula'), true);
+  assert.equal(C.colorsAreFrom(u, 'revival'), false);
+  assert.equal(C.colorsAreFrom(C.setMain(u, '#ff7a00'), 'nebula'), false);
+  assert.equal(C.colorsAreFrom(u, 'nope'), false);
+});
+
+test('decoExtraFollowsColoursUntilSetByHand', () => {
+  // a starting theme gives its own; any new main color, background or mode makes it the new accent-light
+  const rasta = C.startState('rasta');
+  assert.equal(rasta.colors.decoExtra, '#dc2626');
+  assert.equal(rasta.decoExtraSetByHand, false);
+  for (const step of [
+    (x) => C.setMain(x, '#3b82f6'),
+    (x) => C.setMain(x, C.accentSuggestions(x.pageColor)[3]),
+    (x) => C.setPage(x, '#201020'),
+    (x) => C.setMode(x, 'light'),
+    (x) => C.surpriseMe(x, seeded(3))
+  ]) {
+    const next = step(rasta);
+    assert.equal(next.colors.decoExtra, next.colors.accentLight, String(step));
+    assert.equal(next.decoExtraSetByHand, false);
+  }
+  // set in Fine-tune: it stays through every color change of step 2
+  const own = C.setDecoExtra(rasta, '#FF0000');
+  assert.equal(own.colors.decoExtra, '#ff0000');
+  assert.equal(own.decoExtraSetByHand, true);
+  assert.equal(rasta.decoExtraSetByHand, false, 'the state it was given is left alone');
+  let kept = C.setMain(own, '#3b82f6');
+  kept = C.setPage(kept, '#102030');
+  kept = C.setMode(kept, 'light');
+  kept = C.surpriseMe(kept, seeded(5));
+  kept = C.fixIt(kept).state;
+  assert.equal(kept.colors.decoExtra, '#ff0000');
+  assert.equal(kept.decoExtraSetByHand, true);
+  // the Fine-tune color list sets it the same way
+  const tweaked = C.tweakColor(rasta, 'decoExtra', '#00ff00');
+  assert.equal(tweaked.colors.decoExtra, '#00ff00');
+  assert.equal(tweaked.decoExtraSetByHand, true);
+  // a new light main color in Fine-tune takes along one that follows the colors, and leaves a theme's own or a chosen one
+  const following = C.tweakColor(C.setMain(rasta, '#3b82f6'), 'accentLight', '#123456');
+  assert.equal(following.colors.decoExtra, '#123456');
+  assert.equal(following.decoExtraSetByHand, false);
+  assert.equal(C.tweakColor(rasta, 'accentLight', '#123456').colors.decoExtra, '#dc2626', "Rasta's own red stays");
+  assert.equal(C.tweakColor(tweaked, 'accentLight', '#123456').colors.decoExtra, '#00ff00');
+  assert.equal(C.tweakColor(rasta, 'bgCard', '#123456').colors.decoExtra, '#dc2626', 'other colors leave it alone');
+  for (const bad of ['red', '#ff000080', '#12', '', null, undefined]) assert.equal(C.setDecoExtra(rasta, bad), rasta, String(bad));
+  // "Use colors from" takes that theme's and lets it follow again
+  const cipher = C.useColoursFrom(kept, 'cipher');
+  assert.equal(cipher.colors.decoExtra, '#22d3ee');
+  assert.equal(cipher.decoExtraSetByHand, false);
+  assert.equal(C.setMain(cipher, '#3b82f6').colors.decoExtra, C.setMain(cipher, '#3b82f6').colors.accentLight);
+  // a new starting theme starts it over
+  const ember = C.chooseBase(kept, 'ember', PIECES);
+  assert.equal(ember.colors.decoExtra, '#fde047');
+  assert.equal(ember.decoExtraSetByHand, false);
+  // reopening: set by hand when it is neither the theme's accent-light nor its starting theme's own
+  const reopen = (decoExtra, base) => C.fromTheme(savedTheme({ base: base || 'ember', colors: Object.assign({}, COLORS, { decoExtra }) }), PIECES);
+  assert.equal(reopen(COLORS.accentLight).decoExtraSetByHand, false);
+  assert.equal(reopen('#fde047').decoExtraSetByHand, false, "Ember's own");
+  assert.equal(reopen('#dc2626', 'rasta').decoExtraSetByHand, false, "Rasta's own");
+  assert.equal(reopen('#dc2626').decoExtraSetByHand, true, "Rasta's red on Ember was chosen");
+  assert.equal(C.setMain(reopen('#dc2626'), '#3b82f6').colors.decoExtra, '#dc2626', 'and stays');
+  assert.equal(C.setMain(reopen('#fde047'), '#3b82f6').colors.decoExtra, C.setMain(reopen('#fde047'), '#3b82f6').colors.accentLight);
+  // the mini-player version takes it along while it follows the theme
+  assert.equal(own.mini.colors.decoExtra, '#ff0000');
 });
 
 // ---- fine-tuning
@@ -449,12 +687,20 @@ test('everyFineTuneColorHasAPlainNameAndTheDerivedOnesDoNot', () => {
   assert.deepEqual(slots.filter((s) => !P.SLOTS.includes(s)), []);
   assert.deepEqual([...P.SLOTS].filter((s) => !slots.includes(s)), ['borderLight', 'glass']);
   const labels = C.COLOR_CHOICES.map((c) => c.label);
-  for (const wanted of ['Background', 'Panels', 'Cards', 'Hover', 'Main color', 'Main text', 'Secondary text', 'Borders']) {
+  for (const wanted of ['Background', 'Panels', 'Cards', 'Hover', 'Main color', 'Main text', 'Secondary text', 'Borders', 'Extra decoration color']) {
     assert.ok(labels.includes(wanted), wanted);
   }
   for (const c of C.COLOR_CHOICES) {
     assert.match(c.label, /^[A-Z][a-z]+( [a-z]+)*$/, 'a plain name, not a variable name');
     assert.equal(typeof c.hint, 'string');
+  }
+});
+
+test('theExtraDecorationColorIsOfferedOnlyForTheElevenDecoratedThemes', () => {
+  for (const base of ThemeApply.BUILT_IN) {
+    const slots = C.fineTuneColors(base).map((c) => c.slot);
+    assert.equal(slots.includes('decoExtra'), C.hasDecorations(base), base);
+    assert.deepEqual(slots.filter((s) => s !== 'decoExtra'), C.COLOR_CHOICES.map((c) => c.slot).filter((s) => s !== 'decoExtra'), base);
   }
 });
 
@@ -495,7 +741,7 @@ test('tweakingIgnoresWhatIsNotAColorSlotOrColor', () => {
   assert.equal(s.colors.accent, C.BASE_PALETTES.nebula.colors.accent, 'the original is not touched');
 });
 
-test('thereIsASetterForCornersFontAndEffectsThatKeepsThemInRange', () => {
+test('thereIsASetterForCornersAndFontThatKeepsThemInRange', () => {
   const s = C.startState('ember');
   assert.equal(C.setCorners(s, 40).radiusScale, 40);
   assert.equal(C.setCorners(s, 400).radiusScale, 200);
@@ -504,8 +750,8 @@ test('thereIsASetterForCornersFontAndEffectsThatKeepsThemInRange', () => {
   assert.equal(C.setCorners(s, 'wide').radiusScale, 100);
   assert.equal(C.setFont(s, 'Syne').font, 'Syne');
   assert.equal(C.setFont(s, 'Comic Sans').font, s.font);
-  assert.equal(C.setEffects(s, false).effects, false);
-  assert.equal(C.setEffects(C.setEffects(s, false), true).effects, true);
+  // the one effects switch is gone: pieces are switched one by one
+  assert.equal('setEffects' in C, false);
 });
 
 // ---- readability
@@ -620,7 +866,7 @@ test('anAccentThatFailsGetsAClearerSuggestionNearby', () => {
 
 // ---- the values that are saved
 
-const SHARED_KEYS = ['base', 'colors', 'effects', 'font', 'name', 'radiusScale', 'visibility'];
+const SHARED_KEYS = ['base', 'colors', 'decorationsOff', 'font', 'name', 'radiusScale', 'visibility'];
 
 test('theValuesAreExactlyWhatTheServerTakes', () => {
   const s = Object.assign(C.startState('nebula'), { name: '  Neon Nights  ' });
@@ -630,7 +876,8 @@ test('theValuesAreExactlyWhatTheServerTakes', () => {
   assert.equal(v.name, 'Neon Nights');
   assert.equal(v.visibility, 'public');
   assert.equal(v.base, 'nebula');
-  assert.deepEqual(Object.keys(v.colors), javaList('COLOR_SLOTS').filter((slot) => slot !== 'decoExtra'));
+  assert.deepEqual(Object.keys(v.colors), javaList('COLOR_SLOTS'));
+  assert.deepEqual(v.decorationsOff, []);
   assert.equal(v.radiusScale, 100);
   assert.equal(v.font, 'Inter');
   assert.equal(JSON.stringify(v).includes('"id"'), false);
@@ -654,26 +901,25 @@ test('theColorsOfTheValuesAreACopyNotTheStatesOwn', () => {
   assert.equal(s.colors.accent, C.BASE_PALETTES.nebula.colors.accent);
 });
 
-test('effectsAreSentOnlyWhereTheBaseHasThemAndNoPictureIsSet', () => {
-  const rows = [
-    // base, state.effects, picture, expected
-    ['ember', true, 'none', true],
-    ['ember', false, 'none', false],
-    ['ember', true, 'new', false],
-    ['ember', true, 'saved', false],
-    ['nebula', true, 'none', true],
-    // a base without decorations never sends false: that would hide its default glow
-    ['nebula', false, 'none', true],
-    ['dawn', false, 'none', true],
-    ['aurora', false, 'none', true],
-    // ... except that a picture always switches effects off, as the server does
-    ['nebula', true, 'new', false],
-    ['dawn', true, 'saved', false]
-  ];
-  for (const [base, effects, picture, expected] of rows) {
-    const s = Object.assign(C.startState(base), { effects, picture, savedPictureUrl: picture === 'saved' ? PICTURE : '' });
-    assert.equal(C.buildValues(s).effects, expected, [base, effects, picture].join(' '));
+test('theValuesCarryThePiecesOffAndSixteenColorsAndNoEffects', () => {
+  const s = C.setDecoExtra(C.setPiece(C.useColoursFrom(C.startState('revival'), 'nebula'), 'rays', false, PIECES), '#123abc');
+  const v = C.buildValues(s);
+  assert.equal('effects' in v, false, 'the old switch is never sent');
+  assert.deepEqual(v.decorationsOff, ['rays']);
+  assert.notEqual(v.decorationsOff, s.decorationsOff, 'a copy, not the state\'s own');
+  assert.deepEqual(Object.keys(v.colors), javaList('COLOR_SLOTS'));
+  assert.equal(v.colors.decoExtra, '#123abc');
+  assert.deepEqual(Object.keys(v.mini.colors), javaList('COLOR_SLOTS').filter((slot) => slot !== 'glass'));
+  assert.equal(v.mini.colors.decoExtra, '#123abc');
+  // a picture never changes the list that is saved, on any starting theme
+  for (const base of ThemeApply.BUILT_IN) {
+    const off = C.allPieces(C.startState(base), false, PIECES);
+    assert.deepEqual(C.buildValues(C.withNewPicture(off, 30)).decorationsOff, idsOf(base), base);
+    assert.deepEqual(C.buildValues(C.withNewPicture(C.startState(base), 30)).decorationsOff, [], base);
   }
+  // nothing in the creator speaks of effects any more
+  assert.equal(JSON.stringify(C.previewTheme(s, '')).includes('effects'), false);
+  assert.equal(JSON.stringify(s).includes('effects'), false);
 });
 
 test('theBackgroundIsSentOnlyWhenThereIsAPicture', () => {
@@ -697,7 +943,7 @@ test('theMiniPlayerVersionIsSentOnlyWhenOneIsSet', () => {
   const mini = { colors: P.mini(COLORS), useImage: true, dim: 55 };
   const withPicture = C.buildValues(Object.assign(C.fromTheme(savedTheme()), { mini }));
   assert.deepEqual(withPicture.mini, mini);
-  assert.deepEqual(Object.keys(withPicture.mini.colors), javaList('COLOR_SLOTS').slice(0, 14));
+  assert.deepEqual(Object.keys(withPicture.mini.colors), javaList('COLOR_SLOTS').filter((slot) => slot !== 'glass'));
   // no picture, no picture in the mini-player
   const without = C.buildValues(Object.assign(C.startState('nebula'), { mini }));
   assert.equal(without.mini.useImage, false);
@@ -792,16 +1038,20 @@ test('thePreviewIsATheThemeThePanelCanApply', () => {
   assert.equal(t.name, 'Your new theme');
   assert.equal(t.base, 'ember');
   assert.deepEqual(t.colors, C.BASE_PALETTES.ember.colors);
-  assert.equal(t.effects, true);
+  assert.deepEqual(t.decorationsOff, []);
+  assert.equal('effects' in t, false);
   assert.equal(t.background, null);
   assert.equal(C.previewTheme(Object.assign(s, { name: 'Hi' }), '').name, 'Hi');
+  // the pieces that are off reach the page the way a saved theme's do
+  const off = C.setPiece(C.startState('revival'), 'rays', false, PIECES);
+  assert.equal(ThemeApply.decoOffFor(C.previewTheme(off, ''), false, PIECES), 'rays');
 });
 
 test('aPictureChosenHereIsPreviewedFromItsLocalLinkAndASavedOneFromItsOwn', () => {
   const local = ThemeApply.localPicture(BLOB, false);
   const fresh = C.previewTheme(Object.assign(C.startState('nebula'), { picture: 'new', dim: 20, blur: 3, fit: 'center' }), BLOB);
   assert.deepEqual(fresh.background, { url: BLOB, dim: 20, blur: 3, fit: 'center' });
-  assert.equal(fresh.effects, false);
+  assert.deepEqual(fresh.decorationsOff, [], 'the picture is not in the saved list; the page adds the background pieces');
   assert.ok(ThemeApply.backdrop(fresh.background, local));
   assert.equal(ThemeApply.backdrop(fresh.background), null, 'the page only takes that link from the creator');
   const old = C.previewTheme(C.fromTheme(savedTheme()), BLOB);
@@ -991,7 +1241,9 @@ test('refusedValuesShowTheServersMessageOnTheStepItBelongsTo', () => {
     [400, 'Mini-player main color must be a color like #7c5cff', C.STEP.MINI],
     [400, 'Corners must be a whole number from 0 to 200', C.STEP.TWEAK],
     [400, 'Font must be one of the fonts offered', C.STEP.TWEAK],
-    [400, 'Special effects must be true or false', C.STEP.TWEAK],
+    [400, 'Decorations must be a list of piece names', C.STEP.TWEAK],
+    [400, 'Extra decoration color must be a color like #7c5cff', C.STEP.TWEAK],
+    [400, 'Mini-player extra decoration color must be a color like #7c5cff', C.STEP.MINI],
     [400, 'Cards must be a color like #7c5cff', C.STEP.TWEAK],
     [400, 'Starting theme must be one of the built-in themes', C.STEP.START]
   ];
@@ -1051,7 +1303,7 @@ test('makingAMiniPlayerVersionGeneratesItFromTheThemesColorsWithoutGlass', () =>
   const s = C.makeMini(before);
   assert.deepEqual(s.mini.colors, P.mini(before.colors));
   assert.deepEqual(Object.keys(s.mini.colors), P.MINI_SLOTS.slice());
-  assert.equal(Object.keys(s.mini.colors).length, 14);
+  assert.equal(Object.keys(s.mini.colors).length, 15, 'the 16 without glass');
   assert.equal('glass' in s.mini.colors, false);
   assert.equal(before.mini, null, 'the state it was given is left alone');
   assert.equal(C.miniFollows(s), true);
@@ -1121,11 +1373,11 @@ test('theMiniPlayerPictureIsDarkenedFromZeroToNinetyInWholeNumbers', () => {
   assert.equal(odd.mini.dim, 90);
 });
 
-test('theMiniPlayerVersionIsSavedAsFourteenColorsAFlagAndADarkening', () => {
+test('theMiniPlayerVersionIsSavedAsFifteenColorsAFlagAndADarkening', () => {
   const s = C.makeMini(withPicture(C.startState('aurora'), 55));
   const v = C.buildValues(s);
   assert.deepEqual(Object.keys(v.mini).sort(), ['colors', 'dim', 'useImage']);
-  assert.deepEqual(Object.keys(v.mini.colors), javaList('COLOR_SLOTS').slice(0, 14));
+  assert.deepEqual(Object.keys(v.mini.colors), javaList('COLOR_SLOTS').filter((slot) => slot !== 'glass'));
   assert.equal(v.mini.useImage, true);
   assert.equal(v.mini.dim, 55);
   assert.deepEqual(v.mini.colors, P.mini(s.colors));
@@ -1157,6 +1409,9 @@ test('aGeneratedMiniPlayerVersionFollowsTheThemeWhenItsColorsChange', () => {
     (x) => C.fixIt(x).state,
     (x) => C.chooseBase(x, 'dawn'),
     (x) => C.chooseTheme(x, savedTheme({ mine: false })),
+    (x) => C.useColoursFrom(x, 'rasta'),
+    (x) => C.setDecoExtra(x, '#00ff88'),
+    (x) => C.setPiece(x, 'flames', false, PIECES),
     (x) => C.setFont(C.setCorners(x, 50), 'Syne')
   ]) {
     s = step(s);
@@ -1260,12 +1515,12 @@ test('theMiniPlayersOwnMainColorAndBackgroundRegenerateItsPaletteWithoutTouching
   assert.equal(C.miniView(made).page, made.pageColor);
 });
 
-test('theMiniPlayersOwnColorsAreFourteenReadableColorsForAnyPair', () => {
+test('theMiniPlayersOwnColorsAreFifteenReadableColorsForAnyPair', () => {
   for (let i = 0; i < 150; i++) {
     const pick = P.surprise(seeded(i + 1));
     let s = C.makeMini(C.startState('nebula'));
     s = C.setMiniPage(C.setMiniMain(s, pick.accent), pick.background);
-    assert.equal(Object.keys(s.mini.colors).length, 14, String(i));
+    assert.equal(Object.keys(s.mini.colors).length, 15, String(i));
     assert.equal('glass' in s.mini.colors, false, String(i));
     assert.equal(C.miniView(s).report.ok, true, String(i));
     assert.equal(P.readability(s.mini.colors).ok, true, String(i));
@@ -1391,7 +1646,7 @@ test('aNewThemeCarriesAGeneratedReadableMiniPlayerVersionFromTheStart', () => {
   for (const base of ThemeApply.BUILT_IN) {
     const s = C.startState(base);
     assert.deepEqual(s.mini.colors, P.mini(s.colors), base);
-    assert.equal(Object.keys(s.mini.colors).length, 14, base);
+    assert.equal(Object.keys(s.mini.colors).length, 15, base);
     assert.equal('glass' in s.mini.colors, false, base);
     assert.equal(s.mini.useImage, false, base);
     assert.equal(C.miniFollows(s), true, base);
@@ -1759,6 +2014,35 @@ test('theCreatorPreviewsThroughTheSameFunctionThatAppliesSavedThemes', () => {
   // the one second applier would be a second place that sets properties on the root
   assert.doesNotMatch(CREATOR_CODE, /documentElement\.style\.setProperty|setCustomProperty\(/);
 });
+
+test('thePageDrawsThePiecesAndTheColorChipsFromTheTestedModule', () => {
+  // the one effects switch is gone; a switch per piece, All on / All off, and the chips, all through ThemeCreator
+  assert.doesNotMatch(INDEX, /Keep special effects|special effects/i);
+  assert.doesNotMatch(CREATOR_CODE, /\.effects\b|setEffects/);
+  for (const name of ['TC.piecesView(s.state, themePieces)', 'TC.setPiece(s.state, ', 'TC.allPieces(s.state, true, themePieces)',
+    'TC.allPieces(s.state, false, themePieces)', 'TC.useColoursFrom(s.state, ', 'TC.colorsAreFrom(s.state, ', 'TC.fineTuneColors(',
+    'TC.fromTheme(themeOrNull, themePieces)', 'TC.chooseBase(s.state, entry.base, themePieces)',
+    'TC.chooseTheme(s.state, entry.theme, themePieces)']) {
+    assert.ok(CREATOR_CODE.includes(name), name);
+  }
+  // the piece labels come from theme-pieces.json and go in as text only
+  assert.match(CREATOR_CODE, /plEl\('span', 'tc-opt-name', piece\.label\)/);
+  // a list that arrives while the creator is open shows its switches and reaches the preview
+  assert.match(panelFunctionOf('retryThemePieces'), /if \(themeCreator\) tcPiecesArrived\(themeCreator\);/);
+  assert.match(panelFunctionOf('openThemeCreator'), /loadThemePieces\(\)\.then\(function \(\) \{ tcPiecesArrived\(s\); \}\)/);
+});
+
+/* The source of one of the page's functions (from "function name(" to its closing brace). */
+function panelFunctionOf(name) {
+  const at = INDEX.indexOf('function ' + name + '(');
+  assert.ok(at >= 0, name + ' not found');
+  let depth = 0;
+  for (let i = INDEX.indexOf('{', at); i < INDEX.length; i++) {
+    if (INDEX[i] === '{') depth++;
+    else if (INDEX[i] === '}' && --depth === 0) return INDEX.slice(at, i + 1);
+  }
+  throw new Error(name + ' never closes');
+}
 
 test('theThemeListRefreshingDoesNotPutTheRealThemeBackWhileTheCreatorShowsItsPreview', () => {
   const fn = /function reconcileThemeChoice\(\) \{([\s\S]*?)\n        \}/.exec(INDEX);

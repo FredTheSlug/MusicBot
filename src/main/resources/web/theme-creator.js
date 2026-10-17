@@ -4,8 +4,10 @@
  * color, pictures, names), the values that are saved and the previews that are shown, and what to say when saving
  * fails.
  * Pure functions on plain objects, no DOM: every function returns a new state and leaves the one it was given alone.
- * Loaded by the panel as a classic script (window.ThemeCreator, after theme-palette.js and theme-apply.js) and by
- * Node for tests.
+ * What needs the starting themes' decoration pieces is given the pieces list (theme-pieces.json as the panel loaded
+ * it, its themePieces; null while it hasn't): without it there are no piece switches and the pieces that are off stay
+ * as they are. Loaded by the panel as a classic script (window.ThemeCreator, after theme-palette.js and
+ * theme-apply.js) and by Node for tests.
  *
  * Colors are lower case "#rrggbb" ("#rrggbbaa" for the see-through ones). Nothing here builds CSS text.
  */
@@ -36,116 +38,120 @@
     var ACCENT_BAR_SUGGESTED = 3.2;
 
     /*
-     * The 17 built-in themes as a starting point: the label as in the picker, the font, and the 15 color slots as the
+     * The 17 built-in themes as a starting point: the label as in the picker, the font, and the 16 color slots as the
      * stylesheet gives them (a test keeps this table equal to the stylesheet). Colors that are see-through carry their
-     * alpha as the last two digits.
+     * alpha as the last two digits. The extra decoration color (decoExtra, the block's --deco-extra) is Rasta's red,
+     * Cipher's cyan and Ember's flame-core yellow, and every other theme's accent-light.
      */
     var BASE_PALETTES = deepFreeze({
         nebula: { label: 'Nebula', font: 'Inter', colors: {
             bgPrimary: '#0b0d17', bgSecondary: '#121427', bgCard: '#181b2e', bgElevated: '#1e2240', bgHover: '#252a4a',
             accent: '#7c5cfc', accentLight: '#9b82fc', accent2: '#e04cf0',
             textPrimary: '#eef0f6', textSecondary: '#7a7f9a', textTertiary: '#4e5270',
-            border: '#ffffff0f', borderLight: '#ffffff1a', success: '#34d399', glass: '#181b2ed9'
+            border: '#ffffff0f', borderLight: '#ffffff1a', success: '#34d399', glass: '#181b2ed9', decoExtra: '#9b82fc'
         } },
         aurora: { label: 'Aurora', font: 'Inter', colors: {
             bgPrimary: '#0a1114', bgSecondary: '#0f181c', bgCard: '#152228', bgElevated: '#1a2e35', bgHover: '#23424d',
             accent: '#2dd4bf', accentLight: '#5eead4', accent2: '#22d3ee',
             textPrimary: '#ecf8f6', textSecondary: '#7a9d9a', textTertiary: '#4a6b67',
-            border: '#ffffff12', borderLight: '#ffffff1f', success: '#34d399', glass: '#0f181ce0'
+            border: '#ffffff12', borderLight: '#ffffff1f', success: '#34d399', glass: '#0f181ce0', decoExtra: '#5eead4'
         } },
         ember: { label: 'Ember', font: 'Inter', colors: {
             bgPrimary: '#140c0a', bgSecondary: '#1a100c', bgCard: '#241815', bgElevated: '#2e1f18', bgHover: '#3d2a22',
             accent: '#f97316', accentLight: '#fb923c', accent2: '#ef4444',
             textPrimary: '#faf5f0', textSecondary: '#b8a090', textTertiary: '#7a6558',
-            border: '#ffffff12', borderLight: '#ffffff1f', success: '#4ade80', glass: '#1a100ce0'
+            border: '#ffffff12', borderLight: '#ffffff1f', success: '#4ade80', glass: '#1a100ce0', decoExtra: '#fde047'
         } },
         crimson: { label: 'Crimson', font: 'Inter', colors: {
             bgPrimary: '#0f0506', bgSecondary: '#160809', bgCard: '#1f0c0e', bgElevated: '#2a1013', bgHover: '#3a161a',
             accent: '#f87171', accentLight: '#fca5a5', accent2: '#fb7185',
             textPrimary: '#fef2f2', textSecondary: '#c4a3a3', textTertiary: '#8f6668',
-            border: '#f871711a', borderLight: '#fca5a529', success: '#4ade80', glass: '#16080ae6'
+            border: '#f871711a', borderLight: '#fca5a529', success: '#4ade80', glass: '#16080ae6', decoExtra: '#fca5a5'
         } },
         dawn: { label: 'Dawn', font: 'DM Sans', colors: {
             bgPrimary: '#f4f2ef', bgSecondary: '#eae6e0', bgCard: '#ffffff', bgElevated: '#f0ece6', bgHover: '#e2dcd4',
             accent: '#6d28d9', accentLight: '#7c3aed', accent2: '#db2777',
             textPrimary: '#1c1917', textSecondary: '#57534e', textTertiary: '#78716c',
-            border: '#00000014', borderLight: '#0000001f', success: '#059669', glass: '#ffffffc7'
+            border: '#00000014', borderLight: '#0000001f', success: '#059669', glass: '#ffffffc7', decoExtra: '#7c3aed'
         } },
         'dawn-dark': { label: 'Dawn Dark', font: 'DM Sans', colors: {
             bgPrimary: '#050403', bgSecondary: '#080706', bgCard: '#12100e', bgElevated: '#0c0b09', bgHover: '#1c1a17',
             accent: '#8b5cf6', accentLight: '#c4b5fd', accent2: '#db2777',
             textPrimary: '#fafaf9', textSecondary: '#b5aea8', textTertiary: '#78716c',
-            border: '#ffffff0e', borderLight: '#ffffff1a', success: '#34d399', glass: '#050403e6'
+            border: '#ffffff0e', borderLight: '#ffffff1a', success: '#34d399', glass: '#050403e6', decoExtra: '#c4b5fd'
         } },
         steel: { label: 'Steel', font: 'Inter', colors: {
             bgPrimary: '#0c0f14', bgSecondary: '#121620', bgCard: '#181e2a', bgElevated: '#1e2635', bgHover: '#283042',
             accent: '#38bdf8', accentLight: '#7dd3fc', accent2: '#818cf8',
             textPrimary: '#f1f5f9', textSecondary: '#94a3b8', textTertiary: '#64748b',
-            border: '#ffffff0f', borderLight: '#ffffff1c', success: '#34d399', glass: '#121620db'
+            border: '#ffffff0f', borderLight: '#ffffff1c', success: '#34d399', glass: '#121620db', decoExtra: '#7dd3fc'
         } },
         verdant: { label: 'Verdant', font: 'Inter', colors: {
             bgPrimary: '#0a0f0c', bgSecondary: '#0f1812', bgCard: '#152019', bgElevated: '#1a2d22', bgHover: '#243a2d',
             accent: '#34d399', accentLight: '#6ee7b7', accent2: '#a3e635',
             textPrimary: '#ecfdf5', textSecondary: '#86a89a', textTertiary: '#527a6a',
-            border: '#ffffff0f', borderLight: '#ffffff1c', success: '#4ade80', glass: '#0f1812e0'
+            border: '#ffffff0f', borderLight: '#ffffff1c', success: '#4ade80', glass: '#0f1812e0', decoExtra: '#6ee7b7'
         } },
         grove: { label: 'Grove', font: 'Inter', colors: {
             bgPrimary: '#171b1f', bgSecondary: '#1e2329', bgCard: '#252b33', bgElevated: '#2f3640', bgHover: '#3a4350',
             accent: '#34d399', accentLight: '#6ee7b7', accent2: '#94a3b8',
             textPrimary: '#f1f5f9', textSecondary: '#94a3b8', textTertiary: '#64748b',
-            border: '#94a3b81a', borderLight: '#94a3b833', success: '#4ade80', glass: '#1e2329e6'
+            border: '#94a3b81a', borderLight: '#94a3b833', success: '#4ade80', glass: '#1e2329e6', decoExtra: '#6ee7b7'
         } },
         grapevine: { label: 'Grapevine', font: 'Inter', colors: {
             bgPrimary: '#0c0a12', bgSecondary: '#110e1a', bgCard: '#181528', bgElevated: '#221d34', bgHover: '#2e2645',
             accent: '#a78bfa', accentLight: '#c4b5fd', accent2: '#22c55e',
             textPrimary: '#f3f0ff', textSecondary: '#a8a0c8', textTertiary: '#6b6390',
-            border: '#a78bfa17', borderLight: '#4ade8024', success: '#4ade80', glass: '#120d1ce6'
+            border: '#a78bfa17', borderLight: '#4ade8024', success: '#4ade80', glass: '#120d1ce6', decoExtra: '#c4b5fd'
         } },
         sumi: { label: 'Sumi', font: 'Noto Sans JP', colors: {
             bgPrimary: '#060708', bgSecondary: '#0a0c0f', bgCard: '#101318', bgElevated: '#0c0e12', bgHover: '#1a1f26',
             accent: '#c42b20', accentLight: '#e85d52', accent2: '#1a2f42',
             textPrimary: '#f2ebe3', textSecondary: '#a39e96', textTertiary: '#6f6a64',
-            border: '#f2ebe30e', borderLight: '#c9a2271f', success: '#6d9f7b', glass: '#060708eb'
+            border: '#f2ebe30e', borderLight: '#c9a2271f', success: '#6d9f7b', glass: '#060708eb', decoExtra: '#e85d52'
         } },
         rasta: { label: 'Rasta', font: 'Outfit', colors: {
             bgPrimary: '#000000', bgSecondary: '#000000', bgCard: '#121812', bgElevated: '#182018', bgHover: '#263026',
             accent: '#22c55e', accentLight: '#86efac', accent2: '#eab308',
             textPrimary: '#ecfdf4', textSecondary: '#9dc7a4', textTertiary: '#5e8a66',
-            border: '#22c55e24', borderLight: '#eab30838', success: '#4ade80', glass: '#0a0e0ae0'
+            border: '#22c55e24', borderLight: '#eab30838', success: '#4ade80', glass: '#0a0e0ae0', decoExtra: '#dc2626'
         } },
         cipher: { label: 'Cipher', font: 'IBM Plex Mono', colors: {
             bgPrimary: '#09070f', bgSecondary: '#100c1a', bgCard: '#171225', bgElevated: '#211a33', bgHover: '#2c2344',
             accent: '#8b5cf6', accentLight: '#c4b5fd', accent2: '#d946ef',
             textPrimary: '#f3eeff', textSecondary: '#a396c4', textTertiary: '#6b5f8a',
-            border: '#8b5cf61f', borderLight: '#d946ef2e', success: '#34d399', glass: '#100c1ae6'
+            border: '#8b5cf61f', borderLight: '#d946ef2e', success: '#34d399', glass: '#100c1ae6', decoExtra: '#22d3ee'
         } },
         signal: { label: 'Signal', font: 'Inter', colors: {
             bgPrimary: '#050a0c', bgSecondary: '#0a1215', bgCard: '#0f1a1e', bgElevated: '#152429', bgHover: '#1c333a',
             accent: '#22d3ee', accentLight: '#67e8f9', accent2: '#4ade80',
             textPrimary: '#e8fbff', textSecondary: '#7aadb8', textTertiary: '#4a7580',
-            border: '#22d3ee1f', borderLight: '#67e8f933', success: '#4ade80', glass: '#0a1215eb'
+            border: '#22d3ee1f', borderLight: '#67e8f933', success: '#4ade80', glass: '#0a1215eb', decoExtra: '#67e8f9'
         } },
         victory: { label: 'Victory', font: 'Syne', colors: {
             bgPrimary: '#0e0c08', bgSecondary: '#16130c', bgCard: '#1f1a12', bgElevated: '#2a2318', bgHover: '#3a3020',
             accent: '#eab308', accentLight: '#fde047', accent2: '#f59e0b',
             textPrimary: '#fffbeb', textSecondary: '#c4b48a', textTertiary: '#8a7a52',
-            border: '#eab3081f', borderLight: '#fde04733', success: '#84cc16', glass: '#16130ce6'
+            border: '#eab3081f', borderLight: '#fde04733', success: '#84cc16', glass: '#16130ce6', decoExtra: '#fde047'
         } },
         neon: { label: 'Neon', font: 'Outfit', colors: {
             bgPrimary: '#12081c', bgSecondary: '#1a0f28', bgCard: '#221436', bgElevated: '#2c1a45', bgHover: '#3a2458',
             accent: '#a3e635', accentLight: '#d9f99d', accent2: '#c084fc',
             textPrimary: '#ffffff', textSecondary: '#e8e0f2', textTertiary: '#b9a8d0',
-            border: '#a3e63524', borderLight: '#c084fc38', success: '#a3e635', glass: '#1a0f28e6'
+            border: '#a3e63524', borderLight: '#c084fc38', success: '#a3e635', glass: '#1a0f28e6', decoExtra: '#d9f99d'
         } },
         revival: { label: 'Revival', font: 'Inter', colors: {
             bgPrimary: '#14100d', bgSecondary: '#1b1612', bgCard: '#211b17', bgElevated: '#2b231e', bgHover: '#372d26',
             accent: '#e2825c', accentLight: '#f2a882', accent2: '#f2b35e',
             textPrimary: '#f6efe5', textSecondary: '#cdbcaa', textTertiary: '#a08f7e',
-            border: '#f2b35e1a', borderLight: '#f2b35e33', success: '#b4d48a', glass: '#181310d1'
+            border: '#f2b35e1a', borderLight: '#f2b35e33', success: '#b4d48a', glass: '#181310d1', decoExtra: '#f2a882'
         } }
     });
 
-    /* The built-in themes that have decorative layers (flames, tiles, header strips...) that "plain" switches off. */
+    /*
+     * The built-in themes with decorations on the page (flames, tiles, header strips...): in theme-pieces.json they have
+     * pieces of their own. The other six have only the mini-player's glow.
+     */
     var DECORATED_BASES = Object.freeze(['ember', 'steel', 'grove', 'sumi', 'rasta', 'dawn-dark', 'cipher', 'signal',
         'victory', 'neon', 'revival']);
 
@@ -184,7 +190,10 @@
         MINI_SKIP: 'Skip ' + DASH + ' no mini-player version',
         MINI_MAKE: 'Make a mini-player version',
         MINI_NOT_READABLE: 'Some text will be hard to read in the mini-player',
-        MINI_MATCH: 'Update to match the theme'
+        MINI_MATCH: 'Update to match the theme',
+        PIECES_HINT: "The extras that come with the theme you started from. Switch off any you don't want.",
+        PIECE_PICTURE_OFF: 'Off while you use a background picture.',
+        PIECE_MINI_ONLY: 'Only in the mini-player. This theme has no decorations on the page.'
     });
 
     /* ---- the steps ---- */
@@ -256,13 +265,24 @@
         return typeof hex === 'string' && hex.length === 9 ? hex.slice(7).toLowerCase() : '';
     }
 
-    /* A lower-case copy with exactly these slots; a slot that isn't a color takes the value from `fallback`. */
+    /*
+     * A lower-case copy with exactly these slots; a slot that isn't a color takes the value from `fallback`. The extra
+     * decoration color has to be opaque (#rrggbb), as the server wants it.
+     */
     function normalizeColors(colors, slots, fallback) {
         var out = {};
         for (var i = 0; i < slots.length; i++) {
             var c = colors && typeof colors === 'object' ? colors[slots[i]] : null;
-            out[slots[i]] = typeof c === 'string' && HEX_ANY.test(c) ? c.toLowerCase() : fallback[slots[i]];
+            var ok = typeof c === 'string' && (slots[i] === 'decoExtra' ? HEX6 : HEX_ANY).test(c);
+            out[slots[i]] = ok ? c.toLowerCase() : fallback[slots[i]];
         }
+        return out;
+    }
+
+    /* What a color that is missing becomes: Nebula's, but the extra decoration color is the starting theme's own (as on the server). */
+    function fallbackColors(base) {
+        var out = copyOf(BASE_PALETTES.nebula.colors);
+        out.decoExtra = BASE_PALETTES[isBase(base) ? base : 'nebula'].colors.decoExtra;
         return out;
     }
 
@@ -319,11 +339,16 @@
      * What the creator keeps:
      *   id, version, hiddenByOwner   the theme being edited (null/null/false for a new one)
      *   name, visibility             step 6
-     *   base, effects, colors{15}, radiusScale, font   the look; mainColor, pageColor, mode are step 2's picks
+     *   base, decorationsOff, colors{16}, radiusScale, font   the look; mainColor, pageColor, mode are step 2's picks
+     *   decorationsOff               the ids of the starting theme's pieces that are switched off (theme-pieces.json). A
+     *                                picture never changes it: the page switches the background pieces off while it shows
+     *                                one (ThemeApply.decoOffFor)
+     *   decoExtraSetByHand           the extra decoration color was set in Fine-tune, so new colors on step 2 leave it be;
+     *                                otherwise it is the starting theme's own, then the accent-light of any new colors
      *   picture   'none' | 'saved' (the theme's own picture on the server) | 'new' (a file chosen here, sent on save)
      *   hadPicture, savedPictureUrl  whether the edited theme has a picture on the server, and its link
      *   dim, blur, fit               the picture's settings
-     *   mini                         null (skipped) or {colors{14}, useImage, dim}; a new theme starts with one made from
+     *   mini                         null (skipped) or {colors{15}, useImage, dim}; a new theme starts with one made from
      *                                its colors (startState), an edit keeps whatever the theme has. Whether its colors follow
      *                                the theme is not kept apart: they do exactly when they are the ones the theme's colors
      *                                make (miniFollows)
@@ -331,7 +356,7 @@
     function blankState() {
         return {
             id: null, version: null, hiddenByOwner: false, name: '', visibility: 'public',
-            base: 'nebula', effects: true, colors: null, radiusScale: 100, font: 'Inter',
+            base: 'nebula', decorationsOff: [], colors: null, decoExtraSetByHand: false, radiusScale: 100, font: 'Inter',
             mainColor: '', pageColor: '', mode: 'dark',
             picture: 'none', hadPicture: false, savedPictureUrl: '', dim: DEFAULT_DIM, blur: 0, fit: 'cover',
             mini: null
@@ -344,19 +369,22 @@
 
     function clone(state) {
         var next = copyOf(state);
+        next.decorationsOff = Array.isArray(state.decorationsOff) ? state.decorationsOff.slice() : [];
         next.colors = state.colors ? copyOf(state.colors) : null;
         next.mini = copyMini(state.mini);
         return next;
     }
 
-    /* The fields that make up a look, from a base, its colors, font, effects and corners. */
-    function lookFields(base, colors, font, effects, radiusScale) {
-        var fixed = normalizeColors(colors, palette.SLOTS, BASE_PALETTES.nebula.colors);
+    /* The fields that make up a look, from a base, its colors, font, the pieces that are off and corners. */
+    function lookFields(base, colors, font, decorationsOff, radiusScale) {
+        var id = isBase(base) ? base : 'nebula';
+        var fixed = normalizeColors(colors, palette.SLOTS, fallbackColors(id));
         return {
-            base: isBase(base) ? base : 'nebula',
+            base: id,
+            decorationsOff: decorationsOff.slice(),
             colors: fixed,
+            decoExtraSetByHand: false,
             font: FONTS.indexOf(font) >= 0 ? font : 'Inter',
-            effects: effects === true,
             radiusScale: clampInt(radiusScale, 0, 200, 100),
             mainColor: rgbOf(fixed.accent),
             pageColor: rgbOf(fixed.bgPrimary),
@@ -364,22 +392,32 @@
         };
     }
 
+    /* A built-in theme's look: its colors (its own extra decoration color with them) and every piece on. */
     function baseLook(id) {
         var base = isBase(id) ? id : 'nebula';
-        return lookFields(base, BASE_PALETTES[base].colors, BASE_PALETTES[base].font, true, 100);
+        return lookFields(base, BASE_PALETTES[base].colors, BASE_PALETTES[base].font, [], 100);
     }
 
-    /* Effects default to on. The server stores false for any theme with a picture (a picture forced them off), so
-       that false says nothing about what the person wants once the picture is gone. The server now sends the pieces
-       that are off instead (decorationsOff): none off is effects on, any off is effects off. */
-    function effectsOf(theme) {
-        if (theme.background) return true;
-        if (Array.isArray(theme.decorationsOff)) return theme.decorationsOff.length === 0;
-        return theme.effects !== false;
+    /*
+     * The pieces a theme from the server has off, as the panel reads them (ThemeApply.decoOffFor without a picture: a
+     * picture is no choice about the pieces): its list with only its starting theme's ids, each once, in their order.
+     * A theme in the old shape (no list) converts the way the server converts it: effects false is every piece off.
+     * Without the pieces list only ids that look like ids go through, and the old shape can't be converted.
+     */
+    function savedPiecesOff(theme, pieces) {
+        var off = apply.decoOffFor(theme, false, pieces);
+        return off ? off.split(' ') : [];
     }
 
-    function themeLook(theme) {
-        return lookFields(theme.base, theme.colors, theme.font, effectsOf(theme), theme.radiusScale);
+    /*
+     * A theme's look. Its extra decoration color counts as set by hand when it is neither its accent-light nor its
+     * starting theme's own.
+     */
+    function themeLook(theme, pieces) {
+        var look = lookFields(theme.base, theme.colors, theme.font, savedPiecesOff(theme, pieces), theme.radiusScale);
+        var extra = look.colors.decoExtra;
+        look.decoExtraSetByHand = extra !== rgbOf(look.colors.accentLight) && extra !== BASE_PALETTES[look.base].colors.decoExtra;
+        return look;
     }
 
     function withFields(state, fields) {
@@ -394,16 +432,16 @@
     }
 
     /*
-     * A new theme starting from somebody's community theme: its look, but not its picture, name or the mini-player
-     * version it has (ours is made from the look it starts with, as for any new theme).
+     * A new theme starting from somebody's community theme: its look (its pieces too), but not its picture, name or the
+     * mini-player version it has (ours is made from the look it starts with, as for any new theme).
      */
-    function startFromTheme(theme) {
-        return makeMini(withFields(blankState(), themeLook(theme)));
+    function startFromTheme(theme, pieces) {
+        return makeMini(withFields(blankState(), themeLook(theme, pieces)));
     }
 
     /* The state for editing a theme of the list. */
-    function fromTheme(theme) {
-        var state = withFields(blankState(), themeLook(theme));
+    function fromTheme(theme, pieces) {
+        var state = withFields(blankState(), themeLook(theme, pieces));
         var version = Number(theme.version);
         state.id = typeof theme.id === 'string' ? theme.id : null;
         state.version = isFinite(version) ? Math.floor(version) : 0;
@@ -442,20 +480,51 @@
         return next;
     }
 
-    /* Picking another starting point replaces the look and keeps everything else (picture, name, mini-player version). */
-    function chooseBase(state, baseId) {
-        return withFields(state, baseLook(baseId));
+    /*
+     * Picking another starting point replaces the look and keeps everything else (picture, name, mini-player version).
+     * Of the pieces that were off, the ones the new starting theme has stay off (as the server does); without the pieces
+     * list they all stay, and the server keeps the ones it has.
+     */
+    function chooseBase(state, baseId, pieces) {
+        var look = baseLook(baseId);
+        var own = apply.piecesOf(pieces, look.base);
+        look.decorationsOff = (state.decorationsOff || []).filter(function (id) {
+            return !own || own.some(function (piece) { return piece.id === id; });
+        });
+        return withFields(state, look);
     }
 
-    function chooseTheme(state, theme) {
-        return withFields(state, themeLook(theme));
+    function chooseTheme(state, theme, pieces) {
+        return withFields(state, themeLook(theme, pieces));
     }
 
     /* ---- step 2: the colors ---- */
 
+    /* A palette made from a main color and a background. Its extra decoration color is its accent-light, unless the person set one. */
     function withPair(state, main, page, mode) {
         var colors = palette.generate(main, page, mode);
+        if (state.decoExtraSetByHand === true && state.colors && isHex6(state.colors.decoExtra)) colors.decoExtra = state.colors.decoExtra;
         return withFields(state, { colors: colors, mainColor: rgbOf(colors.accent), pageColor: rgbOf(colors.bgPrimary), mode: mode });
+    }
+
+    /*
+     * "Use colors from": all 16 colors of a built-in theme, its extra decoration color too, which follows the colors
+     * again from here. The starting theme, its shape and its pieces stay.
+     */
+    function useColoursFrom(state, themeId) {
+        if (!isBase(themeId)) return state;
+        var colors = copyOf(BASE_PALETTES[themeId].colors);
+        return withFields(state, {
+            colors: colors, decoExtraSetByHand: false,
+            mainColor: rgbOf(colors.accent), pageColor: rgbOf(colors.bgPrimary), mode: modeOf(colors.bgPrimary)
+        });
+    }
+
+    /* Are the colors exactly those of this built-in theme (its chip shows as chosen)? */
+    function colorsAreFrom(state, themeId) {
+        return isBase(themeId) && !!state.colors && palette.SLOTS.every(function (slot) {
+            return state.colors[slot] === BASE_PALETTES[themeId].colors[slot];
+        });
     }
 
     function setMain(state, hex) {
@@ -544,7 +613,10 @@
 
     /* ---- step 4: fine-tuning ---- */
 
-    /* The colors a person may set one by one, with the plain names the server uses too. Light borders and glass follow. */
+    /*
+     * The colors a person may set one by one, with the plain names the server uses too. Light borders and glass follow.
+     * The extra decoration color is only offered for a starting theme with decorations on the page (fineTuneColors).
+     */
     var COLOR_CHOICES = Object.freeze([
         ['bgPrimary', 'Background', 'The page behind everything'],
         ['bgSecondary', 'Panels', 'The top bar and the side areas'],
@@ -558,8 +630,14 @@
         ['textSecondary', 'Secondary text', 'Smaller words, like artists'],
         ['textTertiary', 'Faint text', 'Hints and labels'],
         ['border', 'Borders', 'The thin lines around things'],
-        ['success', 'Success color', 'Ticks and "done" messages']
+        ['success', 'Success color', 'Ticks and "done" messages'],
+        ['decoExtra', 'Extra decoration color', 'A color some of the decorations use, like flame cores or a flag stripe']
     ].map(function (c) { return Object.freeze({ slot: c[0], label: c[1], hint: c[2] }); }));
+
+    /* The colors Fine-tune lists for a starting theme: all of them, but the extra decoration color only where there are decorations. */
+    function fineTuneColors(base) {
+        return COLOR_CHOICES.filter(function (c) { return c.slot !== 'decoExtra' || hasDecorations(base); });
+    }
 
     function isChoice(slot) {
         return COLOR_CHOICES.some(function (c) { return c.slot === slot; });
@@ -567,17 +645,31 @@
 
     /* One color from a picker (plain #rrggbb). It keeps the slot's transparency; the colors made from it follow. */
     function tweakColor(state, slot, hex) {
+        if (slot === 'decoExtra') return setDecoExtra(state, hex);
         if (!isChoice(slot) || !isHex6(hex)) return state;
         var rgb = rgbOf(hex);
         var next = clone(state);
         next.colors[slot] = rgb + alphaOf(state.colors[slot]);
         if (slot === 'bgSecondary') next.colors.glass = rgb + (alphaOf(state.colors.glass) || 'e0');
         if (slot === 'border') next.colors.borderLight = rgb + alphaOf(state.colors.borderLight);
+        // an extra decoration color that is following the colors (it is the accent-light) goes along
+        if (slot === 'accentLight' && state.decoExtraSetByHand !== true && state.colors.decoExtra === rgbOf(state.colors.accentLight)) {
+            next.colors.decoExtra = rgb;
+        }
         if (slot === 'accent') next.mainColor = rgb;
         if (slot === 'bgPrimary') {
             next.pageColor = rgb;
             next.mode = modeOf(rgb);
         }
+        return keepMiniFollowing(state, next);
+    }
+
+    /* The extra decoration color, set by hand: it stays when the colors change on step 2 (until "Use colors from"). */
+    function setDecoExtra(state, hex) {
+        if (!isHex6(hex)) return state;
+        var next = clone(state);
+        next.colors.decoExtra = hex.toLowerCase();
+        next.decoExtraSetByHand = true;
         return keepMiniFollowing(state, next);
     }
 
@@ -589,8 +681,65 @@
         return FONTS.indexOf(font) >= 0 ? withFields(state, { font: font }) : state;
     }
 
-    function setEffects(state, on) {
-        return withFields(state, { effects: !!on });
+    /* ---- step 4: the decoration pieces ---- */
+
+    function isOff(state, id) {
+        return (state.decorationsOff || []).indexOf(id) >= 0;
+    }
+
+    /*
+     * One piece of the starting theme on or off. Nothing happens for an id the starting theme doesn't have, or without
+     * the pieces list. A picture doesn't stop it: the list is what is saved, and the picture only hides the background
+     * pieces while it is there.
+     */
+    function setPiece(state, id, on, pieces) {
+        var own = apply.piecesOf(pieces, state.base);
+        if (!own || !own.some(function (piece) { return piece.id === id; }) || isOff(state, id) === !on) return state;
+        var off = (state.decorationsOff || []).filter(function (other) { return other !== id; });
+        if (!on) off.push(id);
+        return withFields(state, { decorationsOff: off });
+    }
+
+    /* "All on" / "All off" for the starting theme's pieces (nothing without the pieces list). */
+    function allPieces(state, on, pieces) {
+        var own = apply.piecesOf(pieces, state.base);
+        if (!own) return state;
+        return withFields(state, { decorationsOff: on ? [] : own.map(function (piece) { return piece.id; }) });
+    }
+
+    /*
+     * Everything the Fine-tune step shows about the pieces, or null without the pieces list (no switches then):
+     *   pieces       [{id, label, background, on, forced, hint}] in the list's order: `on` as the page shows it (what the
+     *                preview gets from ThemeApply.decoOffFor); `forced` for a background piece while there is a picture
+     *                (shown off, can't be switched); `hint` the words under it ('' for none)
+     *   allOn, allOff   whether "All on" / "All off" would change nothing (the saved list)
+     *   miniOnly     the starting theme has nothing on the page: its one piece is the mini-player's
+     *   pictureNote  some pieces are off because of the picture
+     */
+    function piecesView(state, pieces) {
+        var own = apply.piecesOf(pieces, state.base);
+        if (!own) return null;
+        var picture = hasPicture(state);
+        var shownOff = apply.decoOffFor({ base: state.base, decorationsOff: state.decorationsOff || [] }, picture, pieces).split(' ');
+        var miniOnly = !hasDecorations(state.base);
+        var list = own.map(function (piece) {
+            var forced = picture && piece.background === true;
+            return {
+                id: piece.id,
+                label: typeof piece.label === 'string' && piece.label ? piece.label : piece.id,
+                background: piece.background === true,
+                on: shownOff.indexOf(piece.id) < 0,
+                forced: forced,
+                hint: forced ? TEXT.PIECE_PICTURE_OFF : (miniOnly ? TEXT.PIECE_MINI_ONLY : '')
+            };
+        });
+        return {
+            pieces: list,
+            allOn: own.every(function (piece) { return !isOff(state, piece.id); }),
+            allOff: own.every(function (piece) { return isOff(state, piece.id); }),
+            miniOnly: miniOnly,
+            pictureNote: list.some(function (piece) { return piece.forced; })
+        };
     }
 
     /* ---- step 3: the picture ---- */
@@ -825,10 +974,19 @@
         return state.picture === 'new' || state.picture === 'saved';
     }
 
+    /* The ids in the pieces-off list, each once, in their order (a copy). */
+    function piecesOffOf(state) {
+        var out = [];
+        (Array.isArray(state.decorationsOff) ? state.decorationsOff : []).forEach(function (id) {
+            if (typeof id === 'string' && out.indexOf(id) < 0) out.push(id);
+        });
+        return out;
+    }
+
     /*
-     * The theme's values as the server takes them (spec 2: no id, owner, version or picture name). Effects are sent as
-     * the person set them only for a base that has some; any other base always sends true, because false would hide
-     * even its plain accent glow. A picture switches effects off, and a mini-player picture needs the picture.
+     * The theme's values as the server takes them (spec 2: no id, owner, version or picture name): the pieces that are
+     * off as the person set them (a picture doesn't change them: the page hides the background pieces while it shows
+     * one) and all 16 colors. A mini-player picture needs the picture.
      */
     function buildValues(state) {
         var picture = hasPicture(state);
@@ -836,8 +994,8 @@
             name: String(state.name == null ? '' : state.name).trim(),
             visibility: state.hiddenByOwner || state.visibility === 'private' ? 'private' : 'public',
             base: isBase(state.base) ? state.base : 'nebula',
-            effects: picture ? false : (hasDecorations(state.base) ? state.effects === true : true),
-            colors: normalizeColors(state.colors, palette.SLOTS, BASE_PALETTES.nebula.colors),
+            decorationsOff: piecesOffOf(state),
+            colors: normalizeColors(state.colors, palette.SLOTS, fallbackColors(state.base)),
             radiusScale: clampInt(state.radiusScale, 0, 200, 100),
             font: FONTS.indexOf(state.font) >= 0 ? state.font : 'Inter'
         };
@@ -874,7 +1032,9 @@
 
     /*
      * The theme as the panel would get it from the server, for the live preview. `localUrl` is the blob: link of a
-     * picture chosen here (ThemeApply takes that one link only from the creator, see ThemeApply.localPicture).
+     * picture chosen here (ThemeApply takes that one link only from the creator, see ThemeApply.localPicture). The
+     * page applies it like a saved theme: its pieces off, and the background pieces too while it shows the picture
+     * (ThemeApply.decoOffFor).
      */
     function previewTheme(state, localUrl) {
         var values = buildValues(state);
@@ -888,7 +1048,7 @@
             mine: true,
             version: 0,
             base: values.base,
-            effects: values.effects,
+            decorationsOff: values.decorationsOff,
             colors: values.colors,
             radiusScale: values.radiusScale,
             font: values.font,
@@ -914,7 +1074,7 @@
         if (/must be a color|is missing|unknown color/i.test(text)) return STEP.TWEAK; // before "Background", which is also a color
         if (/picture|background|darken|blur|\bfit\b/i.test(text)) return STEP.PICTURE;
         if (/starting theme/i.test(text)) return STEP.START;
-        if (/corners|font|special effects/i.test(text)) return STEP.TWEAK;
+        if (/corners|font|decorations/i.test(text)) return STEP.TWEAK;
         return STEP.SHARE;
     }
 
@@ -972,6 +1132,8 @@
         setPage: setPage,
         setMode: setMode,
         surpriseMe: surpriseMe,
+        useColoursFrom: useColoursFrom,
+        colorsAreFrom: colorsAreFrom,
         ACCENT_NAMES: ACCENT_NAMES,
         accentSuggestions: accentSuggestions,
         clearerAccent: clearerAccent,
@@ -979,10 +1141,14 @@
         report: report,
         fixIt: fixIt,
         COLOR_CHOICES: COLOR_CHOICES,
+        fineTuneColors: fineTuneColors,
         tweakColor: tweakColor,
+        setDecoExtra: setDecoExtra,
         setCorners: setCorners,
         setFont: setFont,
-        setEffects: setEffects,
+        setPiece: setPiece,
+        allPieces: allPieces,
+        piecesView: piecesView,
         withNewPicture: withNewPicture,
         withoutPicture: withoutPicture,
         setPictureLook: setPictureLook,
